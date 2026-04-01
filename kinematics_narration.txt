@@ -1,0 +1,5 @@
+Let's analyze a particle moving along a straight line with velocity v of t equals 3 t squared minus 6 t plus 2.
+First, we find the time when acceleration is zero by differentiating the velocity function.
+The derivative is 6 t minus 6. Setting this to zero gives t equals 1 second.
+Next, we calculate the total displacement from t equals 0 to 3 by integrating the velocity.
+The definite integral gives us a total displacement of 15 units. This completes our kinematics analysis.

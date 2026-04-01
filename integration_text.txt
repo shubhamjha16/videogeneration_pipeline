@@ -1,0 +1,1 @@
+Let's solve a definite integral. We want to find the area under the curve f of x equals two x, from x equals zero to x equals three. As the area fills in, we calculate the integral. The antiderivative of two x is x squared. Plugging in our bounds, three squared is nine, and zero squared is zero. So, the total area is exactly nine square units.

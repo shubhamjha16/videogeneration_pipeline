@@ -1,0 +1,13 @@
+[P]
+In a triangle ABC, let the sides opposite to angles A, B, and C be denoted by a, b, and c respectively. The Law of Cosines states that:
+a² = b² + c² - 2bc cos(A)
+b² = a² + c² - 2ac cos(B)
+c² = a² + b² - 2ab cos(C)
+For this particular problem, we are given that angle B is 45 degrees.
+---
+[M]
+Since angle B = 45 degrees, we have b² = a² + c² - 2ac cos(45°).
+Substituting cos(45°) = 1/sqrt(2), we get b² = a² + c² - sqrt(2)ac.
+The goal is to find the value of a⁴ + b⁴ + c⁴ in terms of a, b, and c.
+By squaring both sides of b² + sqrt(2)ac = a² + c², and simplifying, we can find the correct relationship.
+The result shows that Option C, which is 2b²(a² + c²), is the correct answer.

@@ -1,0 +1,21 @@
+[P]
+Hello student! Tony here. Today we're exploring the world of Combinatorics, specifically the concept of Permutations.
+The notation n P r represents the number of ways to arrange r objects from a pool of n objects.
+The fundamental formula is n P r equals n factorial divided by n minus r factorial.
+Remember, we use permutations when the order of selection matters! Now, let's apply this to a challenging JEE problem.
+---
+[P]
+Here is our question: If 56 P r plus 6 divided by 54 P r plus 3 equals 30800 to 1, what is the value of r?
+This might look complex at first, but by using our permutation formula and simplifying the factorials, the solution becomes quite clear.
+Let's see the step-by-step math in action.
+---
+[M]
+Let's write the equation using the permutation formula.
+We have 56 factorial over (50 - r) factorial, divided by 54 factorial over (51 - r) factorial.
+This simplifies to (56! / 54!) * ((51 - r)! / (50 - r)!) = 30800.
+Breaking down the factorials: 56! / 54! is 56 times 55.
+And (51 - r)! / (50 - r)! is simply (51 - r).
+So, 56 times 55 times (51 - r) equals 30800.
+3080 times (51 - r) equals 30800.
+Dividing both sides, 51 - r equals 10.
+Therefore, r equals 41. Option C is our correct answer.

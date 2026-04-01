@@ -1,0 +1,6 @@
+A particle moves along a straight line such that its velocity varies with time as v of t equals 3 t squared minus 6 t plus 2.
+First, we find the time at which acceleration is zero. Acceleration is the derivative of velocity, which is 6 t minus 6. Setting this to zero, we find t equals 1 second.
+Next, we find the total displacement in the time interval from 0 to 3 seconds. Displacement is the definite integral of the velocity function from 0 to 3.
+The integral of 3 t squared minus 6 t plus 2 is t cubed minus 3 t squared plus 2 t. Evaluating this from 0 to 3, we get 27 minus 27 plus 6, which equals 6 meters.
+As shown on the graph, the area under the velocity-time curve represents the displacement, which is 6 meters.
+This demonstrates how both differentiation and integration are essential tools in analyzing motion in kinematics.

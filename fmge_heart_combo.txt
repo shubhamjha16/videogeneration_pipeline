@@ -1,0 +1,9 @@
+[P]
+Welcome everyone. For the FMGE exam, understanding the anatomy of the heart is fundamental. The heart is a four-chambered muscular organ. The upper two chambers are called the Right and Left Atria, while the lower two are the Right and Left Ventricles.
+Between these chambers, we have valves like the Tricuspid and Mitral valves, which ensure that blood flows in only one direction. This coordination is what keeps our entire circulatory system functioning.
+
+---
+[M]
+Now, let's trace the actual path of blood flow. Deoxygenated blood returns from the body via the Superior and Inferior Vena Cava into the Right Atrium. From here, it passes through the Tricuspid Valve into the Right Ventricle.
+The Right Ventricle then pumps this blood to the lungs through the Pulmonary Artery. After picking up oxygen, the blood returns to the Left Atrium, enters the Left Ventricle, and is finally pumped out to the rest of the body through the Aorta.
+Notice how the muscular wall of the Left Ventricle is significantly thicker—it needs to generate enough pressure to reach your entire body!

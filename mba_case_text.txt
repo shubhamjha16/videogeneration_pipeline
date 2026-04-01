@@ -1,0 +1,6 @@
+In today's competitive landscape, many startups face the paradox of low pricing but high churn. Let's analyze a case where slow delivery and poor support are driving customers away despite cost advantages.
+From an MBA perspective, we must determine what to prioritize first. While both are critical, the core product promise of a startup is its value chain reliability.
+Slow delivery is a fundamental operational failure. It affects the primary customer experience and creates a backlog of tickets for customer support.
+Therefore, the company should prioritize delivery speed first. By fixing operations, you reduce the volume of support queries, effectively solving two problems at once.
+Improving support without fixing delivery is simply managing dissatisfaction. Fixing delivery builds trust and fulfills the primary promise of the brand.
+In conclusion, operational excellence must precede service recovery. Solve the root cause, and the customer lifetime value will eventually recover.

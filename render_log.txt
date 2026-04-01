@@ -1,0 +1,28 @@
+Traceback (most recent call last):
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/bin/manim", line 5, in <module>
+    from manim.__main__ import main
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/manim/__init__.py", line 13, in <module>
+    from ._config import *
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/manim/_config/__init__.py", line 12, in <module>
+    from .utils import ManimConfig, ManimFrame, make_config_parser
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/manim/_config/utils.py", line 31, in <module>
+    from manim.utils.color import ManimColor
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/manim/utils/color/__init__.py", line 55, in <module>
+    from . import AS2700, BS381, DVIPSNAMES, SVGNAMES, X11, XKCD
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/manim/utils/color/AS2700.py", line 29, in <module>
+    from .core import ManimColor
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/manim/utils/color/core.py", line 100, in <module>
+    from ...utils.space_ops import normalize
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/manim/utils/space_ops.py", line 11, in <module>
+    from scipy.spatial.transform import Rotation
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/scipy/spatial/__init__.py", line 116, in <module>
+    from ._geometric_slerp import geometric_slerp
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/scipy/spatial/_geometric_slerp.py", line 9, in <module>
+    from scipy.spatial.distance import euclidean
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/scipy/spatial/distance.py", line 121, in <module>
+    from ..special import rel_entr
+  File "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/scipy/special/__init__.py", line 777, in <module>
+    from . import _ufuncs
+  File "scipy/special/_ufuncs.pyx", line 1, in init scipy.special._ufuncs
+  File "<frozen importlib._bootstrap>", line 398, in parent
+KeyboardInterrupt
