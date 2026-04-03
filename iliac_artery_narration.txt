@@ -1,0 +1,8 @@
+[presentation]
+The internal iliac artery is the powerhouse of the pelvis. It branches off from the common iliac artery and divides into anterior and posterior divisions. It is the primary blood supply for the pelvic organs, the gluteal region, and the reproductive system. Understanding these branches is vital for every surgeon and gynecologist.
+---
+[math]
+Look at this branching tree. Most pelvic arteries—like the superior vesical, uterine, and internal pudendal—arise from the internal iliac. However, notice the Ovarian artery. It actually takes a long journey from the abdominal aorta directly, not the internal iliac. This is a classic anatomical "trap" often tested in medical exams.
+---
+[presentation]
+Let's solve the question. Which of these is NOT a branch of the internal iliac artery? Based on our anatomical map, the correct answer is A: Ovarian artery. Superior vesical, Uterine, and Internal pudendal are all direct branches. Remember: Ovarian and Testicular arteries are high-flyers from the aorta!

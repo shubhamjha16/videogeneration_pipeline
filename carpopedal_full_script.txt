@@ -1,0 +1,8 @@
+# PART 1: THE CONCEPT
+Carpopedal spasm is a form of tetany involving involuntary contractions of the hands and feet. It is commonly observed during episodes of hyperventilation due to the resultant respiratory alkalosis. When you hyperventilate, you expel more carbon dioxide than normal, leading to an increase in blood pH.
+
+# PART 2: THE MECHANISM (VISUAL)
+Look at this mechanism. As CO2 levels drop, the blood becomes alkaline. This alkalosis causes calcium to bind more avidly to plasma proteins, particularly albumin. This critical shift reduces the level of free or ionized calcium in the blood, which is the biologically active form responsible for neuromuscular stability.
+
+# PART 3: MCQ ANALYSIS
+Now, let's look at the question. Carpopedal spasm in hyperventilation occurs because? Based on our mechanism, the clear answer is C: Increased calcium binding to plasma protein. Options A, B, and D are incorrect as they do not account for the acute physiological shift triggered by respiratory alkalosis.

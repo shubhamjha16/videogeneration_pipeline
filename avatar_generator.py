@@ -1,45 +1,69 @@
 import os
 import math
-from PIL import Image, ImageDraw, ImageFont
-import requests
-from moviepy.editor import ImageClip, AudioFileClip, VideoClip, VideoFileClip
 import numpy as np
+import config
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import VideoClip, AudioFileClip, VideoFileClip
 
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+# Fix for MoviePy/Pillow 10+ compatibility
+if not hasattr(Image, 'ANTIALIAS'):
+    Image.ANTIALIAS = Image.Resampling.LANCZOS
 
-def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir: str = ".", avatar_type: str = "logo") -> str:
+def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir: str = ".", avatar_type: str = config.DEFAULT_AVATAR) -> str:
     """
     Generates a dynamic animated Avatar video clip.
     avatar_type: 
       - "logo": Branded infinity logo with blinking eyes (Local render)
       - "human": Static photo with logic-based mouth overlay (Local, fast)
-      - "pro": Real AI Lip-Sync using ElevenLabs API (Requires API Key)
+      - "pro": Real AI Lip-Sync using ElevenLabs API (Requires tutor_face.png)
+      - "user": Your real face from camera! (Requires media/user_face.mp4)
     """
     avatar_video_path = os.path.join(output_dir, f"scene_{scene_idx}_avatar.mp4")
     width, height = 320, 240
 
-    # --- PRO MODE: ElevenLabs Lip-Sync API ---
-    if avatar_type == "pro" and ELEVENLABS_API_KEY:
-        print(f"🚀 Calling ElevenLabs Lip-Sync API for scene {scene_idx}...")
-        url = "https://api.elevenlabs.io/v1/video/lip-sync" # Placeholder for correct endpoint
-        headers = {"xi-api-key": ELEVENLABS_API_KEY}
+    # --- PRO / USER MODES: ElevenLabs Lip-Sync API ---
+    # Ensure ElevenLabs key is loaded from config if not in env
+    api_key = config.ELEVENLABS_API_KEY
+    if api_key and avatar_type in ["pro", "user"]:
+        from eleven_lip_sync import generate_lip_sync
         
-        # Note: In a real implementation, we send the image and audio.
-        # Since this is a new beta API, we handle the request/response pattern.
-        try:
-            files = {
-                'file': ('tutor_face.png', open('tutor_face.png', 'rb'), 'image/png'),
-                'audio': (os.path.basename(audio_file), open(audio_file, 'rb'), 'audio/mpeg')
-            }
-            # For now, we simulate the path if the above call isn't fully public yet
-            # or return the local 'human' version as a high-quality fallback.
-            # response = requests.post(url, headers=headers, files=files)
-            # with open(avatar_video_path, "wb") as f:
-            #     f.write(response.content)
-            # return avatar_video_path
-        except Exception as e:
-            print(f"⚠️ ElevenLabs API Error: {e}. Falling back to local human mode.")
-            avatar_type = "human"
+        # Determine base video
+        if avatar_type == "user":
+            base_video = "user_face.mp4"
+            if not os.path.exists(base_video):
+                base_video = "media/user_face.mp4"
+        else:
+            base_video = os.path.join(os.path.dirname(output_dir), "base_avatar.mp4")
+            if not os.path.exists(base_video):
+                base_video = "media/base_avatar.mp4"
+
+        if os.path.exists(base_video):
+            if config.ELEVENLABS_API_KEY:
+                print(f"🚀 Calling ElevenLabs Lip-Sync API for scene {scene_idx}...")
+                try:
+                    result = generate_lip_sync(base_video, audio_file, avatar_video_path)
+                    if result:
+                        return result
+                    else:
+                        if avatar_type == "user":
+                            print(f"⚠️ ElevenLabs API Error. Generating local Simulated Lip-Sync...")
+                            return create_talking_video_local(base_video, audio_file, avatar_video_path)
+                        avatar_type = "human"
+                except Exception as e:
+                    print(f"❌ Lip-Sync System Error: {e}")
+                    if avatar_type == "user":
+                        return create_talking_video_local(base_video, audio_file, avatar_video_path)
+                    avatar_type = "human"
+                if avatar_type == "user":
+                    print(f"⚠️ ELEVENLABS_API_KEY not found. Generating local Simulated Lip-Sync...")
+                    return create_talking_video_local(base_video, audio_file, avatar_video_path)
+                avatar_type = "human"
+        else:
+            if avatar_type == "user":
+                print(f"⚠️ User video not found: {base_video}. Falling back to logo.")
+                avatar_type = "logo"
+            else:
+                avatar_type = "human"
 
     # --- LOCAL RENDERING MODES ---
     face_img = None
@@ -101,11 +125,56 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
                   
         return np.array(img)
     
-    # Render logic
+    # Render logic: render a fixed 30s of animation (high-fidelity logo idling)
+    # This ensures we never need to loop short segments, avoiding MoviePy seeking bugs.
     audio = AudioFileClip(audio_file)
-    loop_clip = VideoClip(make_frame, duration=3.0)
-    from moviepy.video.fx.all import loop
-    animated_clip = loop(loop_clip, duration=audio.duration)
-    animated_clip.write_videofile(avatar_video_path, fps=24, codec="libx264", logger=None)
-    
+    dur = 30.0 # Standard long duration
+    animated_clip = VideoClip(make_frame, duration=dur)
+    final = animated_clip.set_audio(audio)
+    final.write_videofile(avatar_video_path, fps=24, codec="libx264")
     return avatar_video_path
+
+def create_talking_video_local(video_input, audio_input, output_path):
+    """
+    Creates a simulated lip-sync by overlaying a moving mouth on a video.
+    """
+    from moviepy.editor import VideoFileClip, AudioFileClip
+    from moviepy.video.fx.all import loop as fx_loop
+    import numpy as np
+
+    print(f"🎬 Creating local Simulated Lip-Sync: {output_path}")
+    aud = AudioFileClip(audio_input)
+    dur = aud.duration
+    
+    # Load and loop base video
+    base = VideoFileClip(video_input).without_audio()
+    base = fx_loop(base, duration=dur)
+    
+    def add_mouth_filter(get_frame, t):
+        frame = get_frame(t)
+        img = Image.fromarray(frame)
+        d = ImageDraw.Draw(img)
+        w, h = img.size
+        
+        # Audio-reactive animation
+        # Simple oscillation for now, can be improved with soundarray
+        mouth_open = abs(math.sin(t * 12) + math.sin(t * 8)) / 2 
+        
+        cx, cy = w // 2, int(h * 0.72)
+        rw, rh = int(w * 0.08), int(h * 0.05 * mouth_open)
+        
+        if rh > 2:
+            # Draw a dark mouth ellipse
+            d.ellipse([cx-rw, cy-rh, cx+rw, cy+rh], fill=(20, 0, 0))
+            
+        return np.array(img)
+
+    talking = base.fl(add_mouth_filter)
+    talking = talking.set_audio(aud)
+    
+    # Use low bitrate for speed
+    talking.write_videofile(output_path, fps=12, codec="libx264", audio_codec="aac", bitrate="500k")
+    return output_path
+
+if __name__ == "__main__":
+    pass

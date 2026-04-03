@@ -1,0 +1,13 @@
+[P]
+Hello student! Today we explore one of the most famous rules in geometry: The Pythagorean Theorem.
+This theorem allows us to find the missing side of a right-angled triangle if we know the other two sides. Let's see how it works.
+
+---
+[M]
+Consider a right-angled triangle with sides a, b, and the longest side c, called the hypotenuse.
+The theorem states that a squared plus b squared equals c squared.
+For example, if a is 3 and b is 4.
+Then 3 squared is 9, and 4 squared is 16.
+Summing them gives 25, which is exactly 5 squared.
+So our hypotenuse c is 5!
+This 3, 4, 5 combination is known as a Pythagorean Triple.

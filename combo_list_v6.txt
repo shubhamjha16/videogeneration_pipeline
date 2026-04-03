@@ -1,0 +1,2 @@
+file '/Users/apple/Desktop/easetolearn.videogeneration/output/job_edh_management_masterclass/part_1/tony_ai_video.mp4'
+file '/Users/apple/Desktop/easetolearn.videogeneration/output/job_edh_management_masterclass/part_2/final_edh_management_masterclass_part_2_v6.mp4'

@@ -1,0 +1,15 @@
+[presentation]
+Extradural hemorrhage, or EDH, is a collection of blood between the inner surface of the skull and the dura mater.
+It is usually caused by trauma to the head, leading to the rupture of the middle meningeal artery.
+EDH is a neurosurgical emergency! The blood increases intracranial pressure and can compress the brain.
+Without treatment, this leads to herniation and death. 
+The mainstay of management is immediate surgical intervention to evacuate the hematoma as soon as possible.
+---
+[math]
+Let's analyze the management options for Extradural Hemorrhage.
+Option A: Antibiotics is wrong. There is no infection here; it is a problem of acute bleeding.
+Option B: Immediate evacuation is correct! This is the cornerstone of life-saving management.
+Option C: Evacuation after 24 hours is incorrect. Delaying surgery can lead to rapid clinical deterioration.
+Option D: Observation is typically reserved for only very small, asymptomatic hematomas.
+Therefore, the correct answer is B: Immediate surgical evacuation.
+According to Bailey and Love's Textbook of Surgery, EDH is a neurosurgical emergency that requires prompt surgical intervention.

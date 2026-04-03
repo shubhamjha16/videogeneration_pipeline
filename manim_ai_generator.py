@@ -1,33 +1,48 @@
 import os
+import re
 import google.generativeai as genai
-from dotenv import load_dotenv
+import config
 
-load_dotenv()
-
-def generate_manim_script(explanation_text, topic):
+def generate_manim_script(scenes, topic):
     """
-    Translates a text explanation into a Manim Python script.
+    Translates a list of (text, duration) scenes into a synced Manim script.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = config.GEMINI_API_KEY
     if not api_key:
-        return "Error: GEMINI_API_KEY not found in .env file."
+        return "Error: GEMINI_API_KEY not found in config."
 
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
 
-    prompt = f"""
-    You are an expert Manim animator and math tutor.
-    Translate the following explanation into a clean, professional Manim Python script.
-    
-    GUIDELINES:
-    1. DO NOT USE MathTex or LaTeX. Use pure 'Text' objects instead for macOS compatibility.
-    2. The scene class name MUST be '{topic.replace(' ', '')}'.
-    3. Center everything. Use wait() commands that match natural speaking pauses.
-    4. Keep visuals simple: show the problem, show the steps, show the final answer.
-    5. ONLY return the Python code. No markdown, no explanations.
+    # Convert scenes to a formatted string for the prompt
+    formatted_scenes = "\n".join([f"- TEXT: \"{s['text']}\" | DURATION: {s['duration']}s" for s in scenes])
 
-    EXPLANATION TO ANIMATE:
-    {explanation_text}
+    prompt = f"""
+    You are an expert Manim animator and global pedagogical expert. 
+    Translate the following synced audio scenes into a single, clean, professional Manim Python script.
+    
+    THEME:
+    - Use a 'Modern Dark' aesthetic: BackgroundColor = "#121212".
+    - Primary Color for Math/Biology: "#00BFFF" (Deep Sky Blue).
+    - Secondary/Step Color: "#FFD700" (Gold).
+    
+    SYNC REQUIREMENTS:
+    - For EVERY scene below, you must perform the corresponding animation and use `self.wait(DURATION)`.
+    - Total duration of the animation MUST match the sum of durations provided.
+    
+    VISUAL POLISH:
+    - DO NOT USE MathTex or LaTeX. Use pure 'Text' objects.
+    - Use `VGroup` to keep multi-line equations centered and clean.
+    - Use `Write()`, `FadeIn()`, and `Transform()` for fluid transitions.
+    - Use `SurroundingRectangle()` or `Indicate()` for final key points or answers.
+    
+    SCENE METADATA:
+    - Class Name: {re.sub(r'[^a-zA-Z0-9]', '', topic)}
+    
+    SCENES TO ANIMATE:
+    {formatted_scenes}
+    
+    ONLY return the Python code. No markdown, no explanations.
     """
 
     response = model.generate_content(prompt)
@@ -38,5 +53,8 @@ def generate_manim_script(explanation_text, topic):
 
 if __name__ == "__main__":
     # Test call
-    test_text = "To find the area of a circle, we use the formula Pi r squared."
-    print(generate_manim_script(test_text, "AreaOfCircle"))
+    test_scenes = [
+        {"text": "First, we initialize the variable x.", "duration": 2.5},
+        {"text": "Then we add five to it.", "duration": 1.8}
+    ]
+    print(generate_manim_script(test_scenes, "TestSync"))

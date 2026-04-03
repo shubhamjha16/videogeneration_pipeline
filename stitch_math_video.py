@@ -45,22 +45,24 @@ def run_math_stitcher(job_name, manim_video_path, avatar_mode="logo", job_dir=No
 
     manim_clip = manim_clip.set_audio(final_audio)
 
-    # 3. Handle Avatar Logo
-    from moviepy.video.fx.all import loop as fx_loop
-    # Generate avatar if it doesn't exist
-    if not os.path.exists(avatar_path):
-        from avatar_generator import generate_avatar_video
-        from tts_generator import generate_audio
-        # Use a unique name to avoid overwriting real scene audio
-        _ref = generate_audio("Reference", 9999, output_dir=job_dir)
-        avatar_path = generate_avatar_video("", _ref, 100, output_dir=job_dir, avatar_type=avatar_mode)
+    # 3. Handle Avatar
+    if avatar_mode == "none":
+        final_clip = manim_clip
+    else:
+        from moviepy.video.fx.all import loop as fx_loop
+        # Generate avatar if it doesn't exist
+        if not os.path.exists(avatar_path):
+            from avatar_generator import generate_avatar_video
+            from tts_generator import generate_audio
+            # Use a unique name to avoid overwriting real scene audio
+            _ref = generate_audio("Reference", 9999, output_dir=job_dir)
+            avatar_path = generate_avatar_video("", _ref, 100, output_dir=job_dir, avatar_type=avatar_mode)
 
-    avatar_clip = VideoFileClip(avatar_path).resize(height=100)
-    avatar_clip = fx_loop(avatar_clip, duration=manim_clip.duration)
-    avatar_clip = avatar_clip.set_position(("right", "bottom"))
+        avatar_clip = VideoFileClip(avatar_path).resize(height=100)
+        avatar_clip = fx_loop(avatar_clip, duration=manim_clip.duration)
+        avatar_clip = avatar_clip.set_position(("right", "bottom"))
+        final_clip = CompositeVideoClip([manim_clip, avatar_clip])
 
-    # 4. Composite
-    final_clip = CompositeVideoClip([manim_clip, avatar_clip])
     final_clip.write_videofile(output_path, fps=15, codec="libx264")
     print(f"Successfully created: {output_path}")
     return output_path

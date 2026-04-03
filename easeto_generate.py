@@ -3,17 +3,7 @@ import os
 import sys
 import shutil
 from moviepy.editor import VideoFileClip, concatenate_videoclips
-from dotenv import load_dotenv
-
-load_dotenv()
-if not os.getenv("GEMINI_API_KEY"):
-    # Try absolute path
-    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-
-if os.getenv("GEMINI_API_KEY"):
-    print("✅ GEMINI_API_KEY loaded.")
-else:
-    print("❌ GEMINI_API_KEY NOT FOUND in environment.")
+import config
 
 def detect_mode(text):
     text_lower = text.lower().strip()
@@ -24,29 +14,54 @@ def detect_mode(text):
     if text_lower.startswith("[m]") or text_lower.startswith("[math]"):
         return "math"
 
+    # Keywords for auto-detection
     math_keywords = [
-        "integral", "derivative", "differentiate", "solve for", 
-        "acceleration", "velocity", "force", "mass", "d/dx", "lim "
+        "integral", "derivative", "differentiate", "dot product", "cross product",
+        "acceleration", "velocity", "force", "mass", "d/dx", "lim ", "sin(", "cos(", "tan("
     ]
     for kw in math_keywords:
         if kw in text_lower:
             return "math"
+            
+    # Default to presentation (Tony Pipeline)
     return "presentation"
 
 def run_presentation_stage(text, topic, avatar, job_dir):
     print(f"🎬 [Stage: PRESENTATION] {topic}")
     from tony_pipeline import run_tony_pipeline
-    return run_tony_pipeline(text, topic, avatar, output_dir=job_dir)
+    
+    # Context-aware background selection
+    bg_image = None
+    if "heart" in topic.lower() or "cardio" in topic.lower():
+        if os.path.exists("media/heart_anatomy_hq.png"):
+            bg_image = "media/heart_anatomy_hq.png"
+    
+    return run_tony_pipeline(text, topic, avatar, output_dir=job_dir, bg_image=bg_image)
 
 def run_math_stage(text, topic, avatar, job_dir, script_path=None):
     print(f"📐 [Stage: MATH] {topic}")
     os.makedirs(job_dir, exist_ok=True)
     
-    # Handle auto-math when no script is provided
+    # 1. Generate audio for each line and gather scene data for the AI Director
+    print(f"🎙️ Generating synced narration for math stage...")
+    from tts_generator import generate_audio
+    from moviepy.editor import AudioFileClip
+    
+    lines = text.split("\n")
+    scenes_data = []
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line: continue
+        
+        audio_file = generate_audio(line, i, output_dir=job_dir)
+        duration = AudioFileClip(audio_file).duration
+        scenes_data.append({"text": line, "duration": duration})
+
+    # 2. Handle auto-math when no script is provided
     if not script_path:
-        print(f"🤖 AI Technical Director: Brainstorming animation for topic '{topic}'...")
+        print(f"🤖 AI Technical Director: Designing synced animation for topic '{topic}'...")
         from manim_ai_generator import generate_manim_script
-        script_code = generate_manim_script(text, topic)
+        script_code = generate_manim_script(scenes_data, topic)
         
         if script_code.startswith("Error"):
             print(f"❌ AI Script Generation Failed: {script_code}")
@@ -56,15 +71,6 @@ def run_math_stage(text, topic, avatar, job_dir, script_path=None):
         with open(script_path, "w") as f:
             f.write(script_code)
         print(f"✅ AI Script Generated: {script_path}")
-
-    # 1. Generate audio if text is provided
-    print(f"🎙️ Generating narration for math stage...")
-    from tts_generator import generate_audio
-    # Convert text to single line for math narration if needed, or handle lines
-    lines = text.split("\n")
-    for i, line in enumerate(lines):
-        if line.strip():
-            generate_audio(line.strip(), i, output_dir=job_dir)
     
     # 2. Render Manim
     print(f"📐 Rendering Manim Animation: {script_path}...")
@@ -88,7 +94,7 @@ def main():
     parser.add_argument("--script", help="Path to Manim script")
     parser.add_argument("--inline-script", help="Raw Manim code (string)")
     parser.add_argument("--text", help="Path to narration text file")
-    parser.add_argument("--avatar", choices=["logo", "human"], default="human", help="Avatar style")
+    parser.add_argument("--avatar", choices=["logo", "human", "pro", "user", "none"], default="human", help="Avatar style")
 
     args = parser.parse_args()
 
@@ -129,7 +135,12 @@ def main():
             
             # Check for manually injected or previously generated scripts
             existing_script = os.path.join(job_dir, "ai_directed_script.py")
-            script_to_use = existing_script if os.path.exists(existing_script) else None
+            if args.script and os.path.exists(args.script):
+                script_to_use = args.script
+            elif os.path.exists(existing_script):
+                script_to_use = existing_script
+            else:
+                script_to_use = None
             
             if chunk_mode == "presentation":
                 video = run_presentation_stage(chunk, chunk_topic, args.avatar, part_job_dir)

@@ -3,7 +3,7 @@ import textwrap
 import os
 import re
 
-def generate_slide_image(text: str, scene_idx: int, output_dir: str = ".") -> str:
+def generate_slide_image(text: str, scene_idx: int, output_dir: str = ".", bg_image: str = None) -> str:
     """
     Generates a professional PPT-style educational slide.
     All sizing is scaled for 854x480 (480p) output.
@@ -11,15 +11,34 @@ def generate_slide_image(text: str, scene_idx: int, output_dir: str = ".") -> st
     output_filename = os.path.join(output_dir, f"scene_{scene_idx}_slide.png")
     width, height = 854, 480
 
-    # ── Background: warm yellow → orange gradient ──────────────────────────
-    img = Image.new('RGB', (width, height), color=(255, 200, 50))
-    d = ImageDraw.Draw(img)
-    for y in range(height):
-        ratio = y / height
-        d.line([(0, y), (width, y)], fill=(255, int(200 - ratio * 80), int(50 - ratio * 50)))
+    # ── Background: Use Image if provided, else gradient ───────────────────
+    if bg_image and os.path.exists(bg_image):
+        img = Image.open(bg_image).convert("RGB")
+        # Resize/Crop to fit 854x480
+        w, h = img.size
+        target_ratio = width / height
+        current_ratio = w / h
+        if current_ratio > target_ratio:
+            new_w = int(h * target_ratio)
+            left = (w - new_w) // 2
+            img = img.crop((left, 0, left + new_w, h))
+        else:
+            new_h = int(w / target_ratio)
+            top = (h - new_h) // 2
+            img = img.crop((0, top, w, top + new_h))
+        img = img.resize((width, height))
+    else:
+        img = Image.new('RGB', (width, height), color=(255, 200, 50))
+        d = ImageDraw.Draw(img)
+        for y in range(height):
+            ratio = y / height
+            d.line([(0, y), (width, y)], fill=(255, int(200 - ratio * 80), int(50 - ratio * 50)))
 
-    # ── White rounded card ─────────────────────────────────────────────────
+    d = ImageDraw.Draw(img)
+    # ── White rounded card (Translucent if bg_image is present) ────────────
     m = 30
+    card_fill = (255, 255, 255, 200) if bg_image else (255, 255, 255)
+    # We need to handle alpha if using translucency, but for now simple white is fine
     card = [(m, m), (width - m, height - m)]
     d.rounded_rectangle(card, radius=14, fill=(255, 255, 255), outline=(200, 200, 200), width=2)
 

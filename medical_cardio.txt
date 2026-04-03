@@ -1,0 +1,9 @@
+[p]
+Welcome to this FMGE Masterclass on Cardiology. Today, we delve into the heart of the matter: Cardiac Failure.
+---
+[m]
+The heart is a dual-pump system. On the left, it sends oxygen-rich blood to the body. On the right, it pumps deoxygenated blood to the lungs.
+Heart failure occurs when this pump becomes inefficient. Let's look at Left-Sided Heart Failure first.
+When the left ventricle fails, blood backs up into the lungs, causing pulmonary edema—that's the fluid build-up you see in patients.
+Key clinical signs include dyspnea, orthopnea, and paroxysmal nocturnal dyspnea.
+Remember the mnemonic: 'Left' for 'Lungs'. This is a high-yield concept for your exams.
