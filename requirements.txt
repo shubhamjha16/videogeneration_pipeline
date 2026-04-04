@@ -1,6 +1,30 @@
+# ── API & Web ──────────────────────────────────────────
 fastapi==0.111.0
 uvicorn==0.30.1
-moviepy==1.0.3
 python-dotenv==1.0.1
-openai>=1.0.0
 requests==2.32.3
+pydantic>=2.0.0
+
+# ── AI / LLM ───────────────────────────────────────────
+anthropic>=0.88.0          # Claude Opus — Director Agent
+google-genai>=1.47.0       # Gemini Imagen 3 — image generation
+openai>=1.0.0              # fallback / optional
+langgraph>=0.6.0           # LangGraph pipeline orchestration
+
+# ── Video / Audio ──────────────────────────────────────
+moviepy==1.0.3             # video stitching
+imageio-ffmpeg>=0.6.0      # portable ffmpeg binary
+manim>=0.18.0              # animation rendering
+
+# ── AWS ────────────────────────────────────────────────
+boto3>=1.42.0              # S3 upload
+
+# ── TTS ────────────────────────────────────────────────
+gtts>=2.5.0                # Linux TTS fallback (ElevenLabs is primary)
+
+# ── HTML parsing ───────────────────────────────────────
+beautifulsoup4>=4.12.0
+
+# ── Image processing ───────────────────────────────────
+pillow>=10.0.0
+numpy>=1.23.0

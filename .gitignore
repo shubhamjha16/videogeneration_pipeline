@@ -11,6 +11,8 @@ media/
 *.mp4
 *.m4a
 *.mp3
+*.wav
+*.aiff
 
 # Images & Metadata
 *.png
@@ -22,3 +24,12 @@ media/
 
 # MacOS
 .DS_Store
+
+# Temporary / Scratch Files
+temp_*.py
+*masterclass.py
+merge_*.py
+test_*.py
+bpf_*.txt
+bpf_*.html
+narration*

@@ -1,210 +1,347 @@
+"""
+Autonomous LangGraph Pipeline — Team Tony
+Orchestrates the full video generation flow:
+
+  director_node   : parse Tony AI HTML → Claude director → scenes + render_mode
+  vision_node     : Gemini Imagen → concept diagram PNG
+  architect_node  : template_renderer → deterministic Manim script
+  supervisor_node : render Manim → stitch audio → S3 upload
+
+State flows through each node. On Manim render failure,
+the supervisor retries up to 3 times via should_continue().
+"""
+
 import os
-import requests
-import json
-from typing import TypedDict, List, Optional, Annotated
-from langgraph.graph import StateGraph, END
+import glob
 import subprocess
-from langchain_anthropic import ChatAnthropic # Import Claude
+import importlib
+from typing import TypedDict, List, Optional, Any
 
-# The Unified Ignition: Gemini 2.0 Flash
-GEMINI_KEY = "AIzaSyBLPm8Wgg5xOsNd95fOdRT6q_5vjavnzvg"
-
-def model_invoke(prompt: str) -> str:
-    """Unified Orchestration: Gemini 2.0 Flash REST."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
-    headers = {'Content-Type': 'application/json'}
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        raise Exception(f"Gemini API Error: {response.text}")
-    return response.json()['candidates'][0]['content']['parts'][0]['text']
-
-# Define the state that Tony's team will manage
-
-# Define the state that Tony's team will manage
-class TonyState(TypedDict):
-    raw_input: str
-    topic: str
-    lesson_html: Optional[str]
-    script_plan: Optional[str]
-    image_prompt: Optional[str] # New: The prompt for Imagen
-    image_path: Optional[str]   # New: Path to generated diagram
-    manim_code: Optional[str]
-    image_prompts: List[str]
-    rendering_errors: Optional[str]
-    output_path: Optional[str]
-    attempt_count: int
-
+from langgraph.graph import StateGraph, END
 import config
+from healer_agent import run_healer
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _ffmpeg() -> str:
+    """Resolve ffmpeg path — venv binary first, then system."""
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+# ── State ─────────────────────────────────────────────────────────────────────
+
+class TonyState(TypedDict):
+    # ── Input ──────────────────────────────────────────
+    raw_input:   str          # Raw HTML from Tony AI backend
+    topic:       str          # Topic name (from API caller)
+
+    # ── After director_node ────────────────────────────
+    parsed_facts:  Optional[dict]   # output of html_parser
+    render_mode:   Optional[str]    # "manim" | "presentation" | "human_face"
+    scenes:        Optional[list]   # list of Scene dicts from director_agent
+
+    # ── After vision_node ──────────────────────────────
+    image_path:  Optional[str]      # abs path to generated PNG
+
+    # ── After architect_node ──────────────────────────
+    manim_script_path: Optional[str]
+
+    # ── After supervisor_node ─────────────────────────
+    output_path:  Optional[str]     # local mp4 before upload
+    video_url:    Optional[str]     # S3 URL returned to Spring Boot
+
+    # ── Control ────────────────────────────────────────
+    rendering_errors: Optional[str]
+    attempt_count:    int
+
+
+# ── Node 1: Director ──────────────────────────────────────────────────────────
 
 def director_node(state: TonyState) -> TonyState:
-    """🎬 Tony [Director]: Content Synthesis & Pedagogical Planning."""
-    print(f"🎬 Tony [Director]: Synthesizing high-fidelity content for {state['topic']}...")
-    
-    # Phase 1: Generate the HTML Lesson
-    html_prompt = f"Topic: {state['raw_input']}\nGenerate a professional medical HTML lesson. Output ONLY the <html>. No conversational text."
-    state["lesson_html"] = model_invoke(html_prompt)
-    
-    # Phase 2: Generate the Manim Script Plan
-    script_prompt = f"Lesson: {state['lesson_html']}\nPlan a 3-part Manim script. Output ONLY a JSON string with 'intro', 'investigation', 'reveal', and 'image_description' keys."
-    plan_text = model_invoke(script_prompt)
-    state["script_plan"] = plan_text
-    
-    # Phase 3: Extract Image Description for Vision Node
-    try:
-        plan_json = json.loads(plan_text.replace("```json", "").replace("```", "").strip())
-        state["image_prompt"] = plan_json.get("image_description", f"Cinematic anatomical diagram of {state['topic']}, modern dark medical aesthetic.")
-    except:
-        state["image_prompt"] = f"Cinematic anatomical diagram of {state['topic']}, modern dark medical aesthetic."
-        
+    """Parse Tony AI HTML and run Claude director to produce scenes."""
+    print(f"🎬 [Director] Parsing HTML and writing scene script for: {state['topic']}")
+
+    from html_parser import parse_tony_html
+    from director_agent import run_director
+
+    parsed = parse_tony_html(state["raw_input"], topic_hint=state["topic"])
+    state["parsed_facts"] = parsed
+
+    print(f"   Subject: {parsed['subject']} | Type: {parsed['content_type']}")
+
+    director_output = run_director(parsed)
+    state["render_mode"] = director_output.render_mode
+    state["scenes"] = [s.model_dump() for s in director_output.scenes]
+
+    print(f"   Render mode: {director_output.render_mode} | Scenes: {len(director_output.scenes)}")
     return state
+
+
+# ── Node 2: Vision ────────────────────────────────────────────────────────────
 
 def vision_node(state: TonyState) -> TonyState:
-    """📸 Tony [Vision]: AI Diagram Synthesis."""
-    print(f"📸 Tony [Vision]: Synthesizing clinical diagram for {state['topic']}...")
-    # Placeholder for now, but configured to use a unique filename
-    # In a full production env, this would call Imagen 3 REST API.
-    state["image_path"] = f"{state['topic']}_diagram.png"
-    # Fallback to existing or placeholder
-    if not os.path.exists(state["image_path"]):
-         os.system(f"cp bpf_diagram.png {state['image_path']}")
+    """Generate concept diagram using Gemini Imagen 3."""
+    print(f"🎨 [Vision] Generating concept image for: {state['topic']}")
+
+    # Only generate image for manim mode — presentation uses slide backgrounds
+    if state.get("render_mode") != "manim":
+        print("   Skipping image generation (presentation mode)")
+        state["image_path"] = None
+        return state
+
+    from image_generator import generate_concept_image
+
+    subject    = state["parsed_facts"].get("subject", "default")
+    output_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+
+    try:
+        path = generate_concept_image(
+            topic=state["topic"],
+            subject=subject,
+            output_dir=output_dir,
+        )
+        state["image_path"] = path
+    except Exception as e:
+        # Non-fatal — template renderer will use a dark background fallback
+        print(f"   ⚠️  Image generation failed: {e}. Continuing with fallback.")
+        state["image_path"] = None
+
     return state
+
+
+# ── Node 3: Architect ─────────────────────────────────────────────────────────
 
 def architect_node(state: TonyState) -> TonyState:
-    """📐 Tony [Architect]: Code Generation & Visual Design."""
-    print(f"📐 Tony [Architect]: Drafting Manim code with Gemini 2.0...")
-    prompt = f"""
-    Based on this pedagogical plan: {state['script_plan']}
-    Write a single, professional Manim Python script.
-    
-    CRITICAL TEMPLATE (STABLE):
-    ```python
-    from manim import *
-    
-    class Masterclass(Scene):
-        def construct(self):
-            # 1. Setup Background (STAYS THROUGHOUT)
-            try:
-                bg = ImageMobject("{state['image_path']}").scale(2)
-                self.add(bg)
-            except: pass
-            
-    CRITICAL STABILITY RULES:
-    1. ONLY use 'MathTex(r"\\text{...}")' for all clinical text to ensure LaTeX elegance.
-    2. For formulas, use standard LaTeX (e.g., MathTex(r"Ca^{{2+}}") or MathTex(r"CO_{{2}}")).
-    3. ONLY use 'FadeIn' and 'FadeOut' animations.
-    4. KEEP it under 40 lines of code.
-    5. Use VGroup().arrange(DOWN) for lists.
-    6. The class MUST be named 'Masterclass'.
-    """
-    state["manim_code"] = model_invoke(prompt).replace("```python", "").replace("```", "").strip()
+    """Convert scenes into a Manim script (deterministic templates) or run presentation pipeline."""
+    print(f"📐 [Architect] Building render script — mode: {state['render_mode']}")
+
+    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    os.makedirs(job_dir, exist_ok=True)
+
+    if state["render_mode"] == "presentation":
+        # Hand off to existing tony_pipeline — no Manim needed
+        from tony_pipeline import run_tony_pipeline
+        from tts_generator import generate_audio
+
+        narration = " ".join(s["narration_text"] for s in state["scenes"])
+        output = run_tony_pipeline(
+            narration,
+            topic_name=state["topic"],
+            output_dir=job_dir,
+        )
+        state["output_path"]       = output
+        state["manim_script_path"] = None
+        return state
+
+    # manim mode — call template_renderer
+    from template_renderer import build_manim_script
+
+    script_path = os.path.join(job_dir, "scene_script.py")
+    build_manim_script(
+        scenes=state["scenes"],
+        image_path=state.get("image_path"),
+        topic=state["topic"],
+        output_path=script_path,
+    )
+    state["manim_script_path"] = script_path
+    print(f"   Script written: {script_path}")
     return state
 
+
+# ── Node 4: Supervisor ────────────────────────────────────────────────────────
+
 def supervisor_node(state: TonyState) -> TonyState:
-    """🔍 Tony [Supervisor]: Verification Trial & Final Assembly."""
-    print(f"🔍 Tony [Supervisor]: Verification Trial {state['attempt_count'] + 1}...")
-    
-    # 1. Render Manim
-    temp_file = f"temp_{state['topic']}.py"
-    with open(temp_file, "w") as f:
-        f.write(state["manim_code"])
-    
-    cmd = ["./venv/bin/manim", "-ql", temp_file]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    
-    if result.returncode != 0:
-        print("❌ Tony [Supervisor]: Manim Render Failed.")
-        state["rendering_errors"] = result.stderr
+    """Render Manim → generate TTS per scene → stitch with ffmpeg → upload to S3."""
+    print(f"🔍 [Supervisor] Rendering — attempt {state['attempt_count'] + 1}")
+
+    # Presentation mode: output_path already set by architect_node
+    if state["render_mode"] == "presentation":
+        if state.get("output_path") and os.path.exists(state["output_path"]):
+            state["video_url"]        = _upload_to_s3(state["output_path"], state["topic"])
+            state["rendering_errors"] = None
+        else:
+            state["rendering_errors"] = "Presentation pipeline produced no output"
+        return state
+
+    job_dir     = os.path.dirname(state["manim_script_path"])
+    script_path = state["manim_script_path"]
+    topic_safe  = state["topic"].replace(" ", "").replace("-", "")
+
+    # ── 1. Render Manim ───────────────────────────────
+    print("   Rendering Manim animation...")
+    render_result = subprocess.run(
+        ["./venv/bin/manim", "-ql", script_path, "EaseToLearnScene", "--media_dir", job_dir],
+        capture_output=True, text=True
+    )
+
+    if render_result.returncode != 0:
+        print(f"   ❌ Manim render failed.")
+        state["rendering_errors"] = render_result.stderr[-2000:]
+        return state
+
+    # Find rendered video
+    renders = glob.glob(f"{job_dir}/**/EaseToLearnScene.mp4", recursive=True)
+    if not renders:
+        state["rendering_errors"] = "Manim output file not found after render"
+        return state
+
+    manim_video = renders[0]
+    print(f"   ✅ Manim video: {manim_video}")
+
+    # ── 2. Generate TTS per scene ─────────────────────
+    print("   Generating narration audio...")
+    from tts_generator import generate_audio
+    from moviepy.editor import AudioFileClip, concatenate_audioclips
+
+    audio_files = []
+    for i, scene in enumerate(state["scenes"]):
+        audio_path = generate_audio(scene["narration_text"], i, output_dir=job_dir)
+        audio_files.append(audio_path)
+
+    # Concatenate all scene audio into one track
+    combined_audio_path = os.path.join(job_dir, "narration_combined.mp3")
+    clips = [AudioFileClip(f) for f in audio_files]
+    combined = concatenate_audioclips(clips)
+    combined.write_audiofile(combined_audio_path, logger=None)
+    for c in clips:
+        c.close()
+
+    # ── 3. Stitch video + audio via ffmpeg ────────────
+    print("   Stitching video + audio...")
+    final_output = os.path.join(job_dir, f"{topic_safe}_masterclass.mp4")
+
+    stitch_result = subprocess.run([
+        _ffmpeg(), "-y",
+        "-i", manim_video,
+        "-i", combined_audio_path,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k",
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-movflags", "+faststart",
+        "-shortest",
+        final_output,
+    ], capture_output=True, text=True)
+
+    if stitch_result.returncode != 0:
+        state["rendering_errors"] = stitch_result.stderr
         state["attempt_count"] += 1
         return state
 
-    # 2. Generate Narration Audio (Robust Subprocess)
-    print("🎙️ Tony [Supervisor]: Generating Narration Audio...")
-    audio_path = f"{state['topic']}_audio.m4a"
-    # Extract plain text from script plan (simplified for demo)
-    script_text = state["script_plan"].replace("{", "").replace("}", "").replace('"', "")
-    subprocess.run(["say", "-v", "Samantha", "-o", audio_path, script_text])
-    
-    # 3. Final Media Merge (Topic-Specific Discovery)
-    print(f"🎬 Tony [Supervisor]: Merging Masterclass for {state['topic']}...")
-    import glob
-    # Search strictly within the topic's folder to avoid stale asset collision
-    renders = glob.glob(f"media/videos/temp_{state['topic']}/**/Masterclass.mp4", recursive=True)
-    
-    if not renders:
-        print(f"❌ Tony [Supervisor]: No rendered video found for {state['topic']}.")
-        state["rendering_errors"] = "Manim output not found"
-        return state
-        
-    video_path = renders[0]
-    print(f"✅ Tony [Supervisor]: Found valid topic-asset at {video_path}")
-    
-    # 3. Final Media Merge (Direct FFmpeg for stability)
-    print(f"🎬 Tony [Supervisor]: Merging Masterclass for {state['topic']} via FFmpeg...")
-    final_output = f"{state['topic']}_masterclass.mp4"
-    
-    # Direct FFmpeg merge command (Hardened with explicit encoding)
-    FFMPEG_PATH = "/Users/apple/Desktop/easetolearn.videogeneration/venv/lib/python3.9/site-packages/imageio_ffmpeg/binaries/ffmpeg-macos-x86_64-v7.1"
-    
-    merge_cmd = [
-        FFMPEG_PATH, "-y",
-        "-i", video_path,
-        "-i", audio_path,
-        "-c:v", "libx264",        # Explicitly encode to H.264
-        "-preset", "veryfast",    # Speed optimization
-        "-crf", "23",             # High quality
-        "-c:a", "aac",            # Standard audio
-        "-b:a", "128k",           # Audio bitrate
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        "-movflags", "+faststart", # Web-optimized playback
-        "-shortest",
-        final_output
-    ]
-    
-    merge_result = subprocess.run(merge_cmd, capture_output=True, text=True)
-    
-    if merge_result.returncode == 0:
-        state["output_path"] = os.path.abspath(final_output)
-        state["rendering_errors"] = None
-        print(f"✅ Tony [Supervisor]: Production Complete! -> {final_output}")
-    else:
-        print(f"❌ Tony [Supervisor]: FFmpeg Merge Failed: {merge_result.stderr}")
-        state["rendering_errors"] = merge_result.stderr
-    
+    print(f"   ✅ Final video: {final_output}")
+    state["output_path"]       = os.path.abspath(final_output)
+    state["rendering_errors"]  = None
+
+    # ── 4. Upload to S3 ───────────────────────────────
+    state["video_url"] = _upload_to_s3(final_output, state["topic"])
+
     return state
 
-def should_continue(state: TonyState):
-    """Router for self-healing loop."""
+
+def healer_node(state: TonyState) -> TonyState:
+    """Ask Healer Agent to fix scripts based on errors."""
+    print(f"🩹 [Healer] Fixing render errors — attempt {state['attempt_count'] + 1}")
+
+    with open(state["manim_script_path"], "r") as f:
+        script_content = f.read()
+
+    fixed_script = run_healer(script_content, state["rendering_errors"])
+
+    with open(state["manim_script_path"], "w") as f:
+        f.write(fixed_script)
+
+    state["attempt_count"] += 1
+    state["rendering_errors"] = None
+    return state
+
+
+# ── S3 Upload ─────────────────────────────────────────────────────────────────
+
+def _upload_to_s3(local_path: str, topic: str) -> str:
+    """
+    Upload finished video to S3 and return public URL.
+    Reads AWS config from environment variables set by ECS task definition.
+    """
+    bucket   = os.environ.get("S3_BUCKET")
+    region   = os.environ.get("AWS_REGION", "ap-south-1")
+
+    if not bucket:
+        # Local dev: just return local path
+        print("   ℹ️  S3_BUCKET not set — skipping upload, returning local path")
+        return f"file://{local_path}"
+
+    import boto3
+    s3_key = f"videos/{topic.lower().replace(' ', '_')}/{os.path.basename(local_path)}"
+
+    print(f"   ☁️  Uploading to s3://{bucket}/{s3_key} ...")
+    s3 = boto3.client("s3", region_name=region)
+    s3.upload_file(
+        local_path,
+        bucket,
+        s3_key,
+        ExtraArgs={"ContentType": "video/mp4"},
+    )
+
+    url = f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
+    print(f"   ✅ S3 URL: {url}")
+    return url
+
+
+# ── Router ────────────────────────────────────────────────────────────────────
+
+def should_continue(state: TonyState) -> str:
+    """Route to healer on failure, up to 3 times."""
     if state.get("rendering_errors") and state["attempt_count"] < 3:
-        print("⚠️ Tony [Supervisor]: Error detected. Retrying...")
-        return "architect"
+        print(f"⚠️  Render error — routing to healer (attempt {state['attempt_count']})")
+        return "healer"
     return END
 
-# Build the Graph
+
+# ── Graph ─────────────────────────────────────────────────────────────────────
+
 workflow = StateGraph(TonyState)
 
-workflow.add_node("director", director_node)
-workflow.add_node("vision", vision_node) # New Node!
-workflow.add_node("architect", architect_node)
+workflow.add_node("director",   director_node)
+workflow.add_node("vision",     vision_node)
+workflow.add_node("architect",  architect_node)
 workflow.add_node("supervisor", supervisor_node)
+workflow.add_node("healer",     healer_node)
 
 workflow.set_entry_point("director")
-workflow.add_edge("director", "vision")     # Director -> Vision
-workflow.add_edge("vision", "architect")    # Vision -> Architect
+workflow.add_edge("director",  "vision")
+workflow.add_edge("vision",    "architect")
 workflow.add_edge("architect", "supervisor")
+workflow.add_edge("healer",    "supervisor")
 workflow.add_conditional_edges("supervisor", should_continue)
 
 app = workflow.compile()
 
+
+# ── CLI test ──────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
-    # Test Trigger
-    initial_state = {
-        "raw_input": "Cardiac output is the volume of blood the heart pumps per minute. Formula: CO = HR x SV.",
-        "topic": "CardiacOutput",
+    import sys
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    html_file = sys.argv[1] if len(sys.argv) > 1 else "bpf_source.html"
+    topic     = sys.argv[2] if len(sys.argv) > 2 else "Bronchopleural Fistula"
+
+    with open(html_file) as f:
+        html = f.read()
+
+    print(f"🚀 Starting pipeline for: {topic}")
+    final = app.invoke({
+        "raw_input":    html,
+        "topic":        topic,
         "attempt_count": 0,
-        "image_prompts": []
-    }
-    print("🚀 Team Tony: Autonomous Mission Started!")
-    final_state = app.invoke(initial_state)
-    print(f"🏆 Mission Complete! Output: {final_state.get('output_path')}")
+        # optional fields start as None
+        "parsed_facts": None, "render_mode": None, "scenes": None,
+        "image_path": None, "manim_script_path": None,
+        "output_path": None, "video_url": None, "rendering_errors": None,
+    })
+
+    print(f"\n🏆 Done!")
+    print(f"   Video URL : {final.get('video_url')}")
+    print(f"   Local path: {final.get('output_path')}")
