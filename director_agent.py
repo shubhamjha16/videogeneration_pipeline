@@ -46,6 +46,21 @@ from typing import Literal, Any
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
+_REQUIRED_FIELDS = {
+    "title_card":      {"title": "Lesson", "subtitle": ""},
+    "concept_bullets": {"heading": "Key Concepts", "bullets": ["Key point"]},
+    "formula_display": {"formula": "x = y", "label": ""},
+    "step_by_step":    {"heading": "Solution", "steps": ["Step 1"]},
+    "mcq_layout":      {"options": {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}},
+    "option_highlight": {"letter": "A", "name": "", "body": "", "color": "#FFFFFF"},
+    "cross_out":       {"letter": "A", "name": ""},
+    "answer_reveal":   {"letter": "A", "name": "", "explanation": ""},
+    "graph_hint":      {"graph_type": "generic", "description": "", "highlight": ""},
+    "summary":         {"heading": "Key Takeaways", "points": ["Remember this"]},
+    "key_point":       {"heading": "Key Point", "body": ""},
+}
+
+
 class Scene(BaseModel):
     narration_text: str
     visual_type: Literal[
@@ -59,12 +74,18 @@ class Scene(BaseModel):
         "answer_reveal",
         "graph_hint",
         "summary",
-        # presentation
         "key_point",
-        # human_face (future)
         "subtitle_chunk",
     ]
     visual_data: dict[str, Any]
+
+    def model_post_init(self, __context: Any) -> None:
+        """Fill in any missing visual_data fields with safe defaults."""
+        defaults = _REQUIRED_FIELDS.get(self.visual_type, {})
+        for key, default in defaults.items():
+            if key not in self.visual_data or self.visual_data[key] is None:
+                self.visual_data[key] = default
+            # empty string fields — keep as-is, tex() handles them
 
 
 class DirectorOutput(BaseModel):

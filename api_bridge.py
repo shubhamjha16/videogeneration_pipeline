@@ -21,6 +21,8 @@ import uuid
 import threading
 import requests
 import json
+
+_jobs_lock = threading.Lock()
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -51,8 +53,9 @@ def _load_jobs():
     return {}
 
 def _save_jobs():
-    with open(JOBS_FILE, "w") as f:
-        json.dump(jobs, f, indent=2)
+    with _jobs_lock:
+        with open(JOBS_FILE, "w") as f:
+            json.dump(jobs, f, indent=2)
 
 # ── In-memory job store ───────────────────────────────────────────────────────
 jobs: dict = _load_jobs()
@@ -76,39 +79,43 @@ class JobStatus(BaseModel):
 
 def _run_pipeline(job_id: str, topic: str, html: str):
     """Run the full LangGraph pipeline in a background thread."""
-    jobs[job_id]["status"] = "processing"
+    with _jobs_lock:
+        jobs[job_id]["status"] = "processing"
 
     try:
         from autonomous_graph import app as graph
 
         final_state = graph.invoke({
-            "raw_input":      html,
-            "topic":          topic,
-            "attempt_count":  0,
-            "parsed_facts":   None,
-            "render_mode":    None,
-            "scenes":         None,
-            "image_path":     None,
+            "raw_input":         html,
+            "topic":             topic,
+            "attempt_count":     0,
+            "parsed_facts":      None,
+            "render_mode":       None,
+            "scenes":            None,
+            "image_path":        None,
+            "audio_files":       None,
             "manim_script_path": None,
-            "output_path":    None,
-            "video_url":      None,
-            "rendering_errors": None,
+            "output_path":       None,
+            "video_url":         None,
+            "rendering_errors":  None,
         })
 
         video_url = final_state.get("video_url") or ""
 
-        if video_url:
-            jobs[job_id]["status"]    = "completed"
-            jobs[job_id]["video_url"] = video_url
-            print(f"✅ Job {job_id} completed: {video_url}")
-        else:
-            jobs[job_id]["status"] = "failed"
-            jobs[job_id]["error"]  = final_state.get("rendering_errors", "No output produced")
-            print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
+        with _jobs_lock:
+            if video_url:
+                jobs[job_id]["status"]    = "completed"
+                jobs[job_id]["video_url"] = video_url
+                print(f"✅ Job {job_id} completed: {video_url}")
+            else:
+                jobs[job_id]["status"] = "failed"
+                jobs[job_id]["error"]  = final_state.get("rendering_errors", "No output produced")
+                print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
 
     except Exception as e:
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"]  = str(e)
+        with _jobs_lock:
+            jobs[job_id]["status"] = "failed"
+            jobs[job_id]["error"]  = str(e)
         print(f"❌ Job {job_id} exception: {e}")
 
     _save_jobs()

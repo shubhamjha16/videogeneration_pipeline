@@ -25,32 +25,46 @@ from healer_agent import run_healer
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _ffmpeg() -> str:
-    """Resolve ffmpeg path — venv binary first, then system."""
     import imageio_ffmpeg
     return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def _manim() -> str:
+    """Resolve manim binary — works in venv, Docker, and system installs."""
+    import shutil
+    # 1. same venv as running Python
+    venv_manim = os.path.join(os.path.dirname(os.path.abspath(__file__)), "venv", "bin", "manim")
+    if os.path.exists(venv_manim):
+        return venv_manim
+    # 2. system PATH (Docker container installs manim globally)
+    system_manim = shutil.which("manim")
+    if system_manim:
+        return system_manim
+    raise RuntimeError("manim binary not found — install with: pip install manim")
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
 
 class TonyState(TypedDict):
     # ── Input ──────────────────────────────────────────
-    raw_input:   str          # Raw HTML from Tony AI backend
-    topic:       str          # Topic name (from API caller)
+    raw_input:   str
+    topic:       str
 
     # ── After director_node ────────────────────────────
-    parsed_facts:  Optional[dict]   # output of html_parser
-    render_mode:   Optional[str]    # "manim" | "presentation" | "human_face"
-    scenes:        Optional[list]   # list of Scene dicts from director_agent
+    parsed_facts:  Optional[dict]
+    render_mode:   Optional[str]
+    scenes:        Optional[list]
 
     # ── After vision_node ──────────────────────────────
-    image_path:  Optional[str]      # abs path to generated PNG
+    image_path:  Optional[str]
 
-    # ── After architect_node ──────────────────────────
+    # ── After architect_node ───────────────────────────
     manim_script_path: Optional[str]
+    audio_files:       Optional[list]   # per-scene mp3 paths (generated before Manim)
 
     # ── After supervisor_node ─────────────────────────
-    output_path:  Optional[str]     # local mp4 before upload
-    video_url:    Optional[str]     # S3 URL returned to Spring Boot
+    output_path:  Optional[str]
+    video_url:    Optional[str]
 
     # ── Control ────────────────────────────────────────
     rendering_errors: Optional[str]
@@ -73,9 +87,25 @@ def director_node(state: TonyState) -> TonyState:
 
     director_output = run_director(parsed)
     state["render_mode"] = director_output.render_mode
-    state["scenes"] = [s.model_dump() for s in director_output.scenes]
+    scenes = [s.model_dump() for s in director_output.scenes]
 
-    print(f"   Render mode: {director_output.render_mode} | Scenes: {len(director_output.scenes)}")
+    # ── MCQ correction: override LLM answer with ground truth from HTML ───────
+    # LLMs hallucinate wrong answers — parsed_facts has the real correct answer
+    if parsed.get("content_type") == "mcq" and parsed.get("correct_answer"):
+        correct_letter = parsed["correct_answer"]
+        correct_name   = parsed.get("correct_answer_name", "")
+        for scene in scenes:
+            if scene["visual_type"] == "answer_reveal":
+                scene["visual_data"]["letter"] = correct_letter
+                scene["visual_data"]["name"]   = correct_name
+            elif scene["visual_type"] == "cross_out":
+                # only cross out if it's actually wrong
+                if scene["visual_data"].get("letter") == correct_letter:
+                    scene["visual_data"]["letter"] = ""  # skip crossing correct answer
+        print(f"   Correct answer locked: {correct_letter}. {correct_name}")
+
+    state["scenes"] = scenes
+    print(f"   Render mode: {director_output.render_mode} | Scenes: {len(scenes)}")
     return state
 
 
@@ -90,6 +120,14 @@ def vision_node(state: TonyState) -> TonyState:
         print("   Skipping image generation (presentation mode)")
         state["image_path"] = None
         return state
+
+    # ---- NEW: Use pre‑generated image if it already exists on disk ----
+    pre_path = os.path.join(output_dir, "tony_diagram.png")
+    if os.path.exists(pre_path):
+        print("   ✅ Using pre‑generated concept image.")
+        state["image_path"] = pre_path
+        return state
+    # -------------------------------------------------------
 
     from image_generator import generate_concept_image
 
@@ -135,18 +173,42 @@ def architect_node(state: TonyState) -> TonyState:
         state["manim_script_path"] = None
         return state
 
-    # manim mode — call template_renderer
+    # manim mode — generate TTS first to get real durations, then build Manim script
+    from tts_generator import generate_audio
+    from moviepy.editor import AudioFileClip
     from template_renderer import build_manim_script
 
+    scenes = state["scenes"]
+
+    # 1. Generate TTS per scene and measure actual duration
+    print("   Generating TTS audio for sync...")
+    audio_files = []
+    for i, scene in enumerate(scenes):
+        path = generate_audio(scene["narration_text"], i, output_dir=job_dir)
+        audio_files.append(path)
+
+    # 2. Inject real duration into each scene's visual_data
+    for i, (scene, audio_path) in enumerate(zip(scenes, audio_files)):
+        try:
+            clip = AudioFileClip(audio_path)
+            scene["visual_data"]["duration"] = round(clip.duration, 2)
+            clip.close()
+        except Exception:
+            scene["visual_data"]["duration"] = 3.0  # safe fallback
+
+    state["audio_files"] = audio_files
+    state["scenes"]      = scenes
+
+    # 3. Build Manim script with synced durations
     script_path = os.path.join(job_dir, "scene_script.py")
     build_manim_script(
-        scenes=state["scenes"],
+        scenes=scenes,
         image_path=state.get("image_path"),
         topic=state["topic"],
         output_path=script_path,
     )
     state["manim_script_path"] = script_path
-    print(f"   Script written: {script_path}")
+    print(f"   Script written with synced durations: {script_path}")
     return state
 
 
@@ -172,7 +234,7 @@ def supervisor_node(state: TonyState) -> TonyState:
     # ── 1. Render Manim ───────────────────────────────
     print("   Rendering Manim animation...")
     render_result = subprocess.run(
-        ["./venv/bin/manim", "-ql", script_path, "EaseToLearnScene", "--media_dir", job_dir],
+        [_manim(), "-ql", script_path, "EaseToLearnScene", "--media_dir", job_dir],
         capture_output=True, text=True
     )
 
@@ -190,17 +252,11 @@ def supervisor_node(state: TonyState) -> TonyState:
     manim_video = renders[0]
     print(f"   ✅ Manim video: {manim_video}")
 
-    # ── 2. Generate TTS per scene ─────────────────────
-    print("   Generating narration audio...")
-    from tts_generator import generate_audio
+    # ── 2. Concatenate pre-generated TTS audio ────────
+    print("   Concatenating narration audio...")
     from moviepy.editor import AudioFileClip, concatenate_audioclips
 
-    audio_files = []
-    for i, scene in enumerate(state["scenes"]):
-        audio_path = generate_audio(scene["narration_text"], i, output_dir=job_dir)
-        audio_files.append(audio_path)
-
-    # Concatenate all scene audio into one track
+    audio_files = state["audio_files"]
     combined_audio_path = os.path.join(job_dir, "narration_combined.mp3")
     clips = [AudioFileClip(f) for f in audio_files]
     combined = concatenate_audioclips(clips)
@@ -226,7 +282,6 @@ def supervisor_node(state: TonyState) -> TonyState:
 
     if stitch_result.returncode != 0:
         state["rendering_errors"] = stitch_result.stderr
-        state["attempt_count"] += 1
         return state
 
     print(f"   ✅ Final video: {final_output}")
@@ -338,7 +393,7 @@ if __name__ == "__main__":
         "attempt_count": 0,
         # optional fields start as None
         "parsed_facts": None, "render_mode": None, "scenes": None,
-        "image_path": None, "manim_script_path": None,
+        "image_path": None, "audio_files": None, "manim_script_path": None,
         "output_path": None, "video_url": None, "rendering_errors": None,
     })
 

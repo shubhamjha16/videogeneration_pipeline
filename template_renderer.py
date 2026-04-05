@@ -34,6 +34,8 @@ import textwrap
 
 def tex(text: str) -> str:
     """Wrap plain text in LaTeX text mode for Tex()."""
+    if not text or not text.strip():
+        text = "-"  # empty/space Tex() crashes Manim
     # Escape special LaTeX chars
     escaped = (text
         .replace("&", r"\&")
@@ -88,22 +90,37 @@ def _safe_varname(text: str) -> str:
 
 # ── Scene code generators ─────────────────────────────────────────────────────
 
+def _wait(duration: float, anim_time: float) -> str:
+    """Return a self.wait() call with remaining time after animations."""
+    remaining = max(round(duration - anim_time, 2), 0.1)
+    return f"self.wait({remaining})"
+
+
 def _scene_title_card(scene: dict, idx: int) -> str:
-    d = scene["visual_data"]
-    title    = d.get("title", "")
-    subtitle = d.get("subtitle", "")
+    d        = scene["visual_data"]
+    title    = d.get("title", "EaseToLearn")
+    subtitle = d.get("subtitle", "").strip()
     duration = d.get("duration", 3.0)
+
+    anim_time = 1.2 + (0.8 if subtitle else 0)
+
+    if subtitle:
+        subtitle_code = f"""
+        subtitle_{idx} = {tex(subtitle)}
+        subtitle_{idx}.scale(0.8).set_color(BLUE_C).next_to(title_{idx}, DOWN, buff=0.4)
+        self.play(FadeIn(subtitle_{idx}), run_time=0.8)"""
+        fadeout_sub = f", FadeOut(subtitle_{idx})"
+    else:
+        subtitle_code = ""
+        fadeout_sub   = ""
 
     return f"""
         # Scene {idx}: title_card
         title_{idx} = {tex(title)}
         title_{idx}.scale(1.4).move_to(UP * 0.5)
-        subtitle_{idx} = {tex(subtitle)}
-        subtitle_{idx}.scale(0.8).set_color(BLUE_C).next_to(title_{idx}, DOWN, buff=0.4)
-        self.play(Write(title_{idx}), run_time=1.2)
-        self.play(FadeIn(subtitle_{idx}), run_time=0.8)
-        self.wait({duration})
-        self.play(FadeOut(title_{idx}), FadeOut(subtitle_{idx}))
+        self.play(Write(title_{idx}), run_time=1.2){subtitle_code}
+        {_wait(duration, anim_time)}
+        self.play(FadeOut(title_{idx}){fadeout_sub})
 """
 
 
@@ -193,7 +210,9 @@ def _scene_option_arrow(scene: dict, idx: int) -> str:
     reason  = d.get("reason", "")
     duration = d.get("duration", 3.5)
 
-    color_map = {"correct": "GREEN", "wrong": "RED", "neutral": "YELLOW"}
+    color_map = {"correct": "GREEN", "likely": "GREEN",
+                 "wrong": "RED", "incorrect": "RED", "unlikely": "RED",
+                 "neutral": "YELLOW"}
     color = color_map.get(verdict, "YELLOW")
     pos   = _option_position(letter)
 
@@ -215,42 +234,54 @@ def _scene_option_arrow(scene: dict, idx: int) -> str:
 
 
 def _scene_cross_out(scene: dict, idx: int) -> str:
-    d      = scene["visual_data"]
-    letter = d.get("letter", "A")
+    d        = scene["visual_data"]
     duration = d.get("duration", 2.0)
-    pos    = _option_position(letter)
 
-    return f"""
-        # Scene {idx}: cross_out — option {letter}
-        cross_{idx} = Cross(
+    # Support both single "letter" and array "letters" from LLM
+    raw = d.get("letters") or d.get("letter", "A")
+    letters = raw if isinstance(raw, list) else [raw]
+    letters = [l for l in letters if l in ("A", "B", "C", "D")]
+    if not letters:
+        letters = ["A"]
+
+    lines = [f"\n        # Scene {idx}: cross_out — {letters}"]
+    for li, letter in enumerate(letters):
+        pos = _option_position(letter)
+        lines.append(f"""
+        cross_{idx}_{li} = Cross(
             RoundedRectangle(width=5.8, height=1.5).move_to({pos}),
             color=RED, stroke_width=6,
         )
-        self.play(Create(cross_{idx}), run_time=0.6)
-        self.wait({duration})
-"""
+        self.play(Create(cross_{idx}_{li}), run_time=0.4)""")
+
+    lines.append(f"        self.wait({duration})")
+    return "\n".join(lines)
 
 
 def _scene_answer_reveal(scene: dict, idx: int) -> str:
-    d       = scene["visual_data"]
-    letter  = d.get("letter", "A")
-    name    = d.get("name", "")
+    d           = scene["visual_data"]
+    letter      = d.get("letter", "A")
+    name        = d.get("name", "")
     explanation = d.get("explanation", "")[:80]
-    duration = d.get("duration", 4.0)
-    pos     = _option_position(letter)
+    duration    = d.get("duration", 4.0)
+    pos         = _option_position(letter)
 
-    return f"""
-        # Scene {idx}: answer_reveal — correct: {letter}
-        rect_{idx} = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15).move_to({pos})
-        highlight_{idx} = SurroundingRectangle(rect_{idx}, color=GREEN, buff=0.08, stroke_width=5)
-        tick_{idx} = Tex(r"$\checkmark$")
-        tick_{idx}.scale(1.2).set_color(GREEN).next_to({pos}, RIGHT, buff=3.5)
+    exp_code = ""
+    if explanation.strip():
+        exp_code = f"""
         exp_{idx} = {tex(explanation)}
         exp_{idx}.scale(0.6).set_color(GREEN_C).to_edge(DOWN, buff=0.5)
         bg_{idx} = BackgroundRectangle(exp_{idx}, color=BLACK, fill_opacity=0.8, buff=0.1)
+        self.play(FadeIn(bg_{idx}), Write(exp_{idx}))"""
+
+    return f"""
+        # Scene {idx}: answer_reveal — correct: {letter}
+        ans_box_{idx} = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15).move_to({pos})
+        highlight_{idx} = SurroundingRectangle(ans_box_{idx}, color=GREEN, buff=0.08, stroke_width=5)
+        tick_{idx} = Tex(r"$\checkmark$").scale(1.4).set_color(GREEN)
+        tick_{idx}.move_to({pos} + np.array([2.2, 0, 0]))
         self.play(GrowFromCenter(highlight_{idx}), run_time=0.8)
-        self.play(Write(tick_{idx}))
-        self.play(FadeIn(bg_{idx}), Write(exp_{idx}))
+        self.play(Write(tick_{idx})){exp_code}
         self.wait({duration})
 """
 
@@ -287,9 +318,9 @@ def _scene_step_by_step(scene: dict, idx: int) -> str:
     lines.append(f"        heading_{idx}.scale(1.0).set_color(YELLOW).to_edge(UP, buff=0.4)")
     lines.append(f"        self.play(Write(heading_{idx}))")
 
+    anim_time = 0.7 + len(steps) * 0.9  # heading + steps
     for si, step in enumerate(steps):
         vname = f"step_{idx}_{si}"
-        # Check if step looks like a formula (LaTeX command or math symbol)
         is_math = any(c in step for c in ['=', '∫', '∑', 'd/dx', '\\']) or \
                   bool(re.search(r'\^|_|\d+\s*[\+\-\*\/]|\bfrac\b|\bsqrt\b|\bint\b', step))
         if is_math:
@@ -299,7 +330,7 @@ def _scene_step_by_step(scene: dict, idx: int) -> str:
         lines.append(f"        {vname}.scale(0.75).move_to(np.array([0, {1.2 - si * 1.0}, 0]))")
         lines.append(f"        self.play(Write({vname}), run_time=0.9)")
 
-    lines.append(f"        self.wait({duration})")
+    lines.append(f"        {_wait(duration, anim_time)}")
     lines.append(f"        self._clear()")
     return "\n".join(lines)
 
@@ -315,6 +346,7 @@ def _scene_concept_bullets(scene: dict, idx: int) -> str:
     lines.append(f"        heading_{idx}.scale(1.0).set_color(YELLOW).move_to(UP * 2.5)")
     lines.append(f"        self.play(Write(heading_{idx}))")
 
+    anim_time = 0.7 + len(bullets) * 0.7  # heading + bullets
     for bi, bullet in enumerate(bullets):
         vname = f"bullet_{idx}_{bi}"
         lines.append(f"        {vname} = VGroup(")
@@ -324,7 +356,7 @@ def _scene_concept_bullets(scene: dict, idx: int) -> str:
         lines.append(f"        {vname}.move_to(np.array([0, {1.2 - bi * 1.1}, 0]))")
         lines.append(f"        self.play(FadeIn({vname}), run_time=0.7)")
 
-    lines.append(f"        self.wait({duration})")
+    lines.append(f"        {_wait(duration, anim_time)}")
     lines.append(f"        self._clear()")
     return "\n".join(lines)
 
@@ -341,6 +373,7 @@ def _scene_summary(scene: dict, idx: int) -> str:
     lines.append(f"        heading_{idx}.scale(1.1).set_color(GREEN).move_to(UP * 2.8)")
     lines.append(f"        self.play(Write(heading_{idx}))")
 
+    anim_time = 0.7 + len(points) * 0.7
     for pi, point in enumerate(points):
         vname = f"point_{idx}_{pi}"
         lines.append(f"        {vname} = VGroup(")
@@ -350,7 +383,7 @@ def _scene_summary(scene: dict, idx: int) -> str:
         lines.append(f"        {vname}.move_to(np.array([0, {1.4 - pi * 1.1}, 0]))")
         lines.append(f"        self.play(FadeIn({vname}), run_time=0.7)")
 
-    lines.append(f"        self.wait({duration})")
+    lines.append(f"        {_wait(duration, anim_time)}")
     return "\n".join(lines)
 
 
@@ -459,12 +492,12 @@ def build_manim_script(
             print(f"   ⚠️  Unknown visual_type '{vtype}' — skipping scene {i}")
             continue
 
-        if vtype == "concept_image":
-            block = gen(scene, i, image_path)
-        else:
-            block = gen(scene, i)
-
-        scene_blocks.append(block)
+        try:
+            block = gen(scene, i, image_path) if vtype == "concept_image" else gen(scene, i)
+            scene_blocks.append(block)
+        except Exception as e:
+            print(f"   ⚠️  Scene {i} ({vtype}) generation failed: {e} — skipping")
+            continue
 
     scenes_code = "\n".join(scene_blocks)
 
