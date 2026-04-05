@@ -206,8 +206,9 @@ def _scene_mcq_layout(scene: dict, idx: int) -> str:
 def _scene_option_arrow(scene: dict, idx: int) -> str:
     d       = scene["visual_data"]
     letter  = d.get("letter", "A")
-    verdict = d.get("verdict", "neutral")  # "correct" | "wrong" | "neutral"
-    reason  = d.get("reason", "")
+    # support both field naming conventions from different LLMs
+    verdict  = d.get("verdict") or d.get("color", "neutral")
+    reason   = d.get("reason") or d.get("body") or d.get("name", "")
     duration = d.get("duration", 3.5)
 
     color_map = {"correct": "GREEN", "likely": "GREEN",

@@ -121,18 +121,17 @@ def vision_node(state: TonyState) -> TonyState:
         state["image_path"] = None
         return state
 
-    # ---- NEW: Use pre‑generated image if it already exists on disk ----
-    pre_path = os.path.join(output_dir, "tony_diagram.png")
-    if os.path.exists(pre_path):
-        print("   ✅ Using pre‑generated concept image.")
-        state["image_path"] = pre_path
-        return state
-    # -------------------------------------------------------
-
     from image_generator import generate_concept_image
 
     subject    = state["parsed_facts"].get("subject", "default")
     output_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+
+    # Use pre-generated image if it already exists
+    pre_path = os.path.join(output_dir, "tony_diagram.png")
+    if os.path.exists(pre_path):
+        print("   Using pre-generated concept image.")
+        state["image_path"] = pre_path
+        return state
 
     try:
         path = generate_concept_image(
@@ -306,7 +305,7 @@ def healer_node(state: TonyState) -> TonyState:
     with open(state["manim_script_path"], "w") as f:
         f.write(fixed_script)
 
-    state["attempt_count"] += 1
+    state["attempt_count"] += 1  # increment here only — supervisor never increments
     state["rendering_errors"] = None
     return state
 
