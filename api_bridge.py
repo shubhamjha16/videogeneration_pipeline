@@ -93,7 +93,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             "topic":             topic,
             "attempt_count":     0,
             "parsed_facts":      None,
-            "render_mode":       job.get("render_mode"),   # None = auto
+            "render_mode":       job.get("render_mode"),
             "with_avatar":       job.get("with_avatar", False),
             "scenes":            None,
             "image_path":        None,
@@ -102,6 +102,9 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             "output_path":       None,
             "video_url":         None,
             "rendering_errors":  None,
+            "slides":            None,
+            "slide_paths":       None,
+            "clip_paths":        None,
         })
 
         video_url = final_state.get("video_url") or ""

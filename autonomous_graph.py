@@ -2,13 +2,21 @@
 Autonomous LangGraph Pipeline — Team Tony
 Orchestrates the full video generation flow:
 
-  director_node   : parse Tony AI HTML → Claude director → scenes + render_mode
-  vision_node     : Gemini Imagen → concept diagram PNG
-  architect_node  : template_renderer → deterministic Manim script
-  supervisor_node : render Manim → stitch audio → S3 upload
+  SHARED
+    director_node   : parse Tony AI HTML → Claude director → scenes + render_mode
+    vision_node     : Gemini Imagen → concept diagram PNG
 
-State flows through each node. On Manim render failure,
-the supervisor retries up to 3 times via should_continue().
+  MANIM PATH (unchanged)
+    architect_node  : template_renderer → deterministic Manim script
+    supervisor_node : render Manim → stitch audio → S3 upload
+    healer_node     : Claude fixes broken Manim scripts (max 3 retries)
+
+  PRESENTATION PATH (new)
+    ppt_planner_node  : Groq → splits text into slides (layout + data + narration)
+    ppt_renderer_node : slide_generator → 1920x1080 PNG per slide
+    ppt_tts_node      : tts_generator → MP3 per slide
+    ppt_video_node    : ffmpeg → clip per slide → final MP4 (+ optional avatar)
+    ppt_upload_node   : S3 upload
 """
 
 import os
@@ -65,6 +73,11 @@ class TonyState(TypedDict):
     # ── After supervisor_node ─────────────────────────
     output_path:  Optional[str]
     video_url:    Optional[str]
+
+    # ── PPT-specific (presentation path) ──────────────
+    slides:      Optional[list]   # [{layout, data, narration}] from Groq
+    slide_paths: Optional[list]   # PNG paths per slide
+    clip_paths:  Optional[list]   # clip MP4 paths per slide
 
     # ── Control ────────────────────────────────────────
     rendering_errors: Optional[str]
@@ -153,25 +166,11 @@ def vision_node(state: TonyState) -> TonyState:
 # ── Node 3: Architect ─────────────────────────────────────────────────────────
 
 def architect_node(state: TonyState) -> TonyState:
-    """Convert scenes into a Manim script (deterministic templates) or run presentation pipeline."""
-    print(f"📐 [Architect] Building render script — mode: {state['render_mode']}")
+    """Convert scenes into a Manim script (deterministic templates). Manim path only."""
+    print(f"📐 [Architect] Building Manim script for: {state['topic']}")
 
     job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
     os.makedirs(job_dir, exist_ok=True)
-
-    if state["render_mode"] == "presentation":
-        from ppt_engine.ppt_pipeline import run_ppt_pipeline
-
-        narration = " ".join(s["narration_text"] for s in state["scenes"])
-        output = run_ppt_pipeline(
-            topic=state["topic"],
-            text=narration,
-            output_dir=job_dir,
-            with_avatar=state.get("with_avatar", False),
-        )
-        state["output_path"]       = output
-        state["manim_script_path"] = None
-        return state
 
     # manim mode — generate TTS first to get real durations, then build Manim script
     from tts_generator import generate_audio
@@ -215,17 +214,8 @@ def architect_node(state: TonyState) -> TonyState:
 # ── Node 4: Supervisor ────────────────────────────────────────────────────────
 
 def supervisor_node(state: TonyState) -> TonyState:
-    """Render Manim → generate TTS per scene → stitch with ffmpeg → upload to S3."""
+    """Render Manim → stitch audio → S3 upload. Manim path only."""
     print(f"🔍 [Supervisor] Rendering — attempt {state['attempt_count'] + 1}")
-
-    # Presentation mode: output_path already set by architect_node
-    if state["render_mode"] == "presentation":
-        if state.get("output_path") and os.path.exists(state["output_path"]):
-            state["video_url"]        = _upload_to_s3(state["output_path"], state["topic"])
-            state["rendering_errors"] = None
-        else:
-            state["rendering_errors"] = "Presentation pipeline produced no output"
-        return state
 
     job_dir     = os.path.dirname(state["manim_script_path"])
     script_path = state["manim_script_path"]
@@ -343,10 +333,149 @@ def _upload_to_s3(local_path: str, topic: str) -> str:
     return url
 
 
+# ── PPT Nodes (presentation path) ─────────────────────────────────────────────
+
+def ppt_planner_node(state: TonyState) -> TonyState:
+    """Groq: split topic text into slides with layout + data + narration."""
+    print(f"📋 [PPT Planner] Planning slides for: {state['topic']}")
+
+    from ppt_engine.ppt_pipeline import _split_into_slides, _fallback_split
+
+    # Build input text from director scenes narration
+    text = " ".join(s["narration_text"] for s in state["scenes"])
+
+    try:
+        slides = _split_into_slides(state["topic"], text)
+    except Exception as e:
+        print(f"   ⚠️  Groq failed: {e} — using fallback")
+        slides = _fallback_split(state["topic"], text)
+
+    state["slides"] = slides
+    print(f"   Planned {len(slides)} slides")
+    return state
+
+
+def ppt_renderer_node(state: TonyState) -> TonyState:
+    """Render each slide as a 1920x1080 PNG."""
+    print(f"🖼️  [PPT Renderer] Rendering {len(state['slides'])} slides...")
+
+    _root = os.path.dirname(os.path.abspath(__file__))
+    import sys
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+    from ppt_engine.slide_generator import generate_slide_image
+
+    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    os.makedirs(job_dir, exist_ok=True)
+
+    slide_paths = []
+    for i, slide in enumerate(state["slides"]):
+        layout      = slide.get("layout", "bullets")
+        layout_data = slide.get("data", {})
+        narration   = slide.get("narration", "")
+        slide_text  = layout_data.get("heading") or layout_data.get("title") or layout_data.get("statement") or state["topic"]
+
+        path = generate_slide_image(
+            slide_text, i, output_dir=job_dir,
+            narration=narration,
+            layout=layout,
+            layout_data=layout_data,
+        )
+        slide_paths.append(path)
+
+    state["slide_paths"] = slide_paths
+    return state
+
+
+def ppt_tts_node(state: TonyState) -> TonyState:
+    """Generate TTS audio for each slide's narration."""
+    print(f"🔊 [PPT TTS] Generating audio for {len(state['slides'])} slides...")
+
+    from tts_generator import generate_audio
+
+    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    audio_files = []
+
+    for i, slide in enumerate(state["slides"]):
+        narration = slide.get("narration", "")
+        path = generate_audio(narration, i, output_dir=job_dir)
+        audio_files.append(path)
+
+    state["audio_files"] = audio_files
+    return state
+
+
+def ppt_video_node(state: TonyState) -> TonyState:
+    """Combine slides + audio into clips, optionally add avatar, concat to MP4."""
+    print(f"🎬 [PPT Video] Building video from {len(state['slide_paths'])} slides...")
+
+    from ppt_engine.ppt_pipeline import _image_to_video, _concat_clips
+
+    job_dir    = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    with_avatar = state.get("with_avatar", False)
+    clip_paths  = []
+
+    for i, (slide_img, audio_path) in enumerate(zip(state["slide_paths"], state["audio_files"])):
+        clip_path = os.path.join(job_dir, f"clip_{i:02d}.mp4")
+
+        if with_avatar:
+            from avatar_generator import generate_avatar_video
+            from moviepy.editor import VideoFileClip, CompositeVideoClip
+            from moviepy.video.fx.all import loop as fx_loop
+
+            base_path = os.path.join(job_dir, f"base_{i:02d}.mp4")
+            _image_to_video(slide_img, audio_path, base_path)
+            avatar_path = generate_avatar_video(
+                state["slides"][i].get("narration", ""), audio_path, i,
+                output_dir=job_dir, avatar_type="human"
+            )
+            base_clip   = VideoFileClip(base_path)
+            avatar_clip = fx_loop(VideoFileClip(avatar_path).without_audio(), duration=base_clip.duration)
+            av_resized  = avatar_clip.resize(width=320)
+            W, H = base_clip.size
+            composite = CompositeVideoClip([
+                base_clip,
+                av_resized.set_position((W - 340, H - 260)),
+            ]).set_audio(base_clip.audio)
+            composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
+            base_clip.close(); avatar_clip.close()
+        else:
+            _image_to_video(slide_img, audio_path, clip_path)
+
+        if os.path.exists(clip_path):
+            clip_paths.append(clip_path)
+            print(f"   ✅ Clip {i+1}/{len(state['slide_paths'])}")
+
+    state["clip_paths"] = clip_paths
+
+    safe_topic  = state["topic"].lower().replace(" ", "_").replace("/", "_")
+    final_output = os.path.join(job_dir, f"{safe_topic}_presentation.mp4")
+    _concat_clips(clip_paths, final_output)
+
+    state["output_path"]      = os.path.abspath(final_output)
+    state["rendering_errors"] = None
+    print(f"   ✅ PPT video: {final_output}")
+    return state
+
+
+def ppt_upload_node(state: TonyState) -> TonyState:
+    """Upload PPT video to S3."""
+    print(f"☁️  [PPT Upload] Uploading to S3...")
+    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"])
+    return state
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 
+def route_by_mode(state: TonyState) -> str:
+    """After vision — branch to manim or ppt path."""
+    if state.get("render_mode") == "presentation":
+        return "ppt_planner"
+    return "architect"
+
+
 def should_continue(state: TonyState) -> str:
-    """Route to healer on failure, up to 3 times."""
+    """Route to healer on failure, up to 3 times. Manim only."""
     if state.get("rendering_errors") and state["attempt_count"] < 3:
         print(f"⚠️  Render error — routing to healer (attempt {state['attempt_count']})")
         return "healer"
@@ -357,18 +486,43 @@ def should_continue(state: TonyState) -> str:
 
 workflow = StateGraph(TonyState)
 
-workflow.add_node("director",   director_node)
-workflow.add_node("vision",     vision_node)
-workflow.add_node("architect",  architect_node)
-workflow.add_node("supervisor", supervisor_node)
-workflow.add_node("healer",     healer_node)
+# ── Shared nodes ───────────────────────────────────────────────────────────────
+workflow.add_node("director",    director_node)
+workflow.add_node("vision",      vision_node)
 
+# ── Manim path ─────────────────────────────────────────────────────────────────
+workflow.add_node("architect",   architect_node)
+workflow.add_node("supervisor",  supervisor_node)
+workflow.add_node("healer",      healer_node)
+
+# ── PPT path ───────────────────────────────────────────────────────────────────
+workflow.add_node("ppt_planner",  ppt_planner_node)
+workflow.add_node("ppt_renderer", ppt_renderer_node)
+workflow.add_node("ppt_tts",      ppt_tts_node)
+workflow.add_node("ppt_video",    ppt_video_node)
+workflow.add_node("ppt_upload",   ppt_upload_node)
+
+# ── Edges ──────────────────────────────────────────────────────────────────────
 workflow.set_entry_point("director")
-workflow.add_edge("director",  "vision")
-workflow.add_edge("vision",    "architect")
-workflow.add_edge("architect", "supervisor")
-workflow.add_edge("healer",    "supervisor")
+workflow.add_edge("director", "vision")
+
+# Branch after vision
+workflow.add_conditional_edges("vision", route_by_mode, {
+    "architect":  "architect",
+    "ppt_planner": "ppt_planner",
+})
+
+# Manim path
+workflow.add_edge("architect",  "supervisor")
+workflow.add_edge("healer",     "supervisor")
 workflow.add_conditional_edges("supervisor", should_continue)
+
+# PPT path
+workflow.add_edge("ppt_planner",  "ppt_renderer")
+workflow.add_edge("ppt_renderer", "ppt_tts")
+workflow.add_edge("ppt_tts",      "ppt_video")
+workflow.add_edge("ppt_video",    "ppt_upload")
+workflow.add_edge("ppt_upload",   END)
 
 app = workflow.compile()
 
@@ -388,13 +542,14 @@ if __name__ == "__main__":
 
     print(f"🚀 Starting pipeline for: {topic}")
     final = app.invoke({
-        "raw_input":    html,
-        "topic":        topic,
+        "raw_input":     html,
+        "topic":         topic,
         "attempt_count": 0,
-        # optional fields start as None
-        "parsed_facts": None, "render_mode": None, "scenes": None,
-        "image_path": None, "audio_files": None, "manim_script_path": None,
-        "output_path": None, "video_url": None, "rendering_errors": None,
+        "parsed_facts":  None, "render_mode": None, "scenes": None,
+        "image_path":    None, "audio_files": None, "manim_script_path": None,
+        "output_path":   None, "video_url":   None, "rendering_errors":  None,
+        "with_avatar":   False,
+        "slides":        None, "slide_paths": None, "clip_paths": None,
     })
 
     print(f"\n🏆 Done!")
