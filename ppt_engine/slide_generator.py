@@ -21,7 +21,7 @@ import random
 
 W, H = 1920, 1080
 
-_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
+_FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts")
 
 # ── Fonts ──────────────────────────────────────────────────────────────────────
 
@@ -233,34 +233,42 @@ def _layout_bullets(draw, img, data: dict):
 
 
 def _layout_big_statement(draw, img, data: dict):
-    """Single powerful statement — large centered text with yellow highlight."""
+    """Single powerful statement — large centered text with white card, dark text."""
     statement = data.get("statement", "")
     context   = data.get("context", "")
 
-    # Yellow highlight box behind statement
+    # White card (not yellow — text is dark so needs contrast)
     cx, cy = W//2, H//2 - 60
-    box_w, box_h = W-200, 220
+    box_w, box_h = W - 160, 260
     _draw_wobbly_rect(draw, (W-box_w)//2, cy-box_h//2,
                       (W+box_w)//2, cy+box_h//2,
-                      outline=(30,30,30), fill=(255,220,50), width=5)
+                      outline=(30,30,30), fill=(255,255,255), width=5)
 
-    # Statement text
-    st_font = _font(bold=True, size=96)
-    wrapped = textwrap.fill(statement, width=32)
+    # Yellow left accent bar inside card
+    draw.rectangle([(W-box_w)//2, cy-box_h//2, (W-box_w)//2+14, cy+box_h//2], fill=(255,200,0))
+
+    # Statement text — dark on white
+    st_font = _font(bold=True, size=88)
+    wrapped = textwrap.fill(statement, width=36)
     lines = wrapped.split('\n')
-    ty = cy - (len(lines)*100)//2
+    ty = cy - (len(lines) * 96) // 2
     for line in lines:
         bbox = draw.textbbox((0,0), line, font=st_font)
-        tw = bbox[2]-bbox[0]
+        tw = bbox[2] - bbox[0]
         draw.text(((W-tw)//2, ty), line, font=st_font, fill=(20,20,20))
-        ty += 104
+        ty += 96
 
-    # Context below
+    # Context below card — wrapped, centered
     if context:
         ctx_font = _font(bold=False, size=52)
-        bbox = draw.textbbox((0,0), context, font=ctx_font)
-        cw = bbox[2]-bbox[0]
-        draw.text(((W-cw)//2, cy+box_h//2+40), context, font=ctx_font, fill=(80,60,20))
+        ctx_wrapped = textwrap.fill(context, width=70)
+        ctx_lines = ctx_wrapped.split('\n')
+        cty = cy + box_h//2 + 30
+        for cl in ctx_lines[:2]:
+            bbox = draw.textbbox((0,0), cl, font=ctx_font)
+            cw = bbox[2] - bbox[0]
+            draw.text(((W-cw)//2, cty), cl, font=ctx_font, fill=(60,45,15))
+            cty += 60
 
     return img, draw
 
@@ -300,16 +308,22 @@ def _layout_steps(draw, img, data: dict):
         draw.ellipse([ncx-48, ncy-48, ncx+48, ncy+48], fill=colors[i%4], outline=(30,30,30), width=4)
         draw.text((ncx, ncy), str(i+1), font=_font(bold=True, size=56), fill=(20,20,20), anchor="mm")
 
-        # Step text
-        sfont = _font(bold=False, size=48)
-        wrapped = textwrap.fill(step, width=18)
-        lines = wrapped.split('\n')
-        lty = ncy + 70
-        for line in lines[:3]:
+        # Step text — truncate to fit card width
+        sfont = _font(bold=False, size=44)
+        max_chars = max(12, int(step_w / 26))
+        wrapped = textwrap.fill(step, width=max_chars)
+        lines = wrapped.split('\n')[:3]
+        lty = ncy + 75
+        for line in lines:
             bbox = draw.textbbox((0,0), line, font=sfont)
-            lw = bbox[2]-bbox[0]
-            draw.text((sx+(step_w-lw)//2, lty), line, font=sfont, fill=(30,30,30))
-            lty += 56
+            lw = bbox[2] - bbox[0]
+            # Ensure text doesn't overflow card
+            if lw > step_w - 20:
+                line = line[:max(5, int(step_w/28))] + "…"
+                bbox = draw.textbbox((0,0), line, font=sfont)
+                lw = bbox[2] - bbox[0]
+            draw.text((sx + (step_w - lw)//2, lty), line, font=sfont, fill=(30,30,30))
+            lty += 52
 
         # Arrow between steps
         if i < len(steps)-1:
@@ -365,40 +379,47 @@ def _layout_two_column(draw, img, data: dict):
 
 
 def _layout_key_highlight(draw, img, data: dict):
-    """One BIG key fact — yellow card, stands out."""
+    """One BIG key fact — dark card, white text, yellow accent."""
     label   = data.get("label", "Key Fact")
     fact    = data.get("fact", "")
     detail  = data.get("detail", "")
 
-    # Big yellow card
+    # Dark card (high contrast — white text on dark)
     card_m = 80
-    _draw_wobbly_rect(draw, card_m, 160, W-card_m, H-180,
-                      outline=(30,30,30), fill=(255,220,40), width=6)
+    _draw_wobbly_rect(draw, card_m, 150, W-card_m, H-170,
+                      outline=(255,200,0), fill=(30,25,20), width=6)
 
-    # "Key Fact" label badge
+    # Yellow label badge — dark text on yellow (readable)
     badge_font = _font(bold=True, size=44)
-    bw = 260
-    draw.rounded_rectangle([W//2-bw//2, 130, W//2+bw//2, 190],
-                            radius=20, fill=(30,30,30))
-    draw.text((W//2, 160), label.upper(), font=badge_font, fill=(255,220,40), anchor="mm")
+    label_text = label.upper()
+    bbox = draw.textbbox((0,0), label_text, font=badge_font)
+    bw = bbox[2]-bbox[0] + 60
+    draw.rounded_rectangle([W//2-bw//2, 118, W//2+bw//2, 182],
+                            radius=20, fill=(255,200,0), outline=(30,30,30), width=3)
+    draw.text((W//2, 150), label_text, font=badge_font, fill=(20,20,20), anchor="mm")
 
-    # Fact text — very large
-    fact_font = _font(bold=True, size=100)
-    wrapped = textwrap.fill(fact, width=30)
+    # Fact text — WHITE on dark card
+    fact_font = _font(bold=True, size=96)
+    wrapped = textwrap.fill(fact, width=32)
     lines = wrapped.split('\n')
-    ty = H//2 - len(lines)*110//2 - 20
+    ty = H//2 - (len(lines)*106)//2 - 10
     for line in lines:
         bbox = draw.textbbox((0,0), line, font=fact_font)
         fw = bbox[2]-bbox[0]
-        draw.text(((W-fw)//2, ty), line, font=fact_font, fill=(20,20,20))
-        ty += 110
+        draw.text(((W-fw)//2, ty), line, font=fact_font, fill=(255,252,220))
+        ty += 106
 
-    # Detail below
+    # Detail — yellow on dark
     if detail:
-        det_font = _font(bold=False, size=52)
-        bbox = draw.textbbox((0,0), detail, font=det_font)
-        dw = bbox[2]-bbox[0]
-        draw.text(((W-dw)//2, ty+20), detail, font=det_font, fill=(60,40,10))
+        det_font = _font(bold=False, size=50)
+        det_wrapped = textwrap.fill(detail, width=60)
+        det_lines = det_wrapped.split('\n')
+        dty = ty + 20
+        for dl in det_lines[:2]:
+            bbox = draw.textbbox((0,0), dl, font=det_font)
+            dw = bbox[2]-bbox[0]
+            draw.text(((W-dw)//2, dty), dl, font=det_font, fill=(255,220,100))
+            dty += 58
 
     return img, draw
 
@@ -425,18 +446,97 @@ def _layout_summary(draw, img, data: dict):
 
         # Green check circle
         draw.ellipse([100, py+25, 170, py+95], fill=(60,180,60), outline=(30,30,30), width=3)
-        draw.text((135, py+60), "✓", font=_font(bold=True, size=52), fill=(255,255,255), anchor="mm")
+        # Use text "OK" instead of unicode checkmark for font compatibility
+        draw.text((135, py+60), "OK", font=_font(bold=True, size=32), fill=(255,255,255), anchor="mm")
 
-        # Point text
-        wrapped = textwrap.fill(pt, width=65)
-        draw.text((190, py+card_h//2-28), wrapped.split('\n')[0], font=pfont, fill=(30,30,30))
-        if '\n' in wrapped:
-            draw.text((190, py+card_h//2+28), wrapped.split('\n')[1], font=pfont, fill=(30,30,30))
+        # Point text — wrapped safely
+        wrapped = textwrap.fill(pt, width=62)
+        pt_lines = wrapped.split('\n')
+        lty = py + card_h//2 - (len(pt_lines[:2]) * 32)
+        for pl in pt_lines[:2]:
+            draw.text((190, lty), pl, font=pfont, fill=(30,30,30))
+            lty += 58
 
         py += card_h + 18
 
     return img, draw
 
+
+def _draw_scribble_chaos(draw, W, H, seed):
+    """Draws chaotic black scribbles, swirls, and question marks on the left."""
+    import math
+    rng = random.Random(seed)
+    
+    # Random Bezier / Spline approximations for scribbles
+    for _ in range(80):
+        # random cluster centers on the left side
+        cx = rng.randint(-50, W//2 - 100)
+        cy = rng.randint(-50, H + 50)
+        
+        # draw a random swirl
+        r = rng.randint(40, 160)
+        start = rng.randint(0, 360) 
+        end = start + rng.randint(180, 500)
+        width = rng.randint(3, 8)
+        draw.arc([cx-r, cy-r, cx+r, cy+r], start, end, fill=(30, 30, 30), width=width)
+        
+        # occasionally draw small circles
+        if rng.random() > 0.7:
+            sr = rng.randint(10, 40)
+            draw.ellipse([cx-sr, cy-sr, cx+sr, cy+sr], outline=(30, 30, 30), width=rng.randint(2, 5))
+            
+    # Draw question marks floating around
+    q_font = _font(bold=True, size=150)
+    for _ in range(15):
+        qx = rng.randint(20, W//2 - 150)
+        qy = rng.randint(50, H - 150)
+        draw.text((qx, qy), "?", font=q_font, fill=(30, 30, 30), anchor="mm")
+
+def _layout_chaos_chapter(draw, img, data: dict):
+    """High-impact opening mimicking the 'Chaos into Clarity' thumbnail."""
+    chapter_num = data.get("number", "1")
+    title       = data.get("title", "Modern Teaching\nChallenge")
+    subtitle    = data.get("subtitle", "Chaos into Clarity")
+    
+    # 1. Solid Yellow Background (Overriding the cream gradient)
+    draw.rectangle([0, 0, W, H], fill=(250, 210, 70))
+    
+    # 2. Chaos Scribbles on the left
+    _draw_scribble_chaos(draw, W, H, seed=hash(title))
+    
+    # 3. Clean White Rounded Card on the right
+    card_x = W // 3 - 50
+    card_y = 150
+    card_w = W - card_x - 100
+    card_h = H - 300
+    draw.rounded_rectangle([card_x, card_y, card_x + card_w, card_y + card_h], 
+                           radius=80, fill=(255, 255, 255), outline=(30, 30, 30), width=8)
+    
+    # 4. Giant Outline Number
+    num_font = _font(bold=True, size=700)
+    # PIL text stroke requires simulating outline or using stroke_width
+    draw.text((150, H//2), str(chapter_num), font=num_font, fill=(255, 255, 255),
+              stroke_width=25, stroke_fill=(30, 30, 30), anchor="lm")
+              
+    # 5. Title Text inside Card
+    tfont = _font(bold=True, size=110)
+    ty = card_y + 120
+    for line in title.split('\n'):
+        draw.text((card_x + 120, ty), line.strip(), font=tfont, fill=(30, 30, 30))
+        ty += 130
+        
+    # 6. Subtitle
+    sfont = _font(bold=False, size=65)
+    draw.text((card_x + 120, ty + 20), subtitle, font=sfont, fill=(60, 60, 60))
+    draw.line([(card_x + 120 + 550, ty + 60), (card_x + card_w - 150, ty + 60)], fill=(30, 30, 30), width=6)
+    
+    # 7. Speed lines / Arrows pointing to text
+    ax, ay = card_x + 100, ty + 180
+    _draw_arrow(draw, ax, ay, ax + 150, ay - 40, color=(30, 30, 30), width=5)
+    _draw_arrow(draw, ax + 200, ay + 60, ax + 350, ay - 20, color=(30, 30, 30), width=4)
+    _draw_arrow(draw, card_x + card_w - 100, ay, card_x + card_w - 250, ay - 50, color=(30, 30, 30), width=5)
+
+    return img, draw
 
 # ── Layout dispatcher ──────────────────────────────────────────────────────────
 
@@ -448,6 +548,7 @@ _LAYOUTS = {
     "two_column":     _layout_two_column,
     "key_highlight":  _layout_key_highlight,
     "summary":        _layout_summary,
+    "chaos_chapter":  _layout_chaos_chapter,
 }
 
 
