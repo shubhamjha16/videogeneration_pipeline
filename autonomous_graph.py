@@ -69,6 +69,7 @@ class TonyState(TypedDict):
     # ── Control ────────────────────────────────────────
     rendering_errors: Optional[str]
     attempt_count:    int
+    with_avatar:      Optional[bool]   # presentation only — show avatar on slides
 
 
 # ── Node 1: Director ──────────────────────────────────────────────────────────
@@ -86,7 +87,8 @@ def director_node(state: TonyState) -> TonyState:
     print(f"   Subject: {parsed['subject']} | Type: {parsed['content_type']}")
 
     director_output = run_director(parsed)
-    state["render_mode"] = director_output.render_mode
+    # Respect user-specified render_mode — only use Claude's decision as fallback
+    state["render_mode"] = state.get("render_mode") or director_output.render_mode
     scenes = [s.model_dump() for s in director_output.scenes]
 
     # ── MCQ correction: override LLM answer with ground truth from HTML ───────
@@ -158,15 +160,14 @@ def architect_node(state: TonyState) -> TonyState:
     os.makedirs(job_dir, exist_ok=True)
 
     if state["render_mode"] == "presentation":
-        # Hand off to existing tony_pipeline — no Manim needed
-        from tony_pipeline import run_tony_pipeline
-        from tts_generator import generate_audio
+        from ppt_engine.ppt_pipeline import run_ppt_pipeline
 
         narration = " ".join(s["narration_text"] for s in state["scenes"])
-        output = run_tony_pipeline(
-            narration,
-            topic_name=state["topic"],
+        output = run_ppt_pipeline(
+            topic=state["topic"],
+            text=narration,
             output_dir=job_dir,
+            with_avatar=state.get("with_avatar", False),
         )
         state["output_path"]       = output
         state["manim_script_path"] = None

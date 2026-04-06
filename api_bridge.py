@@ -64,8 +64,10 @@ jobs: dict = _load_jobs()
 # ── Request / Response schemas ────────────────────────────────────────────────
 
 class RenderRequest(BaseModel):
-    topic: str
-    html:  str
+    topic:       str
+    html:        str
+    render_mode: str  = None   # "manim" | "presentation" | None (auto — Claude decides)
+    with_avatar: bool = False  # presentation only — composite avatar on slides
 
 
 class JobStatus(BaseModel):
@@ -81,6 +83,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
     """Run the full LangGraph pipeline in a background thread."""
     with _jobs_lock:
         jobs[job_id]["status"] = "processing"
+        job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
 
     try:
         from autonomous_graph import app as graph
@@ -90,7 +93,8 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             "topic":             topic,
             "attempt_count":     0,
             "parsed_facts":      None,
-            "render_mode":       None,
+            "render_mode":       job.get("render_mode"),   # None = auto
+            "with_avatar":       job.get("with_avatar", False),
             "scenes":            None,
             "image_path":        None,
             "audio_files":       None,
@@ -144,10 +148,12 @@ def start_render(request: RenderRequest):
 
     job_id = str(uuid.uuid4())[:12]
     jobs[job_id] = {
-        "job_id":    job_id,
-        "status":    "queued",
-        "video_url": "",
-        "error":     "",
+        "job_id":      job_id,
+        "status":      "queued",
+        "video_url":   "",
+        "error":       "",
+        "render_mode": request.render_mode,
+        "with_avatar": request.with_avatar,
     }
 
     thread = threading.Thread(

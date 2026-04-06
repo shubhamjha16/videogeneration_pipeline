@@ -518,23 +518,31 @@ def _layout_chaos_chapter(draw, img, data: dict):
     draw.text((150, H//2), str(chapter_num), font=num_font, fill=(255, 255, 255),
               stroke_width=25, stroke_fill=(30, 30, 30), anchor="lm")
               
-    # 5. Title Text inside Card
+    # 5. Title Text inside Card — wrap to fit
     tfont = _font(bold=True, size=110)
     ty = card_y + 120
-    for line in title.split('\n'):
-        draw.text((card_x + 120, ty), line.strip(), font=tfont, fill=(30, 30, 30))
-        ty += 130
+    max_w = card_w - 160  # leave margins
+    for raw_line in title.split('\n'):
+        wrapped = textwrap.fill(raw_line.strip(), width=18)
+        for line in wrapped.split('\n'):
+            # Shrink font until line fits
+            f = tfont
+            for sz in [110, 90, 75]:
+                f = _font(bold=True, size=sz)
+                bbox = draw.textbbox((0, 0), line, font=f)
+                if (bbox[2] - bbox[0]) <= max_w:
+                    break
+            draw.text((card_x + 120, ty), line, font=f, fill=(30, 30, 30))
+            ty += f.size + 20
         
     # 6. Subtitle
     sfont = _font(bold=False, size=65)
     draw.text((card_x + 120, ty + 20), subtitle, font=sfont, fill=(60, 60, 60))
-    draw.line([(card_x + 120 + 550, ty + 60), (card_x + card_w - 150, ty + 60)], fill=(30, 30, 30), width=6)
-    
-    # 7. Speed lines / Arrows pointing to text
-    ax, ay = card_x + 100, ty + 180
-    _draw_arrow(draw, ax, ay, ax + 150, ay - 40, color=(30, 30, 30), width=5)
-    _draw_arrow(draw, ax + 200, ay + 60, ax + 350, ay - 20, color=(30, 30, 30), width=4)
-    _draw_arrow(draw, card_x + card_w - 100, ay, card_x + card_w - 250, ay - 50, color=(30, 30, 30), width=5)
+
+    # Yellow underline beneath subtitle
+    bbox = draw.textbbox((0, 0), subtitle, font=sfont)
+    sub_w = bbox[2] - bbox[0]
+    draw.rectangle([card_x + 120, ty + 100, card_x + 120 + sub_w, ty + 112], fill=(255, 200, 0))
 
     return img, draw
 

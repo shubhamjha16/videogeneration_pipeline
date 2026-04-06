@@ -230,14 +230,16 @@ def run_ppt_pipeline(
     topic: str,
     text: str,
     output_dir: str = None,
+    with_avatar: bool = False,
 ) -> str:
     """
     Generate a doodle-style presentation video.
 
     Args:
-        topic      : Topic name (shown on title slide)
-        text       : Raw content text (paragraphs or bullet points)
-        output_dir : Output directory (default: output/ppt_<topic>)
+        topic       : Topic name (shown on title slide)
+        text        : Raw content text (paragraphs or bullet points)
+        output_dir  : Output directory (default: output/ppt_<topic>)
+        with_avatar : Composite an animated avatar in the bottom-right corner
 
     Returns:
         Absolute path to the output MP4
@@ -290,9 +292,39 @@ def run_ppt_pipeline(
         # TTS audio
         audio_path = generate_audio(narration_text, i, output_dir=job_dir)
 
-        # Image + audio → clip
-        clip_path = os.path.join(job_dir, f"clip_{i:02d}.mp4")
-        success = _image_to_video(slide_img, audio_path, clip_path)
+        # Avatar overlay (optional)
+        if with_avatar:
+            from avatar_generator import generate_avatar_video
+            from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
+            from moviepy.video.fx.all import loop as fx_loop
+
+            # Slide + audio → base clip
+            base_path = os.path.join(job_dir, f"base_{i:02d}.mp4")
+            _image_to_video(slide_img, audio_path, base_path)
+
+            avatar_path = generate_avatar_video(
+                narration_text, audio_path, i,
+                output_dir=job_dir, avatar_type="human"
+            )
+
+            base_clip   = VideoFileClip(base_path)
+            avatar_clip = fx_loop(VideoFileClip(avatar_path).without_audio(), duration=base_clip.duration)
+            av_resized  = avatar_clip.resize(width=320)
+
+            W, H = base_clip.size
+            composite = CompositeVideoClip([
+                base_clip,
+                av_resized.set_position((W - 340, H - 260)),
+            ]).set_audio(base_clip.audio)
+
+            clip_path = os.path.join(job_dir, f"clip_{i:02d}.mp4")
+            composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
+            base_clip.close(); avatar_clip.close()
+            success = os.path.exists(clip_path)
+        else:
+            # Image + audio → clip (fast ffmpeg path)
+            clip_path = os.path.join(job_dir, f"clip_{i:02d}.mp4")
+            success = _image_to_video(slide_img, audio_path, clip_path)
 
         if success:
             clip_paths.append(clip_path)
@@ -320,9 +352,10 @@ def run_ppt_pipeline(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EaseToLearn PPT Video Generator")
-    parser.add_argument("--topic", required=True, help="Topic name")
-    parser.add_argument("--text",  required=True, help="Path to text file OR raw text string")
-    parser.add_argument("--output", help="Output directory (optional)")
+    parser.add_argument("--topic",       required=True, help="Topic name")
+    parser.add_argument("--text",        required=True, help="Path to text file OR raw text string")
+    parser.add_argument("--output",      help="Output directory (optional)")
+    parser.add_argument("--with-avatar", action="store_true", help="Add animated avatar overlay")
     args = parser.parse_args()
 
     # Support both file path and inline text
@@ -336,5 +369,6 @@ if __name__ == "__main__":
         topic=args.topic,
         text=content,
         output_dir=args.output,
+        with_avatar=args.with_avatar,
     )
     print(f"\n🎬 Final video: {video_path}")
