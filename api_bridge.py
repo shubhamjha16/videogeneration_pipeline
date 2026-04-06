@@ -102,9 +102,11 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             "output_path":       None,
             "video_url":         None,
             "rendering_errors":  None,
-            "slides":            None,
-            "slide_paths":       None,
-            "clip_paths":        None,
+            "slides":             None,
+            "slide_paths":        None,
+            "clip_paths":         None,
+            "critic_feedback":    None,
+            "ppt_attempt_count":  0,
         })
 
         video_url = final_state.get("video_url") or ""

@@ -75,9 +75,11 @@ class TonyState(TypedDict):
     video_url:    Optional[str]
 
     # ── PPT-specific (presentation path) ──────────────
-    slides:      Optional[list]   # [{layout, data, narration}] from Groq
-    slide_paths: Optional[list]   # PNG paths per slide
-    clip_paths:  Optional[list]   # clip MP4 paths per slide
+    slides:           Optional[list]   # [{layout, data, narration}] from Groq
+    slide_paths:      Optional[list]   # PNG paths per slide
+    clip_paths:       Optional[list]   # clip MP4 paths per slide
+    critic_feedback:  Optional[str]    # feedback from ppt_critic → fed back to planner
+    ppt_attempt_count: int             # how many times planner has been retried by critic
 
     # ── Control ────────────────────────────────────────
     rendering_errors: Optional[str]
@@ -335,23 +337,148 @@ def _upload_to_s3(local_path: str, topic: str) -> str:
 
 # ── PPT Nodes (presentation path) ─────────────────────────────────────────────
 
+_PPT_PLANNER_PROMPT = """You are a creative presentation director for an educational video platform.
+
+STEP 1 — Deeply understand the content before anything else:
+- What is the SINGLE most dramatic or surprising fact in this content?
+- What is the emotional arc? (shock → understanding → clarity? mystery → reveal? problem → solution?)
+- What makes THIS topic unique — what would ONLY appear in a video about this specific topic?
+- Who is the student? What do they already know? What will surprise them?
+
+STEP 2 — Design a presentation that could ONLY be about this topic:
+- Every slide must be uniquely tied to this specific content
+- No generic slides that could apply to any topic
+- The narration must sound like a teacher who genuinely finds this fascinating
+- Use contrast, surprise, and specific numbers/names/dates — not vague generalities
+
+STEP 3 — Layout rules:
+- 6 to 9 slides total
+- MANDATORY: Start each major chapter with chaos_chapter (use 2-3 times with incrementing numbers)
+- NO layout should appear more than 3 times
+- chaos_chapter subtitles must be specific to the content — never generic like "Introduction"
+- big_statement must quote a specific dramatic fact, not a vague claim
+- bullets must list SPECIFIC items (names, dates, numbers) — not vague categories
+- key_highlight must show ONE specific number/date/name that defines this topic
+- Narration must be 1-3 sentences, conversational, adds insight beyond the slide text
+
+{feedback_section}
+
+AVAILABLE LAYOUTS:
+"chaos_chapter" — data: {{"number": "1", "title": str, "subtitle": str}}
+"title_card"    — data: {{"title": str, "subtitle": str}}
+"bullets"       — data: {{"heading": str, "bullets": [str]}}
+"big_statement" — data: {{"statement": str, "context": str}}
+"steps"         — data: {{"heading": str, "steps": [str]}}
+"two_column"    — data: {{"heading": str, "left_title": str, "left_points": [str], "right_title": str, "right_points": [str]}}
+"key_highlight" — data: {{"label": str, "fact": str, "detail": str}}
+"summary"       — data: {{"heading": "Key Takeaways", "points": [str]}}
+
+Return valid JSON only:
+{{"slides": [{{"layout": "...", "data": {{...}}, "narration": "..."}}]}}"""
+
+
+_PPT_CRITIC_PROMPT = """You are a ruthless quality critic for educational presentation videos.
+
+Review this slide plan and decide: APPROVE or REJECT.
+
+REJECT if ANY of these are true:
+1. Any narration starts with generic phrases like "let's explore", "in this slide", "today we", "welcome to"
+2. Any chaos_chapter subtitle is generic (e.g. "Introduction", "Overview", "Getting Started")
+3. Same layout used 4+ times
+4. Any bullet point is vague (no specific names, numbers, or dates)
+5. Any slide could appear in a video about a DIFFERENT topic without changing
+6. The big_statement contains no specific fact (no number, name, or date)
+7. The key_highlight fact is vague or not memorable
+
+BE SPECIFIC in your feedback — name which slide number has which problem.
+
+Return JSON only:
+{{"approved": true/false, "feedback": "specific issues or empty string if approved", "score": 1-10}}"""
+
+
 def ppt_planner_node(state: TonyState) -> TonyState:
-    """Groq: split topic text into slides with layout + data + narration."""
-    print(f"📋 [PPT Planner] Planning slides for: {state['topic']}")
+    """Groq: plan slides with deep content analysis. Accepts critic feedback on retry."""
+    attempt = state.get("ppt_attempt_count", 0)
+    feedback = state.get("critic_feedback", "")
 
-    from ppt_engine.ppt_pipeline import _split_into_slides, _fallback_split
+    print(f"📋 [PPT Planner] Planning slides for: {state['topic']} (attempt {attempt + 1})")
 
-    # Build input text from director scenes narration
+    from groq import Groq
+    import json
+
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     text = " ".join(s["narration_text"] for s in state["scenes"])
 
+    # Inject critic feedback on retry
+    feedback_section = ""
+    if feedback:
+        feedback_section = f"\n⚠️ PREVIOUS ATTEMPT WAS REJECTED. Fix these specific issues:\n{feedback}\nDo NOT repeat the same mistakes.\n"
+
+    prompt = _PPT_PLANNER_PROMPT.format(feedback_section=feedback_section)
+
     try:
-        slides = _split_into_slides(state["topic"], text)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user",   "content": f"TOPIC: {state['topic']}\n\nCONTENT:\n{text}"}
+            ],
+            response_format={"type": "json_object"}
+        )
+        data   = json.loads(response.choices[0].message.content)
+        slides = data.get("slides", [])
+        print(f"   Planned {len(slides)} slides:")
+        for i, s in enumerate(slides):
+            print(f"     {i+1}. [{s.get('layout','?')}] {s.get('data',{}).get('title') or s.get('data',{}).get('heading') or s.get('data',{}).get('statement','')[:40]}")
     except Exception as e:
         print(f"   ⚠️  Groq failed: {e} — using fallback")
+        from ppt_engine.ppt_pipeline import _fallback_split
         slides = _fallback_split(state["topic"], text)
 
-    state["slides"] = slides
-    print(f"   Planned {len(slides)} slides")
+    state["slides"]          = slides
+    state["critic_feedback"] = None   # clear feedback after use
+    return state
+
+
+def ppt_critic_node(state: TonyState) -> TonyState:
+    """Groq: review slide plan quality. Reject if generic or repetitive."""
+    print(f"🔍 [PPT Critic] Reviewing slide plan...")
+
+    from groq import Groq
+    import json
+
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+    slides_summary = json.dumps([
+        {"slide": i+1, "layout": s.get("layout"), "data": s.get("data"), "narration": s.get("narration")}
+        for i, s in enumerate(state["slides"])
+    ], indent=2)
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system",  "content": _PPT_CRITIC_PROMPT},
+                {"role": "user",    "content": f"TOPIC: {state['topic']}\n\nSLIDE PLAN:\n{slides_summary}"}
+            ],
+            response_format={"type": "json_object"}
+        )
+        result   = json.loads(response.choices[0].message.content)
+        approved = result.get("approved", True)
+        feedback = result.get("feedback", "")
+        score    = result.get("score", 7)
+
+        print(f"   Score: {score}/10 | {'✅ Approved' if approved else '❌ Rejected'}")
+        if not approved:
+            print(f"   Feedback: {feedback}")
+
+        state["critic_feedback"]   = None if approved else feedback
+        state["ppt_attempt_count"] = state.get("ppt_attempt_count", 0) + (0 if approved else 1)
+
+    except Exception as e:
+        print(f"   ⚠️  Critic failed: {e} — auto-approving")
+        state["critic_feedback"] = None
+
     return state
 
 
@@ -474,6 +601,14 @@ def route_by_mode(state: TonyState) -> str:
     return "architect"
 
 
+def critic_should_continue(state: TonyState) -> str:
+    """After critic — retry planner if rejected (max 2 retries), else proceed to renderer."""
+    if state.get("critic_feedback") and state.get("ppt_attempt_count", 0) < 2:
+        print(f"   ↩️  Sending back to planner (attempt {state['ppt_attempt_count']})")
+        return "ppt_planner"
+    return "ppt_renderer"
+
+
 def should_continue(state: TonyState) -> str:
     """Route to healer on failure, up to 3 times. Manim only."""
     if state.get("rendering_errors") and state["attempt_count"] < 3:
@@ -497,6 +632,7 @@ workflow.add_node("healer",      healer_node)
 
 # ── PPT path ───────────────────────────────────────────────────────────────────
 workflow.add_node("ppt_planner",  ppt_planner_node)
+workflow.add_node("ppt_critic",   ppt_critic_node)
 workflow.add_node("ppt_renderer", ppt_renderer_node)
 workflow.add_node("ppt_tts",      ppt_tts_node)
 workflow.add_node("ppt_video",    ppt_video_node)
@@ -508,17 +644,21 @@ workflow.add_edge("director", "vision")
 
 # Branch after vision
 workflow.add_conditional_edges("vision", route_by_mode, {
-    "architect":  "architect",
+    "architect":   "architect",
     "ppt_planner": "ppt_planner",
 })
 
-# Manim path
+# Manim path (unchanged)
 workflow.add_edge("architect",  "supervisor")
 workflow.add_edge("healer",     "supervisor")
 workflow.add_conditional_edges("supervisor", should_continue)
 
-# PPT path
-workflow.add_edge("ppt_planner",  "ppt_renderer")
+# PPT path — planner → critic → (retry? → planner | approved → renderer)
+workflow.add_edge("ppt_planner",  "ppt_critic")
+workflow.add_conditional_edges("ppt_critic", critic_should_continue, {
+    "ppt_planner": "ppt_planner",
+    "ppt_renderer": "ppt_renderer",
+})
 workflow.add_edge("ppt_renderer", "ppt_tts")
 workflow.add_edge("ppt_tts",      "ppt_video")
 workflow.add_edge("ppt_video",    "ppt_upload")
@@ -542,14 +682,16 @@ if __name__ == "__main__":
 
     print(f"🚀 Starting pipeline for: {topic}")
     final = app.invoke({
-        "raw_input":     html,
-        "topic":         topic,
-        "attempt_count": 0,
-        "parsed_facts":  None, "render_mode": None, "scenes": None,
-        "image_path":    None, "audio_files": None, "manim_script_path": None,
-        "output_path":   None, "video_url":   None, "rendering_errors":  None,
-        "with_avatar":   False,
-        "slides":        None, "slide_paths": None, "clip_paths": None,
+        "raw_input":          html,
+        "topic":              topic,
+        "attempt_count":      0,
+        "ppt_attempt_count":  0,
+        "parsed_facts":       None, "render_mode": None, "scenes": None,
+        "image_path":         None, "audio_files": None, "manim_script_path": None,
+        "output_path":        None, "video_url":   None, "rendering_errors":  None,
+        "with_avatar":        False,
+        "slides":             None, "slide_paths": None, "clip_paths": None,
+        "critic_feedback":    None,
     })
 
     print(f"\n🏆 Done!")
