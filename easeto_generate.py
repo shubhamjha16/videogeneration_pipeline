@@ -79,7 +79,13 @@ def run_math_stage(text, topic, avatar, job_dir, script_path=None):
     # Sanitize class name for Manim (alphanumeric only)
     class_name = re.sub(r'[^a-zA-Z0-9]', '', topic)
     safe_script = shlex.quote(script_path)
-    render_cmd = f"./venv/bin/manim -ql {safe_script} {class_name} -o {class_name}.mp4"
+    import shutil
+    manim_bin = (
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "venv", "bin", "manim")
+        if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "venv", "bin", "manim"))
+        else shutil.which("manim") or "manim"
+    )
+    render_cmd = f"{manim_bin} -ql {safe_script} {class_name} -o {class_name}.mp4"
     os.system(render_cmd)
 
     # 3. Stitch

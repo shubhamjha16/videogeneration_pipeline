@@ -62,7 +62,7 @@ def run_healer(broken_script: str, error_message: str) -> str:
 
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": (

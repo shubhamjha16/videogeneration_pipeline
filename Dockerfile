@@ -37,10 +37,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. ffmpeg  (imageio-ffmpeg downloads its own binary but system ffmpeg is a
-#    reliable fallback and needed by some moviepy internals)
+# 2. ffmpeg + fonts (slide_generator uses DejaVu on Linux)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    fonts-dejavu-core \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. LaTeX — Manim uses pdflatex + dvisvgm to render equations
