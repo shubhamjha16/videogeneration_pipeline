@@ -124,7 +124,8 @@ DEFAULT: if unsure, always choose "manim". It is the platform's primary mode.
 
 MANIM SCENES (8–12 scenes):
   - Always start with: title_card → concept_bullets (or formula_display for math)
-  - For MCQ: mcq_layout (draws all 4 boxes) → option_highlight on options → cross_out wrong ones → answer_reveal
+  - For MCQ: mcq_layout (draws all 4 boxes) → option_highlight wrong options (color "#FF6B6B") → cross_out ONLY the wrong options (NEVER the correct answer) → answer_reveal correct option
+  - cross_out rule: if correct answer is A, cross_out B, C, D — never A. Always cross out all wrong options.
   - For numerical: formula_display → step_by_step (max 4 steps) → summary
   - For concept: concept_bullets → key supporting facts → summary
   - Use graph_hint whenever a graph/chart would genuinely help (velocity-time, pie chart, etc.)
@@ -207,9 +208,13 @@ def _build_prompt(facts: dict) -> str:
         lines.append("\nOPTIONS:")
         for letter, data in sorted(facts["options"].items()):
             lines.append(f"  {letter}. {data['name']}: {data['explanation']}")
+        correct = facts.get('correct_answer', '')
+        wrong_letters = [l for l in ["A", "B", "C", "D"] if l != correct and l in facts.get("options", {})]
         lines.append(
-            f"\nCORRECT ANSWER: {facts.get('correct_answer', '')}. "
-            f"{facts.get('correct_answer_name', '')}"
+            f"\nCORRECT ANSWER: {correct}. {facts.get('correct_answer_name', '')}"
+        )
+        lines.append(
+            f"WRONG OPTIONS (cross_out these, NEVER cross_out {correct}): {', '.join(wrong_letters)}"
         )
 
     elif facts["content_type"] == "numerical":

@@ -95,6 +95,38 @@ Best when: there is ONE thing that must be memorized — a rule, number, or form
 data: {"heading": "Key Takeaways", "points": [str, ...]}
 Best for closing — but only if you have genuine takeaways worth repeating
 
+"timeline" — Horizontal timeline with dated events
+data: {"heading": str, "events": [{"date": str, "description": str}, ...]}
+Best when: content has a chronological sequence — history, wars, company milestones (3-5 events)
+
+"quote_card" — Large centered quote with attribution
+data: {"quote": str, "attribution": str}
+Best when: there is one powerful sentence worth framing — a famous saying, a bold claim, a shocking stat
+
+"stats_dashboard" — 3-4 big numbers in boxes side by side
+data: {"heading": str, "stats": [{"value": str, "label": str}, ...]}
+Best when: content is data-heavy — revenue, users, percentages, comparisons
+
+"definition_card" — Term + definition + example
+data: {"term": str, "definition": str, "example": str}
+Best when: a key concept needs to be formally defined — legal terms, medical terms, technical jargon
+
+"before_after" — Two-panel contrast (red vs green)
+data: {"heading": str, "before_title": str, "before_points": [str], "after_title": str, "after_points": [str]}
+Best when: showing transformation — old vs new, problem vs solution, without vs with
+
+"callout_box" — Warning/tip/note/important box with icon
+data: {"type": "tip"|"warning"|"note"|"important", "heading": str, "body": str}
+Best when: there is ONE critical thing the viewer must not miss — a warning, a pro tip, a common mistake
+
+"ranking_list" — Numbered top-3 to top-5 list with medal badges
+data: {"heading": str, "items": [{"label": str, "detail": str}, ...]}
+Best when: content is a ranking, leaderboard, or ordered comparison — top movies, best strategies, most common mistakes
+
+"image_hero" — Cinematic dark full-frame slide with large title + tagline
+data: {"title": str, "tagline": str, "context": str}
+Best when: you need a dramatic emotional moment — opening a new act, revealing a big idea, a "this changed everything" moment
+
 NARRATION RULES:
 - Narration is what the teacher SAYS while this slide is shown
 - Must add insight beyond what is written — examples, analogies, why it matters

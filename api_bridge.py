@@ -70,6 +70,7 @@ class RenderRequest(BaseModel):
     render_mode: str  = None   # "manim" | "presentation" | None (auto — Claude decides)
     with_avatar: bool = False  # presentation only — composite avatar on slides
     video_type:  str  = None   # "marketing" | "educational" | None (default: educational)
+    image_path:  str  = None   # optional: inject your own image, skips Gemini Imagen
 
 
 class JobStatus(BaseModel):
@@ -89,6 +90,17 @@ def _run_pipeline(job_id: str, topic: str, html: str):
     with _jobs_lock:
         jobs[job_id]["status"] = "processing"
         job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
+
+    # If caller provided an image, copy it to the job folder as tony_diagram.png
+    # vision_node will detect it and skip Gemini Imagen automatically
+    injected_image = job.get("image_path")
+    if injected_image and os.path.exists(injected_image):
+        import shutil
+        job_dir = os.path.join("output", f"job_{topic.lower().replace(' ', '_')}")
+        os.makedirs(job_dir, exist_ok=True)
+        dest = os.path.join(job_dir, "tony_diagram.png")
+        shutil.copy2(injected_image, dest)
+        print(f"📸 Using injected image: {injected_image}")
 
     try:
         from autonomous_graph import app as graph
@@ -168,6 +180,7 @@ def start_render(request: RenderRequest):
             "render_mode": request.render_mode,
             "with_avatar": request.with_avatar,
             "video_type":  request.video_type,
+            "image_path":  request.image_path,
         }
 
     thread = threading.Thread(

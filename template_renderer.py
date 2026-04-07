@@ -28,6 +28,7 @@ Visual types handled:
 import os
 import re
 import textwrap
+from groq import Groq
 
 
 # ── LaTeX helpers ─────────────────────────────────────────────────────────────
@@ -148,7 +149,7 @@ def _scene_concept_image(scene: dict, idx: int, image_path: str) -> str:
 """
 
 
-def _scene_image_arrow(scene: dict, idx: int) -> str:
+def _scene_image_arrow(scene: dict, idx: int, image_path: str = None) -> str:
     d        = scene["visual_data"]
     region   = d.get("region", "center")
     label    = d.get("label", "")
@@ -388,28 +389,71 @@ def _scene_summary(scene: dict, idx: int) -> str:
     return "\n".join(lines)
 
 
-def _scene_graph_hint(scene: dict, idx: int) -> str:
-    d            = scene["visual_data"]
-    graph_type   = d.get("graph_type", "generic")
-    description  = d.get("description", "")
-    highlight    = d.get("highlight", "")
-    duration     = d.get("duration", 4.0)
+_GRAPH_SYSTEM_PROMPT = """You are a Manim animation code writer for educational videos.
 
-    return f"""
-        # Scene {idx}: graph_hint — {graph_type}
+Write ONLY the indented body code (8-space indent) that goes inside a Manim construct() method.
+The scene index is provided — suffix ALL variable names with _{idx} to avoid conflicts.
+
+RULES:
+- Use `from manim import *` is already imported — do not re-import
+- config.background_color is already "#0d0d1a" (dark)
+- Start with: self._clear()  (already defined in the class)
+- End with: self._clear()
+- Use Axes for line/curve graphs, VGroup of Rectangle for bar charts, NumberLine for number lines
+- Use MathTex for all labels and math expressions
+- Suffix every variable with _{idx} (e.g. axes_3, curve_3, bar_3)
+- Max 25 lines of code
+- No imports, no class definition, no def construct — just the body lines
+- Use 8-space indentation throughout
+- self.wait({duration}) before the final self._clear()
+
+Output ONLY the Python code lines. No explanation, no markdown fences."""
+
+def _scene_graph_hint(scene: dict, idx: int) -> str:
+    d           = scene["visual_data"]
+    graph_type  = d.get("graph_type", "generic")
+    description = d.get("description", "")
+    highlight   = d.get("highlight", "")
+    duration    = d.get("duration", 4.0)
+
+    prompt = (
+        f"Scene index: {idx}\n"
+        f"Graph type: {graph_type}\n"
+        f"Description: {description}\n"
+        f"Highlight/key insight: {highlight}\n"
+        f"Wait duration: {duration} seconds\n\n"
+        "Write the Manim construct() body code for this graph scene."
+    )
+
+    try:
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": _GRAPH_SYSTEM_PROMPT.format(duration=duration)},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=600,
+        )
+        code = resp.choices[0].message.content.strip()
+        # Strip any markdown fences Groq might add
+        code = re.sub(r"```(?:python)?", "", code).replace("```", "").strip()
+        print(f"   🔢 graph_hint scene {idx}: LLM generated {len(code.splitlines())} lines")
+        return f"\n        # Scene {idx}: graph_hint — {graph_type} (LLM-generated)\n" + code + "\n"
+    except Exception as e:
+        print(f"   ⚠️  graph_hint LLM failed ({e}), falling back to plain axes")
+        return f"""
+        # Scene {idx}: graph_hint — {graph_type} (fallback)
         self._clear()
         axes_{idx} = Axes(
             x_range=[-0.5, 5, 1], y_range=[-0.5, 5, 1],
             x_length=8, y_length=5,
             axis_config={{"color": BLUE_C, "include_tip": True}},
         ).move_to(ORIGIN)
-        xlabel_{idx} = {tex(description[:25] or 'x')}
-        xlabel_{idx}.scale(0.65).next_to(axes_{idx}, DOWN, buff=0.3)
-        self.play(Create(axes_{idx}), Write(xlabel_{idx}), run_time=1.2)
-        highlight_{idx} = {tex(highlight[:50] or description[:50])}
-        highlight_{idx}.scale(0.7).set_color(YELLOW).to_edge(UP, buff=0.4)
-        bg_{idx} = BackgroundRectangle(highlight_{idx}, color=BLACK, fill_opacity=0.75, buff=0.1)
-        self.play(FadeIn(bg_{idx}), Write(highlight_{idx}))
+        label_{idx} = Tex(r"\\text{{{description[:30]}}}")
+        label_{idx}.scale(0.65).next_to(axes_{idx}, DOWN, buff=0.3)
+        self.play(Create(axes_{idx}), Write(label_{idx}), run_time=1.2)
         self.wait({duration})
         self._clear()
 """
@@ -494,7 +538,7 @@ def build_manim_script(
             continue
 
         try:
-            block = gen(scene, i, image_path) if vtype == "concept_image" else gen(scene, i)
+            block = gen(scene, i, image_path) if vtype in ["concept_image", "image_arrow"] else gen(scene, i)
             scene_blocks.append(block)
         except Exception as e:
             print(f"   ⚠️  Scene {i} ({vtype}) generation failed: {e} — skipping")
@@ -538,6 +582,8 @@ class EaseToLearnScene(Scene):
 
     print(f"✅ Manim script written: {output_path} ({len(scenes)} scenes)")
     return output_path
+
+
 
 
 # ── CLI test ──────────────────────────────────────────────────────────────────

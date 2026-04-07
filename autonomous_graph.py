@@ -373,6 +373,20 @@ AVAILABLE LAYOUTS:
 "two_column"    — data: {{"heading": str, "left_title": str, "left_points": [str], "right_title": str, "right_points": [str]}}
 "key_highlight" — data: {{"label": str, "fact": str, "detail": str}}
 "summary"       — data: {{"heading": "Key Takeaways", "points": [str]}}
+"timeline"      — data: {{"heading": str, "events": [{{"date": str, "description": str}}]}}
+"quote_card"    — data: {{"quote": str, "attribution": str}}
+"stats_dashboard" — data: {{"heading": str, "stats": [{{"value": str, "label": str}}]}}
+"definition_card" — data: {{"term": str, "definition": str, "example": str}}
+"before_after"  — data: {{"heading": str, "before_title": str, "before_points": [str], "after_title": str, "after_points": [str]}}
+"callout_box"   — data: {{"type": "tip"|"warning"|"note"|"important", "heading": str, "body": str}}
+"ranking_list"  — data: {{"heading": str, "items": [{{"label": str, "detail": str}}]}}
+"image_hero"    — data: {{"title": str, "tagline": str, "context": str}}
+
+CRITICAL JSON RULES — Groq must follow these exactly:
+- Arrays use square brackets with double-quoted strings: ["item one", "item two"]
+- Objects use curly braces: {{"key": "value"}}
+- NO Python list syntax. NO trailing commas. NO single quotes.
+- All string values must be on a single line (no embedded newlines inside strings)
 
 Return valid JSON only:
 {{"slides": [{{"layout": "...", "data": {{...}}, "narration": "..."}}]}}"""
@@ -715,29 +729,87 @@ app = workflow.compile()
 # ── CLI test ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
+    import argparse
     from dotenv import load_dotenv
     load_dotenv()
 
-    html_file = sys.argv[1] if len(sys.argv) > 1 else "bpf_source.html"
-    topic     = sys.argv[2] if len(sys.argv) > 2 else "Bronchopleural Fistula"
+    parser = argparse.ArgumentParser(description="EaseToLearn Autonomous Graph")
+    parser.add_argument("input",  nargs="?", default="bpf_source.html",
+                        help="HTML file (normal mode) or plain text file (--marketing mode)")
+    parser.add_argument("topic",  nargs="?", default="Bronchopleural Fistula",
+                        help="Topic name")
+    parser.add_argument("--marketing", action="store_true",
+                        help="Skip director/vision, run PPT path with marketing critic. "
+                             "Input file must be plain text.")
+    args = parser.parse_args()
 
-    with open(html_file) as f:
-        html = f.read()
+    if args.marketing:
+        # ── Marketing shortcut ──────────────────────────────────────────────────
+        # Bypasses director (needs HTML) — pre-builds state with plain text content
+        # then invokes node functions directly so the critic marketing lens fires.
+        with open(args.input) as f:
+            content = f.read()
 
-    print(f"🚀 Starting pipeline for: {topic}")
-    final = app.invoke({
-        "raw_input":          html,
-        "topic":              topic,
-        "attempt_count":      0,
-        "ppt_attempt_count":  0,
-        "parsed_facts":       None, "render_mode": None, "scenes": None,
-        "image_path":         None, "audio_files": None, "manim_script_path": None,
-        "output_path":        None, "video_url":   None, "rendering_errors":  None,
-        "with_avatar":        False,
-        "slides":             None, "slide_paths": None, "clip_paths": None,
-        "critic_feedback":    None,
-    })
+        print(f"🚀 [Marketing mode] Topic: {args.topic}")
+
+        state = {
+            "raw_input":         content,
+            "topic":             args.topic,
+            "render_mode":       "presentation",
+            "video_type":        "marketing",   # ← marketing critic lens
+            "parsed_facts":      None,
+            "scenes":            [{"narration_text": content}],  # planner reads this
+            "image_path":        None,
+            "audio_files":       None,
+            "manim_script_path": None,
+            "output_path":       None,
+            "video_url":         None,
+            "rendering_errors":  None,
+            "with_avatar":       False,
+            "slides":            None,
+            "slide_paths":       None,
+            "clip_paths":        None,
+            "critic_feedback":   None,
+            "ppt_attempt_count": 0,
+            "attempt_count":     0,
+        }
+
+        # Planner → Critic loop (up to 2 retries) → Renderer → TTS → Video
+        state = ppt_planner_node(state)
+        for _ in range(3):
+            state = ppt_critic_node(state)
+            if not state.get("critic_feedback"):
+                print("   ✅ Critic approved")
+                break
+            if state.get("ppt_attempt_count", 0) >= 2:
+                print("   ⚠️  Max retries — proceeding")
+                break
+            state = ppt_planner_node(state)
+
+        state = ppt_renderer_node(state)
+        state = ppt_tts_node(state)
+        state = ppt_video_node(state)
+        final = state
+
+    else:
+        # ── Normal flow: HTML → director → vision → manim or PPT ───────────────
+        with open(args.input) as f:
+            html = f.read()
+
+        print(f"🚀 Starting pipeline for: {args.topic}")
+        final = app.invoke({
+            "raw_input":          html,
+            "topic":              args.topic,
+            "attempt_count":      0,
+            "ppt_attempt_count":  0,
+            "parsed_facts":       None, "render_mode": None, "scenes": None,
+            "image_path":         None, "audio_files": None, "manim_script_path": None,
+            "output_path":        None, "video_url":   None, "rendering_errors":  None,
+            "with_avatar":        False,
+            "slides":             None, "slide_paths": None, "clip_paths": None,
+            "critic_feedback":    None,
+            "video_type":         None,
+        })
 
     print(f"\n🏆 Done!")
     print(f"   Video URL : {final.get('video_url')}")

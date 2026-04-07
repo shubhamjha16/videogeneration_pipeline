@@ -1,15 +1,26 @@
 """
 Doodle Slide Generator — EaseToLearn Brand Style
-Renders 1920x1080 PNG slides with multiple layout types.
+Renders 1920x1080 PNG slides with 16 layout types.
 
-Layouts:
-  title_card    — big title + subtitle (opening)
-  bullets       — heading + 2-4 bullet points
-  big_statement — single powerful statement, large centered text
-  steps         — numbered 1,2,3,4 process flow
-  two_column    — left concept + right example/detail
-  key_highlight — yellow background, big key fact
-  summary       — checkmarks + key takeaways (closing)
+Core layouts:
+  chaos_chapter   — high-impact chapter opener (EaseToLearn thumbnail style)
+  title_card      — big title + subtitle (opening)
+  bullets         — heading + 2-4 bullet points
+  big_statement   — single powerful statement, large centered text
+  steps           — numbered 1,2,3,4 process flow
+  two_column      — left concept + right example/detail
+  key_highlight   — dark card, one big key fact in white
+  summary         — checkmarks + key takeaways (closing)
+
+Expanded layouts:
+  timeline        — horizontal timeline with dated events
+  quote_card      — large centered quote with attribution
+  stats_dashboard — 3-4 big numbers in boxes
+  definition_card — term + definition + example
+  before_after    — two-panel red/green contrast
+  callout_box     — warning/tip/note/important box with icon
+  ranking_list    — top 3-5 numbered ranking with medal colors
+  image_hero      — cinematic dark full-frame slide with large title
 """
 
 from PIL import Image, ImageDraw, ImageFont
@@ -560,17 +571,491 @@ def _layout_chaos_chapter(draw, img, data: dict):
 
     return img, draw
 
+# ── NEW LAYOUTS ────────────────────────────────────────────────────────────────
+
+def _layout_timeline(draw, img, data: dict):
+    """Horizontal timeline with 3-5 events. Great for history, wars, company growth."""
+    heading = data.get("heading", "Timeline")
+    events  = data.get("events", [])[:5]
+
+    # Heading
+    hfont = _font(bold=True, size=72)
+    draw.text((80, 80), heading, font=hfont, fill=(20, 20, 20))
+    draw.rectangle([80, 160, 400, 168], fill=(255, 200, 0))
+
+    if not events:
+        return img, draw
+
+    # Timeline bar
+    bar_y = H // 2 + 20
+    bar_x0, bar_x1 = 120, W - 120
+    draw.line([(bar_x0, bar_y), (bar_x1, bar_y)], fill=(60, 60, 60), width=4)
+    _draw_arrow(draw, bar_x1 - 30, bar_y, bar_x1, bar_y, color=(60, 60, 60), width=4)
+
+    spacing = (bar_x1 - bar_x0) // max(len(events), 1)
+
+    for i, event in enumerate(events):
+        if isinstance(event, str):
+            label, desc = event, ""
+        elif isinstance(event, dict):
+            label = event.get("date") or event.get("label", f"Event {i+1}")
+            desc  = event.get("description") or event.get("text", "")
+        else:
+            label, desc = str(event), ""
+
+        cx = bar_x0 + spacing * i + spacing // 2
+
+        # Dot on timeline
+        draw.ellipse([cx - 12, bar_y - 12, cx + 12, bar_y + 12],
+                     fill=(255, 200, 0), outline=(30, 30, 30), width=3)
+
+        # Alternate above and below the timeline
+        if i % 2 == 0:
+            card_y = bar_y - 200
+            draw.line([(cx, bar_y - 12), (cx, card_y + 90)], fill=(180, 180, 180), width=2)
+        else:
+            card_y = bar_y + 40
+            draw.line([(cx, bar_y + 12), (cx, card_y)], fill=(180, 180, 180), width=2)
+
+        # Event card
+        card_w = spacing - 30
+        _draw_wobbly_rect(draw, cx - card_w // 2, card_y, cx + card_w // 2, card_y + 90,
+                          outline=(30, 30, 30), fill=(255, 255, 255), width=3)
+
+        # Label (bold)
+        lfont = _font(bold=True, size=32)
+        wrapped_label = textwrap.shorten(label, width=18, placeholder="…")
+        draw.text((cx - card_w // 2 + 10, card_y + 8), wrapped_label, font=lfont, fill=(30, 30, 30))
+
+        # Description
+        if desc:
+            dfont = _font(bold=False, size=26)
+            wrapped_desc = textwrap.shorten(desc, width=22, placeholder="…")
+            draw.text((cx - card_w // 2 + 10, card_y + 48), wrapped_desc, font=dfont, fill=(80, 80, 80))
+
+    return img, draw
+
+
+def _layout_quote_card(draw, img, data: dict):
+    """Large inspirational/impactful quote with attribution. Great for marketing."""
+    quote      = data.get("quote", "")
+    attribution = data.get("attribution", "")
+
+    # Large yellow quotation mark
+    qfont = _font(bold=True, size=300)
+    draw.text((100, 60), "\u201c", font=qfont, fill=(255, 200, 0, 120))
+
+    # Quote text — centered, large
+    qtext_font = _font(bold=True, size=72)
+    wrapped = textwrap.fill(quote, width=32)
+    lines = wrapped.split('\n')[:5]
+
+    total_h = len(lines) * 90
+    ty = (H - total_h) // 2 - 40
+
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=qtext_font)
+        tw = bbox[2] - bbox[0]
+        draw.text(((W - tw) // 2, ty), line, font=qtext_font, fill=(30, 30, 30))
+        ty += 90
+
+    # Yellow accent line
+    draw.rectangle([W // 2 - 150, ty + 20, W // 2 + 150, ty + 28], fill=(255, 200, 0))
+
+    # Attribution
+    if attribution:
+        afont = _font(bold=False, size=48)
+        attr_text = f"— {attribution}"
+        bbox = draw.textbbox((0, 0), attr_text, font=afont)
+        aw = bbox[2] - bbox[0]
+        draw.text(((W - aw) // 2, ty + 50), attr_text, font=afont, fill=(100, 80, 40))
+
+    # Closing quote mark
+    draw.text((W - 250, H - 350), "\u201d", font=qfont, fill=(255, 220, 50, 80))
+
+    return img, draw
+
+
+def _layout_stats_dashboard(draw, img, data: dict):
+    """3-4 big numbers in boxes. Great for data-heavy, business, impact slides."""
+    heading = data.get("heading", "By The Numbers")
+    stats   = data.get("stats", [])[:4]
+
+    # Heading
+    hfont = _font(bold=True, size=72)
+    bbox = draw.textbbox((0, 0), heading, font=hfont)
+    hw = bbox[2] - bbox[0]
+    draw.text(((W - hw) // 2, 70), heading, font=hfont, fill=(20, 20, 20))
+    draw.rectangle([(W - hw) // 2, 150, (W + hw) // 2, 158], fill=(255, 200, 0))
+
+    if not stats:
+        return img, draw
+
+    # Stat boxes — arrange in a row
+    n = len(stats)
+    box_w = min(380, (W - 160) // n - 30)
+    total_w = n * box_w + (n - 1) * 30
+    start_x = (W - total_w) // 2
+    box_y = 220
+
+    for i, stat in enumerate(stats):
+        if isinstance(stat, dict):
+            value = str(stat.get("value", stat.get("number", "?")))
+            label = stat.get("label", stat.get("text", ""))
+        elif isinstance(stat, str):
+            parts = stat.split(":", 1) if ":" in stat else [stat, ""]
+            value, label = parts[0].strip(), parts[1].strip() if len(parts) > 1 else ""
+        else:
+            value, label = str(stat), ""
+
+        bx = start_x + i * (box_w + 30)
+
+        # Box with yellow top accent
+        _draw_wobbly_rect(draw, bx, box_y, bx + box_w, box_y + 320,
+                          outline=(30, 30, 30), fill=(255, 255, 255), width=4)
+        draw.rectangle([bx + 4, box_y + 4, bx + box_w - 4, box_y + 14], fill=(255, 200, 0))
+
+        # Big number
+        vfont = _font(bold=True, size=90)
+        value_short = textwrap.shorten(value, width=10, placeholder="…")
+        vbbox = draw.textbbox((0, 0), value_short, font=vfont)
+        vw = vbbox[2] - vbbox[0]
+        draw.text((bx + (box_w - vw) // 2, box_y + 60), value_short, font=vfont, fill=(30, 30, 30))
+
+        # Label
+        if label:
+            lfont = _font(bold=False, size=38)
+            wrapped = textwrap.fill(label, width=16)
+            llines = wrapped.split('\n')[:3]
+            ly = box_y + 180
+            for ll in llines:
+                lbbox = draw.textbbox((0, 0), ll, font=lfont)
+                lw = lbbox[2] - lbbox[0]
+                draw.text((bx + (box_w - lw) // 2, ly), ll, font=lfont, fill=(80, 80, 80))
+                ly += 44
+
+    return img, draw
+
+
+def _layout_definition_card(draw, img, data: dict):
+    """Term + meaning + example. Great for educational, legal, medical."""
+    term       = data.get("term", "")
+    definition = data.get("definition", "")
+    example    = data.get("example", "")
+
+    # Yellow "DEFINITION" label
+    label_font = _font(bold=True, size=36)
+    draw.text((100, 80), "D E F I N I T I O N", font=label_font, fill=(180, 140, 0))
+
+    # Term — large, bold
+    tfont = _font(bold=True, size=100)
+    wrapped_term = textwrap.fill(term, width=26)
+    tlines = wrapped_term.split('\n')[:2]
+    ty = 140
+    for tl in tlines:
+        draw.text((100, ty), tl, font=tfont, fill=(20, 20, 20))
+        ty += 110
+
+    # Yellow divider
+    draw.rectangle([100, ty + 10, 500, ty + 18], fill=(255, 200, 0))
+
+    # Definition in a white card
+    card_y = ty + 50
+    _draw_wobbly_rect(draw, 80, card_y, W - 80, card_y + 250,
+                      outline=(30, 30, 30), fill=(255, 255, 255), width=3)
+
+    dfont = _font(bold=False, size=52)
+    wrapped_def = textwrap.fill(definition, width=55)
+    dlines = wrapped_def.split('\n')[:4]
+    dy = card_y + 30
+    for dl in dlines:
+        draw.text((120, dy), dl, font=dfont, fill=(50, 50, 50))
+        dy += 58
+
+    # Example in a subtle yellow-tinted box
+    if example:
+        ey = card_y + 280
+        _draw_wobbly_rect(draw, 80, ey, W - 80, ey + 140,
+                          outline=(200, 170, 50), fill=(255, 248, 210), width=3)
+        efont_label = _font(bold=True, size=34)
+        draw.text((120, ey + 12), "💡 Example:", font=efont_label, fill=(150, 120, 20))
+        efont = _font(bold=False, size=42)
+        ex_wrapped = textwrap.shorten(example, width=80, placeholder="…")
+        draw.text((120, ey + 55), ex_wrapped, font=efont, fill=(80, 70, 30))
+
+    return img, draw
+
+
+def _layout_before_after(draw, img, data: dict):
+    """Two-panel visual contrast. Great for marketing, case studies, transformations."""
+    heading     = data.get("heading", "")
+    before_title = data.get("before_title", "Before")
+    before_points = data.get("before_points", [])[:3]
+    after_title  = data.get("after_title", "After")
+    after_points = data.get("after_points", [])[:3]
+
+    # Heading
+    if heading:
+        hfont = _font(bold=True, size=68)
+        bbox = draw.textbbox((0, 0), heading, font=hfont)
+        hw = bbox[2] - bbox[0]
+        draw.text(((W - hw) // 2, 70), heading, font=hfont, fill=(20, 20, 20))
+
+    # Two panels
+    panel_w = (W - 200) // 2
+    panel_h = 520
+    left_x, right_x = 70, W // 2 + 30
+    panel_y = 180
+
+    # BEFORE panel — grey/dull tint
+    _draw_wobbly_rect(draw, left_x, panel_y, left_x + panel_w, panel_y + panel_h,
+                      outline=(150, 100, 100), fill=(245, 235, 230), width=4)
+    # Red "X" accent bar
+    draw.rectangle([left_x + 4, panel_y + 4, left_x + panel_w - 4, panel_y + 14],
+                   fill=(200, 80, 80))
+
+    btfont = _font(bold=True, size=56)
+    draw.text((left_x + 40, panel_y + 30), f"✗  {before_title}", font=btfont, fill=(150, 50, 50))
+
+    bfont = _font(bold=False, size=44)
+    by = panel_y + 110
+    for bp in before_points:
+        wrapped = textwrap.shorten(bp, width=34, placeholder="…")
+        draw.text((left_x + 60, by), f"•  {wrapped}", font=bfont, fill=(100, 70, 70))
+        by += 60
+
+    # Arrow between panels
+    arrow_y = panel_y + panel_h // 2
+    _draw_arrow(draw, left_x + panel_w + 10, arrow_y, right_x - 10, arrow_y,
+                color=(255, 200, 0), width=5)
+
+    # AFTER panel — bright/energetic tint
+    _draw_wobbly_rect(draw, right_x, panel_y, right_x + panel_w, panel_y + panel_h,
+                      outline=(50, 150, 50), fill=(230, 250, 230), width=4)
+    # Green accent bar
+    draw.rectangle([right_x + 4, panel_y + 4, right_x + panel_w - 4, panel_y + 14],
+                   fill=(80, 200, 80))
+
+    atfont = _font(bold=True, size=56)
+    draw.text((right_x + 40, panel_y + 30), f"✓  {after_title}", font=atfont, fill=(30, 120, 30))
+
+    afont = _font(bold=False, size=44)
+    ay = panel_y + 110
+    for ap in after_points:
+        wrapped = textwrap.shorten(ap, width=34, placeholder="…")
+        draw.text((right_x + 60, ay), f"•  {wrapped}", font=afont, fill=(40, 100, 40))
+        ay += 60
+
+    return img, draw
+
+
+def _layout_callout_box(draw, img, data: dict):
+    """Warning/tip/note style card. Great for technical, how-to, important facts."""
+    callout_type = data.get("type", "note").lower()   # "tip", "warning", "note", "important"
+    heading      = data.get("heading", "")
+    body         = data.get("body", "")
+
+    # Style per type
+    styles = {
+        "tip":       {"icon": "💡", "accent": (80, 200, 80),  "bg": (230, 250, 230), "label": "PRO TIP"},
+        "warning":   {"icon": "⚠️", "accent": (220, 160, 40), "bg": (255, 248, 220), "label": "WARNING"},
+        "note":      {"icon": "📌", "accent": (80, 130, 200), "bg": (230, 240, 255), "label": "NOTE"},
+        "important": {"icon": "🔥", "accent": (220, 80, 80),  "bg": (255, 235, 235), "label": "IMPORTANT"},
+    }
+    style = styles.get(callout_type, styles["note"])
+
+    # Main card
+    card_x, card_y = 120, 120
+    card_w, card_h = W - 240, H - 320
+
+    _draw_wobbly_rect(draw, card_x, card_y, card_x + card_w, card_y + card_h,
+                      outline=style["accent"], fill=style["bg"], width=5)
+
+    # Thick accent bar on left
+    draw.rectangle([card_x, card_y, card_x + 12, card_y + card_h], fill=style["accent"])
+
+    # Icon + Label
+    icon_font = _font(bold=True, size=60)
+    draw.text((card_x + 40, card_y + 30), style["icon"], font=icon_font, fill=(30, 30, 30))
+
+    label_font = _font(bold=True, size=48)
+    draw.text((card_x + 120, card_y + 38), style["label"], font=label_font, fill=style["accent"])
+
+    # Heading
+    if heading:
+        hfont = _font(bold=True, size=72)
+        wrapped_h = textwrap.fill(heading, width=36)
+        hlines = wrapped_h.split('\n')[:2]
+        hy = card_y + 120
+        for hl in hlines:
+            draw.text((card_x + 40, hy), hl, font=hfont, fill=(20, 20, 20))
+            hy += 85
+
+    # Body text
+    if body:
+        bfont = _font(bold=False, size=52)
+        wrapped_b = textwrap.fill(body, width=48)
+        blines = wrapped_b.split('\n')[:6]
+        by = card_y + 300
+        for bl in blines:
+            draw.text((card_x + 40, by), bl, font=bfont, fill=(50, 50, 50))
+            by += 62
+
+    return img, draw
+
+
+def _layout_ranking_list(draw, img, data: dict):
+    """Top 3-5 numbered ranking with medal colors. Great for listicles, comparisons, top-N."""
+    heading = data.get("heading", "Top Rankings")
+    items   = data.get("items", [])[:5]
+
+    # Heading
+    hfont = _font(bold=True, size=76)
+    bbox = draw.textbbox((0, 0), heading, font=hfont)
+    hw = bbox[2] - bbox[0]
+    draw.text(((W - hw) // 2, 65), heading, font=hfont, fill=(20, 20, 20))
+    draw.rectangle([(W - hw) // 2, 150, (W + hw) // 2, 158], fill=(255, 200, 0))
+
+    if not items:
+        return img, draw
+
+    # Medal colors for ranks 1-3, plain for the rest
+    medal_colors = [(255, 200, 0), (192, 192, 192), (180, 120, 60)]
+    rank_labels  = ["#1", "#2", "#3", "#4", "#5"]
+
+    row_h = 115
+    start_y = 185
+    for i, item in enumerate(items):
+        if isinstance(item, dict):
+            label = item.get("label") or item.get("name") or item.get("title", f"Item {i+1}")
+            detail = item.get("detail") or item.get("description") or item.get("score", "")
+        else:
+            label, detail = str(item), ""
+
+        ry = start_y + i * (row_h + 14)
+        row_fill = (255, 255, 255)
+
+        # Row card
+        _draw_wobbly_rect(draw, 80, ry, W - 80, ry + row_h,
+                          outline=(30, 30, 30), fill=row_fill, width=3)
+
+        # Rank badge
+        badge_color = medal_colors[i] if i < 3 else (210, 210, 210)
+        draw.ellipse([96, ry + 18, 96 + 76, ry + 18 + 76],
+                     fill=badge_color, outline=(30, 30, 30), width=3)
+        draw.text((96 + 38, ry + 18 + 38), rank_labels[i],
+                  font=_font(bold=True, size=34), fill=(20, 20, 20), anchor="mm")
+
+        # Label text
+        lfont = _font(bold=True, size=54)
+        label_short = textwrap.shorten(label, width=52, placeholder="…")
+        draw.text((196, ry + 24), label_short, font=lfont, fill=(20, 20, 20))
+
+        # Detail text
+        if detail:
+            dfont = _font(bold=False, size=38)
+            detail_short = textwrap.shorten(str(detail), width=70, placeholder="…")
+            draw.text((196, ry + 70), detail_short, font=dfont, fill=(100, 80, 40))
+
+    return img, draw
+
+
+def _layout_image_hero(draw, img, data: dict):
+    """Cinematic full-frame dark slide — large title + tagline on rich gradient. No external image needed."""
+    title   = data.get("title", "")
+    tagline = data.get("tagline", "")
+    context = data.get("context", "")
+
+    # Dark cinematic gradient background (deep navy → near black)
+    for y in range(H):
+        ratio = y / H
+        r = int(18  + ratio * 8)
+        g = int(22  + ratio * 5)
+        b = int(45  + ratio * 10)
+        draw.line([(0, y), (W, y)], fill=(r, g, b))
+
+    # Yellow horizontal stripe near the top
+    draw.rectangle([0, 0, W, 8], fill=(255, 200, 0))
+
+    # Scattered dots (star-field feel)
+    rng = random.Random(hash(title) % 99999)
+    for _ in range(120):
+        sx = rng.randint(0, W)
+        sy = rng.randint(0, H)
+        sr = rng.randint(1, 3)
+        alpha = rng.randint(100, 220)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        od.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=(255, 255, 255, alpha))
+        img = img.convert("RGBA")
+        img.paste(overlay, (0, 0), overlay)
+        img = img.convert("RGB")
+        draw = ImageDraw.Draw(img)
+
+    # Yellow accent bar on left edge
+    draw.rectangle([0, 0, 12, H], fill=(255, 200, 0))
+
+    # Big title — white on dark
+    tfont = _font(bold=True, size=110)
+    wrapped = textwrap.fill(title, width=26)
+    tlines = wrapped.split('\n')
+    ty = H // 2 - len(tlines) * 70 - 30
+    for line in tlines:
+        bbox = draw.textbbox((0, 0), line, font=tfont)
+        tw = bbox[2] - bbox[0]
+        draw.text(((W - tw) // 2, ty), line, font=tfont, fill=(255, 252, 220))
+        ty += 128
+
+    # Yellow underline
+    draw.rectangle([W // 2 - 200, ty + 10, W // 2 + 200, ty + 18], fill=(255, 200, 0))
+
+    # Tagline — yellow
+    if tagline:
+        tgfont = _font(bold=False, size=62)
+        tg_wrapped = textwrap.fill(tagline, width=50)
+        for line in tg_wrapped.split('\n')[:2]:
+            bbox = draw.textbbox((0, 0), line, font=tgfont)
+            lw = bbox[2] - bbox[0]
+            draw.text(((W - lw) // 2, ty + 40), line, font=tgfont, fill=(255, 220, 80))
+            ty += 70
+
+    # Context — subtle grey
+    if context:
+        cfont = _font(bold=False, size=44)
+        ctx_wrapped = textwrap.fill(context, width=70)
+        cy2 = ty + 50
+        for line in ctx_wrapped.split('\n')[:2]:
+            bbox = draw.textbbox((0, 0), line, font=cfont)
+            lw = bbox[2] - bbox[0]
+            draw.text(((W - lw) // 2, cy2), line, font=cfont, fill=(180, 170, 140))
+            cy2 += 54
+
+    # Brand watermark
+    draw.text((W - 40, H - 30), "www.easetolearn.com",
+              font=_font(bold=False, size=26), fill=(120, 110, 80), anchor="rs")
+
+    return img, draw
+
+
 # ── Layout dispatcher ──────────────────────────────────────────────────────────
 
 _LAYOUTS = {
-    "title_card":     _layout_title_card,
-    "bullets":        _layout_bullets,
-    "big_statement":  _layout_big_statement,
-    "steps":          _layout_steps,
-    "two_column":     _layout_two_column,
-    "key_highlight":  _layout_key_highlight,
-    "summary":        _layout_summary,
-    "chaos_chapter":  _layout_chaos_chapter,
+    "title_card":       _layout_title_card,
+    "bullets":          _layout_bullets,
+    "big_statement":    _layout_big_statement,
+    "steps":            _layout_steps,
+    "two_column":       _layout_two_column,
+    "key_highlight":    _layout_key_highlight,
+    "summary":          _layout_summary,
+    "chaos_chapter":    _layout_chaos_chapter,
+    "timeline":         _layout_timeline,
+    "quote_card":       _layout_quote_card,
+    "stats_dashboard":  _layout_stats_dashboard,
+    "definition_card":  _layout_definition_card,
+    "before_after":     _layout_before_after,
+    "callout_box":      _layout_callout_box,
+    "ranking_list":     _layout_ranking_list,
+    "image_hero":       _layout_image_hero,
 }
 
 
