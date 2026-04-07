@@ -557,7 +557,8 @@ def ppt_video_node(state: TonyState) -> TonyState:
                 output_dir=job_dir, avatar_type="human"
             )
             base_clip   = VideoFileClip(base_path)
-            avatar_clip = fx_loop(VideoFileClip(avatar_path).without_audio(), duration=base_clip.duration)
+            raw_avatar  = VideoFileClip(avatar_path).without_audio()
+            avatar_clip = fx_loop(raw_avatar, duration=base_clip.duration)
             av_resized  = avatar_clip.resize(width=320)
             W, H = base_clip.size
             composite = CompositeVideoClip([
@@ -565,8 +566,10 @@ def ppt_video_node(state: TonyState) -> TonyState:
                 av_resized.set_position((W - 340, H - 260)),
             ]).set_audio(base_clip.audio)
             composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
-            base_clip.close(); avatar_clip.close()
+            # Close ALL MoviePy clips to prevent file-handle leaks
+            composite.close(); base_clip.close(); raw_avatar.close(); avatar_clip.close()
         else:
+            # Non-avatar path uses pure ffmpeg subprocess — no MoviePy objects to leak
             _image_to_video(slide_img, audio_path, clip_path)
 
         if os.path.exists(clip_path):

@@ -535,14 +535,28 @@ def _layout_chaos_chapter(draw, img, data: dict):
             draw.text((card_x + 120, ty), line, font=f, fill=(30, 30, 30))
             ty += f.size + 20
         
-    # 6. Subtitle
-    sfont = _font(bold=False, size=65)
-    draw.text((card_x + 120, ty + 20), subtitle, font=sfont, fill=(60, 60, 60))
+    # 6. Subtitle — wrap and shrink to fit card
+    sfont   = _font(bold=False, size=65)
+    sub_ty  = ty + 20
+    max_w   = card_w - 160
+    wrapped = textwrap.fill(subtitle, width=30)
+    sub_lines = wrapped.split('\n')
+    last_line_w = 0
+    for line in sub_lines:
+        # shrink font if still too wide
+        sf = sfont
+        for sz in [65, 52, 42]:
+            sf = _font(bold=False, size=sz)
+            bbox = draw.textbbox((0, 0), line, font=sf)
+            if (bbox[2] - bbox[0]) <= max_w:
+                break
+        draw.text((card_x + 120, sub_ty), line, font=sf, fill=(60, 60, 60))
+        bbox = draw.textbbox((0, 0), line, font=sf)
+        last_line_w = bbox[2] - bbox[0]
+        sub_ty += sf.size + 8
 
-    # Yellow underline beneath subtitle
-    bbox = draw.textbbox((0, 0), subtitle, font=sfont)
-    sub_w = bbox[2] - bbox[0]
-    draw.rectangle([card_x + 120, ty + 100, card_x + 120 + sub_w, ty + 112], fill=(255, 200, 0))
+    # Yellow underline under last subtitle line
+    draw.rectangle([card_x + 120, sub_ty + 4, card_x + 120 + last_line_w, sub_ty + 14], fill=(255, 200, 0))
 
     return img, draw
 

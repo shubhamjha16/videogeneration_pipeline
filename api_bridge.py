@@ -32,10 +32,11 @@ load_dotenv()
 
 app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
 
-# CORS — allow Spring Boot backend on same VPC
+# CORS — read allowed origins from env; defaults to localhost only
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # restrict to Spring Boot IP in production via env
+    allow_origins=_cors_origins,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
@@ -71,10 +72,12 @@ class RenderRequest(BaseModel):
 
 
 class JobStatus(BaseModel):
-    job_id:    str
-    status:    str        # queued | processing | completed | failed
-    video_url: str = ""
-    error:     str = ""
+    job_id:      str
+    status:      str        # queued | processing | completed | failed
+    video_url:   str  = ""
+    error:       str  = ""
+    render_mode: str  = None   # echoed back so callers know which path ran
+    with_avatar: bool = False
 
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
@@ -152,14 +155,16 @@ def start_render(request: RenderRequest):
         raise HTTPException(status_code=400, detail="topic and html are required")
 
     job_id = str(uuid.uuid4())[:12]
-    jobs[job_id] = {
-        "job_id":      job_id,
-        "status":      "queued",
-        "video_url":   "",
-        "error":       "",
-        "render_mode": request.render_mode,
-        "with_avatar": request.with_avatar,
-    }
+
+    with _jobs_lock:
+        jobs[job_id] = {
+            "job_id":      job_id,
+            "status":      "queued",
+            "video_url":   "",
+            "error":       "",
+            "render_mode": request.render_mode,
+            "with_avatar": request.with_avatar,
+        }
 
     thread = threading.Thread(
         target=_run_pipeline,
@@ -170,7 +175,8 @@ def start_render(request: RenderRequest):
     _save_jobs()
 
     print(f"🚀 Job {job_id} queued for: {request.topic}")
-    return jobs[job_id]
+    with _jobs_lock:
+        return dict(jobs[job_id])
 
 
 @app.get("/status/{job_id}", response_model=JobStatus)

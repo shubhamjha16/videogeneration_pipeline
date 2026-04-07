@@ -1,5 +1,5 @@
 """
-Healer Agent — Claude Opus
+Healer Agent — Groq (Llama 3.3)
 When Manim render fails, reads the error + broken script,
 returns a fixed version of the script.
 
@@ -7,7 +7,6 @@ Called by autonomous_graph.py healer_node on render failure.
 """
 
 import os
-import anthropic
 from groq import Groq
 
 SYSTEM_PROMPT = """You are a Manim expert fixing broken Python animation scripts.
@@ -31,7 +30,7 @@ Return ONLY the complete fixed Python script. No explanation, no markdown."""
 
 def run_healer(broken_script: str, error_message: str) -> str:
     """
-    Ask Claude Opus to fix a broken Manim script.
+    Ask Groq (Llama 3.3) to fix a broken Manim script.
 
     Args:
         broken_script : full content of the broken .py file
@@ -40,25 +39,6 @@ def run_healer(broken_script: str, error_message: str) -> str:
     Returns:
         Fixed Python script as a string
     """
-    # client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    # response = client.messages.create(
-    #     model="claude-opus-4-6",
-    #     max_tokens=8000,
-    #     thinking={"type": "adaptive"},
-    #     system=SYSTEM_PROMPT,
-    #     messages=[{
-    #         "role": "user",
-    #         "content": (
-    #             f"ERROR MESSAGE:\n{error_message}\n\n"
-    #             f"BROKEN SCRIPT:\n```python\n{broken_script}\n```\n\n"
-    #             f"Return the complete fixed script."
-    #         )
-    #     }],
-    # )
-    # fixed = next(
-    #     (b.text for b in response.content if b.type == "text"), broken_script
-    # )
-    # return fixed.replace("```python", "").replace("```", "").strip()
 
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     response = client.chat.completions.create(
