@@ -85,6 +85,7 @@ class TonyState(TypedDict):
     rendering_errors: Optional[str]
     attempt_count:    int
     with_avatar:      Optional[bool]   # presentation only — show avatar on slides
+    video_type:       Optional[str]    # "marketing" | "educational" | None (default: educational)
 
 
 # ── Node 1: Director ──────────────────────────────────────────────────────────
@@ -377,18 +378,52 @@ Return valid JSON only:
 {{"slides": [{{"layout": "...", "data": {{...}}, "narration": "..."}}]}}"""
 
 
-_PPT_CRITIC_PROMPT = """You are a ruthless quality critic for educational presentation videos.
+# ── Shared variety rules (injected into ALL critic modes) ─────────────────────
+_VARIETY_RULES = """
+VISUAL VARIETY — MANDATORY REJECTION RULES:
+V1. Same layout used for more than 30%% of slides → REJECT (e.g. 3+ bullets out of 8 slides)
+V2. Three identical layouts in a row → REJECT (e.g. bullets→bullets→bullets)
+V3. No "key_highlight" or "big_statement" used at all → REJECT (every video needs at least one dramatic moment)
+V4. All chaos_chapter subtitles follow the same sentence pattern → REJECT (vary the phrasing)
+V5. Any slide could appear in a video about a DIFFERENT topic without changing → REJECT
+"""
+
+_PPT_CRITIC_EDUCATIONAL = """You are a ruthless quality critic for EDUCATIONAL presentation videos.
+You are judging whether a student will LEARN from this presentation.
 
 Review this slide plan and decide: APPROVE or REJECT.
 
-REJECT if ANY of these are true:
-1. Any narration starts with generic phrases like "let's explore", "in this slide", "today we", "welcome to"
-2. Any chaos_chapter subtitle is generic (e.g. "Introduction", "Overview", "Getting Started")
-3. Same layout used 4+ times
-4. Any bullet point is vague (no specific names, numbers, or dates)
-5. Any slide could appear in a video about a DIFFERENT topic without changing
-6. The big_statement contains no specific fact (no number, name, or date)
-7. The key_highlight fact is vague or not memorable
+EDUCATIONAL QUALITY RULES:
+E1. Any narration starts with generic phrases like "let's explore", "in this slide", "today we", "welcome to" → REJECT
+E2. Any chaos_chapter subtitle is generic (e.g. "Introduction", "Overview", "Getting Started") → REJECT
+E3. Any bullet point is vague (no specific names, numbers, or dates) → REJECT
+E4. A complex term is introduced without being defined or explained → REJECT
+E5. The narration just restates the bullet points instead of adding insight → REJECT
+E6. The big_statement contains no specific fact (no number, name, or date) → REJECT
+E7. The key_highlight fact is vague or not memorable → REJECT
+
+{variety_rules}
+
+BE SPECIFIC in your feedback — name which slide number has which problem.
+
+Return JSON only:
+{{"approved": true/false, "feedback": "specific issues or empty string if approved", "score": 1-10}}"""
+
+_PPT_CRITIC_MARKETING = """You are a ruthless quality critic for MARKETING presentation videos.
+You are judging whether a VIEWER will be hooked, excited, and convinced to take action.
+
+Review this slide plan and decide: APPROVE or REJECT.
+
+MARKETING IMPACT RULES:
+M1. The first slide does not have a dramatic hook or bold claim → REJECT
+M2. Any narration sounds like a textbook instead of a pitch → REJECT
+M3. No slide creates urgency or emotional response → REJECT
+M4. Any chaos_chapter subtitle is generic (e.g. "Introduction", "Overview") → REJECT
+M5. The narration uses passive voice or weak verbs → REJECT (use "Transforms", "Unlocks", "Eliminates")
+M6. No clear call-to-action or memorable takeaway in the final slides → REJECT
+M7. More than 2 bullet-heavy slides — too much text kills marketing impact → REJECT
+
+{variety_rules}
 
 BE SPECIFIC in your feedback — name which slide number has which problem.
 
@@ -441,13 +476,20 @@ def ppt_planner_node(state: TonyState) -> TonyState:
 
 
 def ppt_critic_node(state: TonyState) -> TonyState:
-    """Groq: review slide plan quality. Reject if generic or repetitive."""
-    print(f"🔍 [PPT Critic] Reviewing slide plan...")
+    """Groq: review slide plan quality. Reject if generic, repetitive, or wrong tone."""
+    video_type = state.get("video_type") or "educational"
+    print(f"🔍 [PPT Critic] Reviewing slide plan (mode: {video_type})...")
 
     from groq import Groq
     import json
 
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+    # Select the right "soul" based on video_type
+    if video_type == "marketing":
+        critic_prompt = _PPT_CRITIC_MARKETING.format(variety_rules=_VARIETY_RULES)
+    else:
+        critic_prompt = _PPT_CRITIC_EDUCATIONAL.format(variety_rules=_VARIETY_RULES)
 
     slides_summary = json.dumps([
         {"slide": i+1, "layout": s.get("layout"), "data": s.get("data"), "narration": s.get("narration")}
@@ -458,7 +500,7 @@ def ppt_critic_node(state: TonyState) -> TonyState:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system",  "content": _PPT_CRITIC_PROMPT},
+                {"role": "system",  "content": critic_prompt},
                 {"role": "user",    "content": f"TOPIC: {state['topic']}\n\nSLIDE PLAN:\n{slides_summary}"}
             ],
             response_format={"type": "json_object"}

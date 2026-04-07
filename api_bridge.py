@@ -69,6 +69,7 @@ class RenderRequest(BaseModel):
     html:        str
     render_mode: str  = None   # "manim" | "presentation" | None (auto — Claude decides)
     with_avatar: bool = False  # presentation only — composite avatar on slides
+    video_type:  str  = None   # "marketing" | "educational" | None (default: educational)
 
 
 class JobStatus(BaseModel):
@@ -78,6 +79,7 @@ class JobStatus(BaseModel):
     error:       str  = ""
     render_mode: str  = None   # echoed back so callers know which path ran
     with_avatar: bool = False
+    video_type:  str  = None   # echoed back: "marketing" | "educational"
 
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
@@ -98,6 +100,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             "parsed_facts":      None,
             "render_mode":       job.get("render_mode"),
             "with_avatar":       job.get("with_avatar", False),
+            "video_type":        job.get("video_type"),
             "scenes":            None,
             "image_path":        None,
             "audio_files":       None,
@@ -164,6 +167,7 @@ def start_render(request: RenderRequest):
             "error":       "",
             "render_mode": request.render_mode,
             "with_avatar": request.with_avatar,
+            "video_type":  request.video_type,
         }
 
     thread = threading.Thread(
