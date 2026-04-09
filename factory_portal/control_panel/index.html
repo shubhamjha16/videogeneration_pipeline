@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factory Control | EaseToLearn</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono&family=Outfit:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="industrial">
+    <aside class="sidebar glass">
+        <div class="sidebar-header">
+            <div class="logo">
+                <span class="gradient-text">FACTORY</span>HUB
+            </div>
+            <div class="version">TEAM TONY v4.6</div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="nav-btn active" data-tab="mission">
+                <i data-lucide="layout-grid"></i> Mission Control
+            </button>
+            <button class="nav-btn" data-tab="vault">
+                <i data-lucide="database"></i> Curriculum Vault
+            </button>
+        </nav>
+        
+        <div class="control-group">
+            <span class="label">Autonomous Overrides</span>
+            
+            <div class="switch-item">
+                <div class="switch-label">
+                    <span class="title">Render Path</span>
+                    <span class="desc">Force MANIM or PPT</span>
+                </div>
+                <div class="status-pill mode-manim">MANIM</div>
+                <label class="toggle">
+                    <input type="checkbox" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="switch-item">
+                <div class="switch-label">
+                    <span class="title">Critic Soul</span>
+                    <span class="desc">EDU vs Marketing logic</span>
+                </div>
+                <div class="status-pill mode-edu">EDU</div>
+                <label class="toggle">
+                    <input type="checkbox" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="switch-item">
+                <div class="switch-label">
+                    <span class="title">Vision Engine</span>
+                    <span class="desc">Gemini Imagen 3.0</span>
+                </div>
+                <div class="status-pill auto">AUTO</div>
+                <label class="toggle">
+                    <input type="checkbox" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <span class="label">Factory Vitals</span>
+            <div class="gauge-item">
+                <div class="gauge-header">
+                    <span>ElevenLabs Balance</span>
+                    <span class="value">42.1k</span>
+                </div>
+                <div class="gauge-bar"><div class="fill" style="width: 42%;"></div></div>
+            </div>
+            <div class="gauge-item">
+                <div class="gauge-header">
+                    <span>Active Model Latency</span>
+                    <span class="value"> Claude-4.6 (1.2s)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="btn btn-danger w-full">
+                <i data-lucide="octagon-alert"></i> SYSTEM HALT
+            </button>
+            <div class="copyright-mini">
+                &copy; 2026 SelfAssessor Technologies Ltd
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="top-bar glass">
+            <div class="search-bar">
+                <i data-lucide="search"></i>
+                <input type="text" placeholder="Search factory jobs or curriculum...">
+            </div>
+            <div class="user-actions">
+                <button class="btn btn-secondary" id="bulkIngestBtn">
+                    <i data-lucide="layers"></i> Bulk Ingest Curriculum
+                </button>
+                <div class="status-badge">
+                    <span class="pulse"></span> Factory Operational
+                </div>
+            </div>
+        </header>
+
+        <!-- MISSION CONTROL TAB -->
+        <section id="missionTab" class="tab-content active">
+            <section class="pipeline-view">
+                <div class="column">
+                    <div class="column-header">
+                        <h3>Ingestion</h3>
+                        <span class="count">2</span>
+                    </div>
+                    <div class="scroll-area">
+                        <div class="job-card glass">
+                            <div class="job-header">
+                                <span class="job-id">#JOB-102</span>
+                                <span class="priority high">MCQ Locked</span>
+                            </div>
+                            <p class="job-title">Probability Masterclass</p>
+                            <div class="job-footer">
+                                <span><i data-lucide="file-json"></i> facts.json</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column">
+                    <div class="column-header">
+                        <h3>Synthesis</h3>
+                        <span class="count">1</span>
+                    </div>
+                    <div class="scroll-area">
+                        <div class="job-card glass active">
+                            <div class="job-header">
+                                <span class="job-id">#JOB-101</span>
+                                <span class="status-text">Imagen Gen...</span>
+                            </div>
+                            <p class="job-title">Forensic Anatomy</p>
+                            <div class="progress-container">
+                                <div class="progress-bar" style="width: 65%;"></div>
+                            </div>
+                            <div class="job-footer">
+                                <span><i data-lucide="image"></i> diagram_01.png</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column">
+                    <div class="column-header">
+                        <h3>Orchestration</h3>
+                        <span class="count">1</span>
+                    </div>
+                    <div class="scroll-area">
+                        <div class="job-card glass active branch">
+                            <div class="job-header">
+                                <span class="job-id">#JOB-099</span>
+                                <span class="status-text">PPT Planner</span>
+                            </div>
+                            <p class="job-title">UPSC History 2026</p>
+                            <div class="job-footer">
+                                <span><i data-lucide="layout"></i> 8 Slides</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column">
+                    <div class="column-header">
+                        <h3>Production</h3>
+                        <span class="count">1</span>
+                    </div>
+                    <div class="scroll-area">
+                        <div class="job-card glass active render">
+                            <div class="job-header">
+                                <span class="job-id">#JOB-098</span>
+                                <span class="status-text glow">Manim Supervisor</span>
+                            </div>
+                            <p class="job-title">Bronchopleural Fistula</p>
+                            <div class="progress-container">
+                                <div class="progress-bar glow" style="width: 22%;"></div>
+                            </div>
+                            <div class="job-footer">
+                                <span><i data-lucide="cpu"></i> Render attempt 1/3</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column">
+                    <div class="column-header">
+                        <h3>QC</h3>
+                        <span class="count">0</span>
+                    </div>
+                    <div class="scroll-area"></div>
+                </div>
+
+                <div class="column">
+                    <div class="column-header">
+                        <h3>Deployment</h3>
+                        <span class="count">42</span>
+                    </div>
+                    <div class="scroll-area">
+                        <div class="job-card glass finished">
+                            <div class="job-header">
+                                <span class="job-id">#JOB-095</span>
+                                <span class="priority done">S3 UPLOADED</span>
+                            </div>
+                            <p class="job-title">Quadratic Equations</p>
+                            <div class="job-footer">
+                                <button class="btn-icon"><i data-lucide="external-link"></i></button>
+                                <button class="btn-icon"><i data-lucide="check-circle"></i> Webhook</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <!-- CURRICULUM VAULT TAB -->
+        <section id="vaultTab" class="tab-content">
+            <div class="vault-container">
+                <div class="vault-header">
+                    <h2>Masterclass Vault</h2>
+                    <div class="vault-stats">
+                        <span class="stat"><i data-lucide="video"></i> 42 Masterclasses</span>
+                        <span class="stat"><i data-lucide="clock"></i> 8.4 hrs Generated</span>
+                    </div>
+                </div>
+                
+                <div class="vault-grid">
+                    <!-- Probability Box -->
+                    <div class="vault-card glass">
+                        <div class="thumbnail" style="background: var(--hazard);">
+                            <div class="overlay"><i data-lucide="play-circle"></i></div>
+                            <span class="duration">12:45</span>
+                        </div>
+                        <div class="card-body">
+                            <h4>Probability Masterclass</h4>
+                            <span class="meta">Subject: Mathematics</span>
+                            <div class="card-actions">
+                                <button class="btn-icon"><i data-lucide="download"></i></button>
+                                <button class="btn-icon"><i data-lucide="share-2"></i></button>
+                                <button class="btn btn-text">View Logic</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Anatomy Box -->
+                    <div class="vault-card glass">
+                        <div class="thumbnail" style="background: linear-gradient(45deg, #FF0000, #000);">
+                            <div class="overlay"><i data-lucide="play-circle"></i></div>
+                            <span class="duration">18:20</span>
+                        </div>
+                        <div class="card-body">
+                            <h4>Internal Iliac Artery</h4>
+                            <span class="meta">Subject: Medical</span>
+                            <div class="card-actions">
+                                <button class="btn-icon"><i data-lucide="download"></i></button>
+                                <button class="btn-icon"><i data-lucide="share-2"></i></button>
+                                <button class="btn btn-text">View Logic</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Placeholder for Batch UI -->
+                    <div class="vault-card glass empty">
+                        <div class="add-prompt" id="vaultBulkLink">
+                            <i data-lucide="plus-circle"></i>
+                            <p>Ingest New Curriculum Chapter</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="telemetry-bar glass">
+            <div class="telemetry-header">
+                <h3>Autonomous Graph Reasoning Feed</h3>
+                <div class="console-actions">
+                    <span class="latency">SYNCED TO LangGraph v0.2</span>
+                    <button class="btn-text">Flush Buffer</button>
+                </div>
+            </div>
+            <div class="console-output mono">
+                <div class="log-line"><span class="timestamp">[17:01]</span> <span class="info">DIRECTOR:</span> Successfully locked ground-truth MCQ answer for JOB-102. (Option B)</div>
+                <div class="log-line active"><span class="cursor">></span> _</div>
+            </div>
+        </footer>
+    </main>
+
+    <!-- BULK INGEST MODAL -->
+    <div id="bulkModal" class="modal-overlay">
+        <div class="modal glass">
+            <div class="modal-header">
+                <h3>Curriculum Bulk Ingestor</h3>
+                <button class="close-modal"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="drop-zone industrial-border">
+                    <i data-lucide="upload-cloud"></i>
+                    <p>Drop Curriculum JSON or CSV (Chapters 1-40)</p>
+                    <span class="note">Support for full PDF syllabus ingestion (via Tony AI)</span>
+                </div>
+                <div class="batch-settings">
+                    <div class="setting-item">
+                        <span>Target Subject</span>
+                        <select class="glass">
+                            <option>Mathematics</option>
+                            <option>Medicine</option>
+                            <option>UPSC Civil Services</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <span>Batch Priority</span>
+                        <div class="radio-group">
+                            <span class="radio active">Efficiency</span>
+                            <span class="radio">High Precision</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary close-modal">Cancel</button>
+                <button class="btn btn-primary" id="startBatchBtn">Initialize 40 Render Nodes</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

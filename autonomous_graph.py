@@ -86,6 +86,7 @@ class TonyState(TypedDict):
     attempt_count:    int
     with_avatar:      Optional[bool]   # presentation only — show avatar on slides
     video_type:       Optional[str]    # "marketing" | "educational" | None (default: educational)
+    no_vision:        bool
 
 
 # ── Node 1: Director ──────────────────────────────────────────────────────────
@@ -133,9 +134,9 @@ def vision_node(state: TonyState) -> TonyState:
     """Generate concept diagram using Gemini Imagen 3."""
     print(f"🎨 [Vision] Generating concept image for: {state['topic']}")
 
-    # Only generate image for manim mode — presentation uses slide backgrounds
-    if state.get("render_mode") != "manim":
-        print("   Skipping image generation (presentation mode)")
+    # User requested skip or not in Manim mode
+    if state.get("no_vision") or state.get("render_mode") != "manim":
+        print("   Skipping image generation (user-requested or presentation mode)")
         state["image_path"] = None
         return state
 
@@ -741,6 +742,8 @@ if __name__ == "__main__":
     parser.add_argument("--marketing", action="store_true",
                         help="Skip director/vision, run PPT path with marketing critic. "
                              "Input file must be plain text.")
+    parser.add_argument("--no-vision", action="store_true",
+                        help="Skip vision_node (Gemini Imagen) for Manim videos.")
     args = parser.parse_args()
 
     if args.marketing:
@@ -772,6 +775,7 @@ if __name__ == "__main__":
             "critic_feedback":   None,
             "ppt_attempt_count": 0,
             "attempt_count":     0,
+            "no_vision":         args.no_vision,
         }
 
         # Planner → Critic loop (up to 2 retries) → Renderer → TTS → Video
@@ -809,6 +813,7 @@ if __name__ == "__main__":
             "slides":             None, "slide_paths": None, "clip_paths": None,
             "critic_feedback":    None,
             "video_type":         None,
+            "no_vision":          args.no_vision,
         })
 
     print(f"\n🏆 Done!")

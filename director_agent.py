@@ -24,6 +24,8 @@ Visual types per mode:
     cross_out        {"letter": str, "name": str}
     answer_reveal    {"letter": str, "name": str, "explanation": str}
     graph_hint       {"graph_type": str, "description": str} # e.g. velocity-time, bar chart
+    concept_image    {"description": str}                    # for AI artist (Gemini Vision)
+    image_arrow      {"region": str, "label": str}           # points to anatomical area
     summary          {"heading": str, "points": list[str]}   # closing takeaway
 
   PRESENTATION:
@@ -58,6 +60,8 @@ _REQUIRED_FIELDS = {
     "graph_hint":      {"graph_type": "generic", "description": "", "highlight": ""},
     "summary":         {"heading": "Key Takeaways", "points": ["Remember this"]},
     "key_point":       {"heading": "Key Point", "body": ""},
+    "concept_image":   {"description": ""},
+    "image_arrow":     {"region": "center", "label": ""},
 }
 
 
@@ -76,6 +80,8 @@ class Scene(BaseModel):
         "summary",
         "key_point",
         "subtitle_chunk",
+        "concept_image",
+        "image_arrow",
     ]
     visual_data: dict[str, Any]
 
@@ -123,12 +129,18 @@ DEFAULT: if unsure, always choose "manim". It is the platform's primary mode.
 ━━━ SCENE RULES BY RENDER MODE ━━━
 
 MANIM SCENES (8–12 scenes):
-  - Always start with: title_card → concept_bullets (or formula_display for math)
-  - For MCQ: mcq_layout (draws all 4 boxes) → option_highlight wrong options (color "#FF6B6B") → cross_out ONLY the wrong options (NEVER the correct answer) → answer_reveal correct option
+  - For MCQ:
+      1. title_card
+      2. concept_image (anatomical overview)
+      3. image_arrow (if anatomical lesion mentioned)
+      4. mcq_layout (draws all 4 boxes)
+      5. option_highlight (wrong options, color "#FF6B6B")
+      6. cross_out (all wrong options, NEVER the correct answer)
+      7. answer_reveal (explanation + tick)
   - cross_out rule: if correct answer is A, cross_out B, C, D — never A. Always cross out all wrong options.
-  - For numerical: formula_display → step_by_step (max 4 steps) → summary
-  - For concept: concept_bullets → key supporting facts → summary
-  - Use graph_hint whenever a graph/chart would genuinely help (velocity-time, pie chart, etc.)
+  - For numerical: formula_display → graph_hint (if applicable) → step_by_step (max 4 steps) → summary
+  - For concept: concept_bullets → graph_hint (if applicable) → key supporting facts → summary
+  - Placement Rule: Place `graph_hint` immediately after the first mention of the concept or formula it visualizes. Do not wait until the end of the lesson.
   - End with summary for concept/numerical; answer_reveal for MCQ
 
 PRESENTATION SCENES (5–8 scenes):
@@ -149,7 +161,8 @@ PRESENTATION SCENES (5–8 scenes):
   - step_by_step: max 4 steps, each under 12 words
   - option colors: "#FF6B6B" wrong/unlikely, "#4ECDC4" correct, "#FFFFFF" neutral/unknown
   - formula: write in plain text (e.g. "v = u + at", "integral of ln(x) dx")
-  - graph_type examples: "velocity_time", "bar_chart", "number_line", "venn_diagram"
+  - graph_hint: {"graph_type": "string", "description": "MUST include the specific equation and any domain/ranges (e.g. 'Plot y=x^2 from x=4 to x=9 and shade the area'). Never omit the bounds for integrals."}
+  - graph_type examples: "velocity_time", "bar_chart", "number_line", "venn_diagram", "function_plot"
 
 OUTPUT: Return valid JSON only. No extra text."""
 

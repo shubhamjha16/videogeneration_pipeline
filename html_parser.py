@@ -69,7 +69,8 @@ def _body_after_heading(heading_tag) -> str:
 _SUBJECT_KEYWORDS = {
     "medical":   ["anatomy", "physiology", "pharmacology", "pathology", "artery", "vein",
                   "surgery", "clinical", "fmge", "usmle", "disease", "syndrome", "drug",
-                  "calcium", "cardiac", "pulmonary", "hepatic", "renal", "fistula"],
+                  "calcium", "cardiac", "pulmonary", "hepatic", "renal", "fistula",
+                  "forensic", "skull", "fracture", "trauma", "orthopedics", "bone"],
     "physics":   ["velocity", "acceleration", "force", "momentum", "kinetic", "potential",
                   "newton", "thermodynamics", "wave", "optics", "circuit", "magnetic",
                   "electric", "jee", "kinematics", "displacement", "torque"],
@@ -103,10 +104,11 @@ def _detect_subject(text: str) -> str:
 def _detect_content_type(soup: BeautifulSoup, full_text: str) -> str:
     headings = [_heading_text(h) for h in soup.find_all(['h2', 'h3'])]
 
-    # MCQ: has option analysis or A/B/C/D pattern
-    has_options = any('option' in h for h in headings)
+    # MCQ: has option analysis or A/B/C/D pattern or options list
+    has_options_heading = any('option' in h or 'analysis' in h for h in headings)
     has_abcd = bool(re.search(r'\b[A-D]\.\s+\w', full_text))
-    if has_options or has_abcd:
+    has_correct = any('correct' in h or 'answer' in h for h in headings)
+    if has_options_heading or has_abcd or has_correct:
         return "mcq"
 
     # Case study: check before numerical — business text has step words too
@@ -318,7 +320,8 @@ def _infer_topic(soup: BeautifulSoup, hint: str) -> str:
 
 def _extract_concept(soup: BeautifulSoup) -> str:
     for h in soup.find_all(['h2', 'h3']):
-        if 'concept' in _heading_text(h):
+        ht = _heading_text(h)
+        if 'concept' in ht or 'explanation' in ht:
             return _body_after_heading(h)
 
     # No heading found — get all paragraph text
