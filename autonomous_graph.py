@@ -11,12 +11,20 @@ Orchestrates the full video generation flow:
     supervisor_node : render Manim → stitch audio → S3 upload
     healer_node     : Claude fixes broken Manim scripts (max 3 retries)
 
-  PRESENTATION PATH (new)
+  PRESENTATION PATH (existing)
     ppt_planner_node  : Groq → splits text into slides (layout + data + narration)
     ppt_renderer_node : slide_generator → 1920x1080 PNG per slide
     ppt_tts_node      : tts_generator → MP3 per slide
     ppt_video_node    : ffmpeg → clip per slide → final MP4 (+ optional avatar)
     ppt_upload_node   : S3 upload
+
+  EXPLAINER PATH (new)
+    explainer_node    : explainer_generator → Stitches narration with B-roll metaphors (Higgsfield style)
+
+  USER GENERATED PATH (new)
+    heygen_node       : heygen_generator → High-fidelity talking head
+    subtitle_node     : subtitle_generator → Insta Reels style kinetic subtitles
+    fusion_node       : Final assembly (HeyGen + Subtitles)
 """
 
 import os
@@ -81,6 +89,11 @@ class TonyState(TypedDict):
     critic_feedback:  Optional[str]    # feedback from ppt_critic → fed back to planner
     ppt_attempt_count: int             # how many times planner has been retried by critic
 
+    # ── Explainer/HeyGen-specific ─────────────────────
+    visual_prompts:   Optional[list]   # B-roll prompts for Explainer mode
+    heygen_video_path: Optional[str]   # Path to downloaded HeyGen video
+    subtitle_style:   Optional[str]    # "insta_reels" | "classic"
+
     # ── Control ────────────────────────────────────────
     rendering_errors: Optional[str]
     attempt_count:    int
@@ -124,7 +137,8 @@ def director_node(state: TonyState) -> TonyState:
         print(f"   Correct answer locked: {correct_letter}. {correct_name}")
 
     state["scenes"] = scenes
-    print(f"   Render mode: {director_output.render_mode} | Scenes: {len(scenes)}")
+    print(f"   Render mode: {state['render_mode'].upper()} | Scenes: {len(scenes)}")
+    print(f"   💡 Reasoning: {director_output.decision_reasoning}")
     return state
 
 
@@ -652,12 +666,107 @@ def ppt_upload_node(state: TonyState) -> TonyState:
     return state
 
 
+def explainer_node(state: TonyState) -> TonyState:
+    """Stitch narration with B-roll metaphors (Higgsfield style)."""
+    print(f"🎬 [Explainer Node] Generating narrative explainer for: {state['topic']}")
+    
+    from tts_generator import generate_audio
+    from moviepy.editor import AudioFileClip, VideoFileClip, concatenate_videoclips
+    from explainer_generator import generate_explainer_video
+
+    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    os.makedirs(job_dir, exist_ok=True)
+
+    # 1. Call explainer generator (B-roll stitching)
+    # Note: generate_explainer_video already handles per-scene TTS internally.
+    try:
+        video_path = generate_explainer_video(state["scenes"], job_dir, state["topic"])
+        state["output_path"] = os.path.abspath(video_path)
+        state["video_url"]   = _upload_to_s3(video_path, state["topic"])
+    except Exception as e:
+        print(f"   ❌ Explainer failed: {e}")
+        state["rendering_errors"] = str(e)
+
+    return state
+
+
+def heygen_node(state: TonyState) -> TonyState:
+    """Render high-fidelity talking head via HeyGen."""
+    print(f"🚀 [HeyGen Node] Generating avatar for: {state['topic']}")
+    
+    from tts_generator import generate_audio
+    from heygen_generator import generate_heygen_avatar
+
+    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    os.makedirs(job_dir, exist_ok=True)
+
+    # 1. Generate audio for HeyGen to lip-sync to
+    full_text = " ".join(s["narration_text"] for s in state["scenes"])
+    audio_path = generate_audio(full_text, 0, output_dir=job_dir)
+    state["audio_files"] = [audio_path]
+
+    # 2. Call HeyGen
+    output_path = os.path.join(job_dir, "heygen_avatar.mp4")
+    heygen_video = generate_heygen_avatar(full_text, audio_path, output_path)
+    state["heygen_video_path"] = heygen_video
+    
+    return state
+
+
+def subtitle_node(state: TonyState) -> TonyState:
+    """Generate kinetic Insta-style subtitles and overlay them."""
+    print(f"🎞️  [Subtitle Node] Adding kinetic subtitles...")
+    
+    from subtitle_generator import generate_kinetic_subtitles
+    from moviepy.editor import VideoFileClip, AudioFileClip
+
+    video_path = state["heygen_video_path"]
+    if not video_path or not os.path.exists(video_path):
+        print("   ⚠️  HeyGen video not found — skipping subtitles.")
+        # FALLBACK: ensure output_path is set to avoid fusion_node crash
+        if video_path:
+            state["output_path"] = os.path.abspath(video_path)
+        return state
+
+    video_clip = VideoFileClip(video_path)
+    try:
+        audio_path = state["audio_files"][0]
+        audio_dur  = AudioFileClip(audio_path).duration
+        full_text  = " ".join(s["narration_text"] for s in state["scenes"])
+
+        # Apply kinetic styling (Insta Reels style)
+        final_clip = generate_kinetic_subtitles(video_clip, full_text, audio_dur, style="insta_reels")
+        
+        try:
+            output_path = video_path.replace(".mp4", "_subtitled.mp4")
+            final_clip.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
+            state["output_path"] = os.path.abspath(output_path)
+        finally:
+            final_clip.close()
+    finally:
+        video_clip.close()
+
+    return state
+
+
+def fusion_node(state: TonyState) -> TonyState:
+    """Final assembly and upload."""
+    print(f"🔗 [Fusion Node] Finalizing...")
+    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"])
+    return state
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 
 def route_by_mode(state: TonyState) -> str:
-    """After vision — branch to manim or ppt path."""
-    if state.get("render_mode") == "presentation":
+    """After vision — branch to one of the 4 paths."""
+    mode = state.get("render_mode")
+    if mode == "presentation":
         return "ppt_planner"
+    elif mode == "explainer":
+        return "explainer"
+    elif mode == "user_generated_video":
+        return "heygen"
     return "architect"
 
 
@@ -698,6 +807,14 @@ workflow.add_node("ppt_tts",      ppt_tts_node)
 workflow.add_node("ppt_video",    ppt_video_node)
 workflow.add_node("ppt_upload",   ppt_upload_node)
 
+# ── Explainer path ─────────────────────────────────────────────────────────────
+workflow.add_node("explainer",    explainer_node)
+
+# ── User Generated path ────────────────────────────────────────────────────────
+workflow.add_node("heygen",       heygen_node)
+workflow.add_node("subtitles",    subtitle_node)
+workflow.add_node("fusion",       fusion_node)
+
 # ── Edges ──────────────────────────────────────────────────────────────────────
 workflow.set_entry_point("director")
 workflow.add_edge("director", "vision")
@@ -706,6 +823,8 @@ workflow.add_edge("director", "vision")
 workflow.add_conditional_edges("vision", route_by_mode, {
     "architect":   "architect",
     "ppt_planner": "ppt_planner",
+    "explainer":   "explainer",
+    "heygen":      "heygen",
 })
 
 # Manim path (unchanged)
@@ -713,7 +832,7 @@ workflow.add_edge("architect",  "supervisor")
 workflow.add_edge("healer",     "supervisor")
 workflow.add_conditional_edges("supervisor", should_continue)
 
-# PPT path — planner → critic → (retry? → planner | approved → renderer)
+# PPT path
 workflow.add_edge("ppt_planner",  "ppt_critic")
 workflow.add_conditional_edges("ppt_critic", critic_should_continue, {
     "ppt_planner": "ppt_planner",
@@ -723,6 +842,14 @@ workflow.add_edge("ppt_renderer", "ppt_tts")
 workflow.add_edge("ppt_tts",      "ppt_video")
 workflow.add_edge("ppt_video",    "ppt_upload")
 workflow.add_edge("ppt_upload",   END)
+
+# Explainer path
+workflow.add_edge("explainer", END)
+
+# User Generated path
+workflow.add_edge("heygen",    "subtitles")
+workflow.add_edge("subtitles", "fusion")
+workflow.add_edge("fusion",    END)
 
 app = workflow.compile()
 

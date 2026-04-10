@@ -31,16 +31,19 @@
         <div class="control-group">
             <span class="label">Autonomous Overrides</span>
             
-            <div class="switch-item">
+            <div class="switch-item multi">
                 <div class="switch-label">
-                    <span class="title">Render Path</span>
-                    <span class="desc">Force MANIM or PPT</span>
+                    <span class="title">Render Mode</span>
+                    <span class="desc">Force Production Path</span>
                 </div>
-                <div class="status-pill mode-manim">MANIM</div>
-                <label class="toggle">
-                    <input type="checkbox" checked>
-                    <span class="slider"></span>
-                </label>
+                <select id="renderModeSelect" class="glass selector">
+                    <option value="auto" selected>AUTO (AI DECISION)</option>
+                    <option value="manim">MANIM</option>
+                    <option value="presentation">PPT</option>
+                    <option value="explainer">EXPLAINER</option>
+                    <option value="user_generated_video">UGV (HEYGEN)</option>
+                </select>
+                <div class="status-pill mode-auto" id="renderModePill">AUTO (AI)</div>
             </div>
 
             <div class="switch-item">
@@ -80,13 +83,13 @@
             <div class="gauge-item">
                 <div class="gauge-header">
                     <span>Active Model Latency</span>
-                    <span class="value"> Claude-4.6 (1.2s)</span>
+                    <span class="value" id="latencyDisplay">Claude-4.6 (1.2s)</span>
                 </div>
             </div>
         </div>
 
         <div class="sidebar-footer">
-            <button class="btn btn-danger w-full">
+            <button class="btn btn-danger w-full ripple">
                 <i data-lucide="octagon-alert"></i> SYSTEM HALT
             </button>
             <div class="copyright-mini">
@@ -113,117 +116,129 @@
 
         <!-- MISSION CONTROL TAB -->
         <section id="missionTab" class="tab-content active">
-            <section class="pipeline-view">
-                <div class="column">
-                    <div class="column-header">
-                        <h3>Ingestion</h3>
-                        <span class="count">2</span>
-                    </div>
-                    <div class="scroll-area">
-                        <div class="job-card glass">
-                            <div class="job-header">
-                                <span class="job-id">#JOB-102</span>
-                                <span class="priority high">MCQ Locked</span>
-                            </div>
-                            <p class="job-title">Probability Masterclass</p>
-                            <div class="job-footer">
-                                <span><i data-lucide="file-json"></i> facts.json</span>
+            <div class="matrix-overview">
+                <div class="matrix-path manim-path"></div>
+                <div class="matrix-path ppt-path"></div>
+                <div class="matrix-path explainer-path"></div>
+                <div class="matrix-path ugv-path"></div>
+                
+                <section class="pipeline-view">
+                    <div class="column" data-node="ingestion">
+                        <div class="column-header">
+                            <h3>Ingestion</h3>
+                            <span class="count">2</span>
+                        </div>
+                        <div class="scroll-area">
+                            <div class="job-card glass" data-id="102">
+                                <div class="job-header">
+                                    <span class="job-id">#JOB-102</span>
+                                    <span class="priority high">MCQ Locked</span>
+                                </div>
+                                <p class="job-title">Probability Masterclass</p>
+                                <div class="job-footer">
+                                    <span><i data-lucide="file-json"></i> facts.json</span>
+                                    <span class="success-dot" title="Ground Truth Verified"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="column">
-                    <div class="column-header">
-                        <h3>Synthesis</h3>
-                        <span class="count">1</span>
-                    </div>
-                    <div class="scroll-area">
-                        <div class="job-card glass active">
-                            <div class="job-header">
-                                <span class="job-id">#JOB-101</span>
-                                <span class="status-text">Imagen Gen...</span>
-                            </div>
-                            <p class="job-title">Forensic Anatomy</p>
-                            <div class="progress-container">
-                                <div class="progress-bar" style="width: 65%;"></div>
-                            </div>
-                            <div class="job-footer">
-                                <span><i data-lucide="image"></i> diagram_01.png</span>
+                    <div class="column" data-node="synthesis">
+                        <div class="column-header">
+                            <h3>Synthesis</h3>
+                            <span class="count">1</span>
+                        </div>
+                        <div class="scroll-area">
+                            <div class="job-card glass active" data-id="101">
+                                <div class="job-header">
+                                    <span class="job-id">#JOB-101</span>
+                                    <span class="status-text">Imagen Gen...</span>
+                                </div>
+                                <p class="job-title">Forensic Anatomy</p>
+                                <div class="progress-container">
+                                    <div class="progress-bar" style="width: 65%;"></div>
+                                </div>
+                                <div class="job-footer">
+                                    <span><i data-lucide="image"></i> diagram_01.png</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="column">
-                    <div class="column-header">
-                        <h3>Orchestration</h3>
-                        <span class="count">1</span>
-                    </div>
-                    <div class="scroll-area">
-                        <div class="job-card glass active branch">
-                            <div class="job-header">
-                                <span class="job-id">#JOB-099</span>
-                                <span class="status-text">PPT Planner</span>
-                            </div>
-                            <p class="job-title">UPSC History 2026</p>
-                            <div class="job-footer">
-                                <span><i data-lucide="layout"></i> 8 Slides</span>
+                    <div class="column" data-node="orchestration">
+                        <div class="column-header">
+                            <h3>Orchestration</h3>
+                            <span class="count">1</span>
+                        </div>
+                        <div class="scroll-area">
+                            <div class="job-card glass active branch" data-id="99" onclick="inspectJob('99')">
+                                <div class="job-header">
+                                    <span class="job-id">#JOB-099</span>
+                                    <span class="status-text">PPT Planner</span>
+                                </div>
+                                <p class="job-title">UPSC History 2026</p>
+                                <div class="job-footer">
+                                    <span><i data-lucide="layout"></i> 8 Slides</span>
+                                    <span class="inspect-hint"><i data-lucide="eye"></i> Inspect</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="column">
-                    <div class="column-header">
-                        <h3>Production</h3>
-                        <span class="count">1</span>
-                    </div>
-                    <div class="scroll-area">
-                        <div class="job-card glass active render">
-                            <div class="job-header">
-                                <span class="job-id">#JOB-098</span>
-                                <span class="status-text glow">Manim Supervisor</span>
-                            </div>
-                            <p class="job-title">Bronchopleural Fistula</p>
-                            <div class="progress-container">
-                                <div class="progress-bar glow" style="width: 22%;"></div>
-                            </div>
-                            <div class="job-footer">
-                                <span><i data-lucide="cpu"></i> Render attempt 1/3</span>
+                    <div class="column" data-node="production">
+                        <div class="column-header">
+                            <h3>Production</h3>
+                            <span class="count">1</span>
+                        </div>
+                        <div class="scroll-area">
+                            <div class="job-card glass active render healer-engaged" data-id="98">
+                                <div class="job-header">
+                                    <span class="job-id">#JOB-098</span>
+                                    <span class="status-text glow">Manim Supervisor</span>
+                                </div>
+                                <p class="job-title">Bronchopleural Fistula</p>
+                                <div class="progress-container">
+                                    <div class="progress-bar glow" style="width: 22%;"></div>
+                                </div>
+                                <div class="healer-alert">
+                                    <i data-lucide="stethoscope"></i> Healer Agent Active (Retry 1/3)
+                                </div>
+                                <div class="job-footer">
+                                    <span><i data-lucide="cpu"></i> Render attempt 1/3</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="column">
-                    <div class="column-header">
-                        <h3>QC</h3>
-                        <span class="count">0</span>
+                    <div class="column" data-node="qc">
+                        <div class="column-header">
+                            <h3>QC</h3>
+                            <span class="count">0</span>
+                        </div>
+                        <div class="scroll-area"></div>
                     </div>
-                    <div class="scroll-area"></div>
-                </div>
 
-                <div class="column">
-                    <div class="column-header">
-                        <h3>Deployment</h3>
-                        <span class="count">42</span>
-                    </div>
-                    <div class="scroll-area">
-                        <div class="job-card glass finished">
-                            <div class="job-header">
-                                <span class="job-id">#JOB-095</span>
-                                <span class="priority done">S3 UPLOADED</span>
-                            </div>
-                            <p class="job-title">Quadratic Equations</p>
-                            <div class="job-footer">
-                                <button class="btn-icon"><i data-lucide="external-link"></i></button>
-                                <button class="btn-icon"><i data-lucide="check-circle"></i> Webhook</button>
+                    <div class="column" data-node="deployment">
+                        <div class="column-header">
+                            <h3>Deployment</h3>
+                            <span class="count">42</span>
+                        </div>
+                        <div class="scroll-area">
+                            <div class="job-card glass finished">
+                                <div class="job-header">
+                                    <span class="job-id">#JOB-095</span>
+                                    <span class="priority done">S3 UPLOADED</span>
+                                </div>
+                                <p class="job-title">Quadratic Equations</p>
+                                <div class="job-footer">
+                                    <button class="btn-icon"><i data-lucide="external-link"></i></button>
+                                    <button class="btn-icon"><i data-lucide="check-circle"></i> Webhook</button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </section>
+                </section>
+            </div>
         </section>
 
         <!-- CURRICULUM VAULT TAB -->
@@ -238,7 +253,6 @@
                 </div>
                 
                 <div class="vault-grid">
-                    <!-- Probability Box -->
                     <div class="vault-card glass">
                         <div class="thumbnail" style="background: var(--hazard);">
                             <div class="overlay"><i data-lucide="play-circle"></i></div>
@@ -255,7 +269,6 @@
                         </div>
                     </div>
                     
-                    <!-- Anatomy Box -->
                     <div class="vault-card glass">
                         <div class="thumbnail" style="background: linear-gradient(45deg, #FF0000, #000);">
                             <div class="overlay"><i data-lucide="play-circle"></i></div>
@@ -272,9 +285,8 @@
                         </div>
                     </div>
 
-                    <!-- Placeholder for Batch UI -->
-                    <div class="vault-card glass empty">
-                        <div class="add-prompt" id="vaultBulkLink">
+                    <div class="vault-card glass empty" id="vaultBulkLink">
+                        <div class="add-prompt">
                             <i data-lucide="plus-circle"></i>
                             <p>Ingest New Curriculum Chapter</p>
                         </div>
@@ -282,6 +294,46 @@
                 </div>
             </div>
         </section>
+
+        <!-- NODE INSPECTOR (Grounded Feature) -->
+        <aside id="inspectorPanel" class="inspector glass">
+            <div class="inspector-header">
+                <h3>Node Inspector</h3>
+                <button onclick="closeInspector()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="inspector-body">
+                <div class="job-meta">
+                    <span class="label">Job ID:</span>
+                    <span id="inspectJobId">#JOB-099</span>
+                </div>
+                <div class="inspector-section">
+                    <span class="label">Decision Basis</span>
+                    <div class="reasoning-box mono" id="inspectReasoning">
+                        Detected Science topic (Physcis) with formulas. Upgrading to MANIM path for high-fidelity coordinate rendering.
+                    </div>
+                </div>
+                <div class="inspector-section">
+                    <span class="label">Director's Blueprint (scenes JSON)</span>
+                    <div class="json-viewer mono" id="inspectJson">
+                        {
+                            "render_mode": "presentation",
+                            "scenes": [
+                                { "layout": "title_card", "data": { "title": "UPSC History" } },
+                                { "layout": "chaos_chapter", "data": { "number": 1 } }
+                            ]
+                        }
+                    </div>
+                </div>
+                <div class="inspector-section">
+                    <span class="label">State Audit Log</span>
+                    <ul class="audit-list mono">
+                        <li>[10:15] parsed_facts: LOCKED (Ground Truth)</li>
+                        <li>[10:17] video_type: educational</li>
+                        <li>[10:20] with_avatar: false</li>
+                    </ul>
+                </div>
+            </div>
+        </aside>
 
         <footer class="telemetry-bar glass">
             <div class="telemetry-header">

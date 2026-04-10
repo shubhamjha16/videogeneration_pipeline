@@ -8,12 +8,8 @@ const tabContents = document.querySelectorAll('.tab-content');
 navBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const tabId = btn.getAttribute('data-tab');
-        
-        // Update Buttons
         navBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        
-        // Update Content
         tabContents.forEach(content => {
             content.classList.remove('active');
             if (content.id === (tabId + 'Tab')) {
@@ -22,6 +18,51 @@ navBtns.forEach(btn => {
         });
     });
 });
+
+// Inspector Logic
+const inspectorPanel = document.getElementById('inspectorPanel');
+const inspectJobId = document.getElementById('inspectJobId');
+const inspectJson = document.getElementById('inspectJson');
+const inspectReasoning = document.getElementById('inspectReasoning');
+
+window.inspectJob = (jobId) => {
+    inspectJobId.innerText = `#JOB-${jobId}`;
+    inspectorPanel.classList.add('active');
+    
+    // Simulate Grounded Scene JSON extraction
+    const mockData = {
+        "99": {
+            "mode": "presentation",
+            "reasoning": "Topic identified as UPSC History (Arts/Factual). defaulting to Presentation mode to minimize compute while preserving structured text clarity.",
+            "scenes": [
+                { "layout": "title_card", "data": { "title": "UPSC History" } },
+                { "layout": "chaos_chapter", "data": { "title": "The Mughal Empire" } }
+            ]
+        },
+        "102": {
+            "mode": "manim",
+            "reasoning": "Detected MCQ with Probability logic. Upgrading to MANIM path for interactive visual option elimination and correct answer grounding.",
+            "scenes": [
+                { "visual_type": "mcq_layout", "visual_data": { "correct": "B" } }
+            ]
+        },
+        "98": {
+            "mode": "manim",
+            "reasoning": "Medical anatomical topic detected (Bronchopleural Fistula). Manim selected for precise anatomical coordinate mapping and dynamic flow overlays.",
+            "scenes": [
+                { "visual_type": "image_arrow", "visual_data": { "label": "Leaking Air" } }
+            ]
+        }
+    };
+    
+    const data = mockData[jobId] || mockData["99"];
+    inspectJson.innerText = JSON.stringify({render_mode: data.mode, scenes: data.scenes}, null, 4);
+    inspectReasoning.innerText = data.reasoning;
+};
+
+window.closeInspector = () => {
+    inspectorPanel.classList.remove('active');
+};
 
 // Modal Logic
 const bulkModal = document.getElementById('bulkModal');
@@ -36,29 +77,21 @@ bulkIngestBtn.addEventListener('click', openModal);
 vaultBulkLink.addEventListener('click', openModal);
 closeModals.forEach(btn => btn.addEventListener('click', closeModal));
 
-// Radio Group Logic
-document.querySelectorAll('.radio').forEach(radio => {
-    radio.addEventListener('click', () => {
-        radio.parentElement.querySelectorAll('.radio').forEach(r => r.classList.remove('active'));
-        radio.classList.add('active');
-    });
-});
-
-// Grounded Telemetry Log Simulation (Real LangGraph Nodes)
+// Grounded Telemetry Log Simulation (Actual Code State Names)
 const consoleOutput = document.querySelector('.console-output');
-const logs = [
-    { type: 'info', node: 'DIRECTOR', msg: 'Successfully locked ground-truth MCQ answer for JOB-102. (Option B)' },
-    { type: 'warning', node: 'CRITIC', msg: 'REJECTED PPT Plan for UPSC History. Feedback: "Narration too generic, needs more specific dates."' },
-    { type: 'info', node: 'VISION', msg: 'Gemini Imagen 3.0 generating diagram for Job-101 (Subject: Forensic Anatomy).' },
-    { type: 'success', node: 'ARCHITECT', msg: 'Manim architectural blueprint validated. Transitioning to Supervisor node.' },
-    { type: 'info', node: 'HEALER', msg: 'Standing by. Supervisor monitoring Manim stdout for Job-098...' },
-    { type: 'warning', node: 'SUPERVISOR', msg: 'Render Attempt 1/3 failed. Manim syntax error detected in EaseToLearnScene.py.' },
-    { type: 'info', node: 'HEALER', msg: 'HealerAgent engaged. Fixing syntax error in Manim class definition.' },
-    { type: 'success', node: 'DEPLOY', msg: 'Job #JOB-095 successfully uploaded to S3 Bucket [easetolearn-video-factory].' }
+const latencyDisplay = document.getElementById('latencyDisplay');
+
+const groundedLogs = [
+    { type: 'info', node: 'DIRECTOR', msg: 'parsed_facts: LOCKED. Ground truth MCQ answer identified for JOB-102.' },
+    { type: 'warning', node: 'HEALER', msg: 'Manim SyntaxError in scene_04.py: LaTeX escape failed. Repairing...' },
+    { type: 'success', node: 'HEALER', msg: 'Scene fixed. Re-injecting into Manim Supervisor.' },
+    { type: 'info', node: 'VISION', msg: 'Gemini Imagen 4.0: Conceptual diagram generation started for {topic}.' },
+    { type: 'success', node: 'DEPLOY', msg: 'Job #JOB-095: artifact_path verified. S3 Upload successful.' },
+    { type: 'info', node: 'ARCHITECT', msg: 'Blueprint validation: checking manim_script_path consistency.' }
 ];
 
 const addLogLine = (node = null, message = null, type = 'info') => {
-    const log = node ? {node, msg: message, type} : logs[Math.floor(Math.random() * logs.length)];
+    const log = node ? {node, msg: message, type} : groundedLogs[Math.floor(Math.random() * groundedLogs.length)];
     const time = new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit' });
     
     const line = document.createElement('div');
@@ -69,13 +102,37 @@ const addLogLine = (node = null, message = null, type = 'info') => {
     consoleOutput.insertBefore(line, cursor);
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
     
-    if (consoleOutput.children.length > 50) {
-        consoleOutput.removeChild(consoleOutput.children[0]);
+    // Simulate dynamic latency jitter
+    if (!node) {
+        const lat = (Math.random() * 0.5 + 0.8).toFixed(1);
+        latencyDisplay.innerText = `Claude-4.6 (${lat}s)`;
     }
 };
 
-// Start occasional random logs
-setInterval(addLogLine, 8000);
+setInterval(addLogLine, 6000);
+
+// Multi-mode Select Logic for Render Path
+const renderModeSelect = document.getElementById('renderModeSelect');
+const renderModePill = document.getElementById('renderModePill');
+
+if (renderModeSelect) {
+    renderModeSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        renderModePill.innerText = e.target.options[e.target.selectedIndex].text;
+        
+        // Map values to pill classes
+        const classMap = {
+            'auto': 'mode-auto',
+            'manim': 'mode-manim',
+            'presentation': 'mode-edu',
+            'explainer': 'mode-explainer',
+            'user_generated_video': 'mode-ugv'
+        };
+        
+        renderModePill.className = "status-pill " + (classMap[val] || "manual");
+        addLogLine("OPERATOR", `Manual State Override: Render Mode set to ${renderModePill.innerText}`, "info");
+    });
+}
 
 // Toggle Logic for Overrides
 document.querySelectorAll('.toggle input').forEach(input => {
@@ -96,7 +153,7 @@ document.querySelectorAll('.toggle input').forEach(input => {
             pill.className = "status-pill " + (checked ? "auto" : "manual");
         }
 
-        addLogLine("OPERATOR", `Override manually engaged for ${title}. Mode: ${pill.innerText}`, "info");
+        addLogLine("OPERATOR", `Manual State Override: ${title} set to ${pill.innerText}`, "info");
     });
 });
 
@@ -104,28 +161,20 @@ document.querySelectorAll('.toggle input').forEach(input => {
 const startBatchBtn = document.getElementById('startBatchBtn');
 startBatchBtn.addEventListener('click', () => {
     closeModal();
-    addLogLine("SYSTEM", "INITIALIZING BATCH RENDER: Curriculum 'Mathematics Masterclass' chapters 1-40.", "success");
-    addLogLine("ORCHESTRATOR", "Spawning 40 parallel graph instances...", "info");
+    addLogLine("SYSTEM", "BATCH_INIT: Initializing ensemble for 40 chapters.", "success");
+    addLogLine("ORCHESTRATOR", "Allocation complete: 40 threads reserved in api_bridge.", "info");
     
-    // Simulate log flood
-    for (let i = 1; i <= 5; i++) {
-        setTimeout(() => {
-            addLogLine("DIRECTOR", `Batch Item #${i}: HTML Parsing complete. MCQ Ground-truth locked.`, "info");
-        }, i * 500);
-    }
-
     setTimeout(() => {
-        alert("Batch production initialized. 40 jobs have been queued in the background.");
-    }, 3000);
+        alert("Batch Production Active. Monitor the matrix for parallel nodes.");
+    }, 2000);
 });
 
 // System Halt Sequence
 const haltBtn = document.querySelector('.btn-danger');
 haltBtn.addEventListener('click', () => {
-    if (confirm('CRITICAL: Trigger Global System Halt? All active processes will be terminated.')) {
-        document.body.style.filter = 'grayscale(1) sepia(0.5) brightness(0.5)';
+    if (confirm('CRITICAL: SIGTERM ALL NODES? This will kill all active Manim render processes.')) {
+        document.body.style.filter = 'grayscale(1) brightness(0.4)';
         document.body.style.pointerEvents = 'none';
-        addLogLine("CRITICAL", "FACTORY TERMINATED. ALL NODES HALTED BY OPERATOR.", "warning");
-        setTimeout(() => alert('Factory Offline. Restart required via SSH.'), 1000);
+        addLogLine("CORE", "SIGTERM RECEIVED. FACTORY EMERGENCY SHUTDOWN COMPLETE.", "warning");
     }
 });

@@ -10,8 +10,10 @@ Render modes:
                  Best for: maths, physics, medical MCQ, visual concepts.
   presentation - Slide-based video (tony_pipeline).
                  Best for: case studies, English, UPSC essays, simple concepts.
-  human_face   - (Future) Talking head + subtitle strips.
-                 Best for: conversational walkthroughs.
+  explainer    - Narrative-driven video with cinematic B-roll/generative clips.
+                 Best for: deep-dive conceptual metaphors, complex system overviews.
+  user_generated_video - Talking head (HeyGen) + Insta Reels kinetic subtitles (word-by-word highlight).
+                 Best for: direct messages, short updates, tutors talking to students.
 
 Visual types per mode:
 
@@ -28,14 +30,13 @@ Visual types per mode:
     image_arrow      {"region": str, "label": str}           # points to anatomical area
     summary          {"heading": str, "points": list[str]}   # closing takeaway
 
-  PRESENTATION:
+  EXPLAINER:
     title_card       {"title": str, "subtitle": str}
-    concept_bullets  {"heading": str, "bullets": list[str]}
-    key_point        {"heading": str, "body": str}
+    b_roll_clip      {"prompt": str, "metaphor": str} # describe a cinematic visual (e.g. "falling dominoes", "high speed train")
     summary          {"heading": str, "points": list[str]}
 
-  HUMAN_FACE (future — include narration_text only, visual_data unused):
-    subtitle_chunk   {"subtitle": str}
+  USER_GENERATED_VIDEO:
+    subtitle_chunk   {"subtitle": str} # the text to be highlighted word-by-word
 """
 
 import os
@@ -62,6 +63,7 @@ _REQUIRED_FIELDS = {
     "key_point":       {"heading": "Key Point", "body": ""},
     "concept_image":   {"description": ""},
     "image_arrow":     {"region": "center", "label": ""},
+    "b_roll_clip":     {"prompt": "Cinematic visual of...", "metaphor": ""},
 }
 
 
@@ -82,6 +84,7 @@ class Scene(BaseModel):
         "subtitle_chunk",
         "concept_image",
         "image_arrow",
+        "b_roll_clip",
     ]
     visual_data: dict[str, Any]
 
@@ -95,7 +98,8 @@ class Scene(BaseModel):
 
 
 class DirectorOutput(BaseModel):
-    render_mode: Literal["manim", "presentation", "human_face"]
+    render_mode: Literal["manim", "presentation", "explainer", "user_generated_video"]
+    decision_reasoning: str  # Explain why this mode was chosen based on the hierarchy
     scenes: list[Scene]
 
 
@@ -107,24 +111,30 @@ You receive extracted lesson content and produce two things:
   1. render_mode — which video engine to use
   2. scenes — the ordered teaching script
 
-━━━ RENDER MODE RULES ━━━
+━━━ COMPUTE-AWARE DECISION ALGORITHM ━━━
+Follow this hierarchy in order to maximize educational sense while minimizing compute overcost:
 
-Choose "manim" when:
-  - Subject is maths or physics (ALWAYS manim — formulas and graphs need animation)
-  - Medical MCQ (FMGE) — visual option elimination is very effective
-  - Chemistry with atomic/molecular diagrams
-  - Any content with formulas, graphs, or step-by-step calculations
+LEVEL 1 (Hard Science/Accuracy) → Use "manim":
+  - Subject is Maths, Physics, Biology, or Chemistry.
+  - Medical MCQ (FMGE) or any content with anatomical lesions/diagrams.
+  - Logic that REQUIRES motion (e.g. "blood flow", "electron movement", "formula derivation").
+  - Content with graphs, step-by-step calculations, or complex equations.
 
-Choose "presentation" when:
-  - English grammar rules (text-heavy, examples-driven)
-  - UPSC/GS conceptual explanations (no formulas)
-  - MBA/case study reasoning
-  - Simple concept explanations with no math
+LEVEL 2 (High-Impact Deep Dive) → Use "explainer":
+  - Abstract conceptual deep-dives (e.g. "The Butterfly Effect", "Vastness of Space").
+  - Topics that benefit from Cinematic Metaphors (e.g. falling dominoes, ticking clocks).
+  - Storytelling about systems where no specific math/diagram is provided in the text.
 
-Choose "human_face" when:
-  - Caller explicitly requests conversational mode (rarely used now)
+LEVEL 3 (Maximum Engagement) → Use "user_generated_video":
+  - Personal tutor messages, motivational updates, or short "Reels" style snippets.
+  - Conversational content where the face-to-face connection is the primary goal.
 
-DEFAULT: if unsure, always choose "manim". It is the platform's primary mode.
+LEVEL 4 (Efficiency / Default) → Use "presentation":
+  - Factual subjects: UPSC, History, Geography (no complex diagrams), Civic lessons.
+  - Humanities: English grammar, Case Studies, Essays, Reasoning.
+  - Any factual or purely text-based content where static slides are sufficient.
+
+ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" to Manim/Explainer if the content strictly warrants it.
 
 ━━━ SCENE RULES BY RENDER MODE ━━━
 
@@ -146,6 +156,15 @@ MANIM SCENES (8–12 scenes):
 PRESENTATION SCENES (5–8 scenes):
   - title_card → concept_bullets → key_point scenes → summary
   - Keep it simple, no complex visuals
+
+EXPLAINER SCENES (6–10 scenes):
+  - title_card → series of b_roll_clip scenes → summary
+  - Each b_roll_clip must have a cinematic prompt (e.g. "A high-speed train zooming through a dark tunnel, sparks flying, 4k ultra realistic")
+  - Use metaphors! If explaining a chain reaction, use "falling dominoes". 
+
+USER_GENERATED_VIDEO (1–4 long scenes):
+  - subtitle_chunk scenes only
+  - focus on the narration; the visuals will be a single talking head avatar.
 
 ━━━ NARRATION RULES ━━━
   - Speak like a confident teacher, not a textbook

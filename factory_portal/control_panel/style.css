@@ -141,6 +141,21 @@ body.industrial {
 .agent-status.active { color: var(--primary); animation: pulse 1.5s infinite; }
 .agent-status.idle { color: var(--text-muted); }
 
+.selector {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: white !important;
+    padding: 4px 8px;
+    border-radius: 6px;
+    outline: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.selector option {
+    background: var(--bg-charcoal);
+}
+
 /* Toggle Slider */
 .toggle {
     position: relative;
@@ -256,8 +271,51 @@ input:checked + .slider:before { transform: translateX(20px); background-color: 
     color: var(--success);
 }
 
+/* Pipeline Matrix Overview */
+.matrix-overview {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.matrix-path {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 2px;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.15;
+}
+
+.manim-path {
+    background: linear-gradient(90deg, transparent, var(--primary), var(--primary), transparent);
+    top: 40%;
+    filter: blur(4px);
+}
+
+.ppt-path {
+    background: linear-gradient(90deg, transparent, #FFD700, #FFD700, transparent);
+    top: 60%;
+    filter: blur(4px);
+}
+
+.explainer-path {
+    background: linear-gradient(90deg, transparent, #10B981, #10B981, transparent);
+    top: 75%;
+    filter: blur(4px);
+}
+
+.ugv-path {
+    background: linear-gradient(90deg, transparent, #8B5CF6, #8B5CF6, transparent);
+    top: 90%;
+    filter: blur(4px);
+}
+
 /* Pipeline Grid - 6 Columns */
 .pipeline-view {
+    position: relative;
+    z-index: 1;
     flex: 1;
     display: grid;
     grid-template-columns: repeat(6, 1fr);
@@ -321,8 +379,24 @@ input:checked + .slider:before { transform: translateX(20px); background-color: 
 }
 
 /* Status Pill Variants */
+.status-pill.mode-auto { 
+    background: linear-gradient(135deg, #10B981, #10B981); /* Use primary success color as base */
+    background: linear-gradient(135deg, #3B82F6, #8B5CF6); /* Blue to Purple Intelligence Gradient */
+    color: #FFF; 
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+    animation: intelligence-pulse 2s infinite alternate;
+}
+
+@keyframes intelligence-pulse {
+    from { opacity: 0.8; box-shadow: 0 0 5px rgba(139, 92, 246, 0.3); }
+    to { opacity: 1; box-shadow: 0 0 15px rgba(139, 92, 246, 0.6); }
+}
+
 .status-pill.mode-manim { background: rgba(255, 0, 0, 0.1); color: var(--primary); border: 1px solid var(--primary-glow); }
 .status-pill.mode-edu { background: rgba(255, 255, 255, 0.05); color: #FFF; border: 1px solid rgba(255, 255, 255, 0.1); }
+.status-pill.mode-explainer { background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.2); }
+.status-pill.mode-ugv { background: rgba(139, 92, 246, 0.1); color: #8B5CF6; border: 1px solid rgba(139, 92, 246, 0.2); }
 .status-pill.manual { background: #111; color: var(--text-muted); border: 1px solid #222; }
 
 /* Agent Statuses */
@@ -432,6 +506,106 @@ input:checked + .slider:before { transform: translateX(20px); background-color: 
 
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 10px var(--success); animation: pulse 1.5s infinite; }
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+/* Healer Alert */
+.healer-alert {
+    background: rgba(255, 0, 0, 0.1);
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+    padding: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: flash 1s infinite alternate;
+}
+
+@keyframes flash {
+    from { opacity: 1; box-shadow: 0 0 5px var(--primary); }
+    to { opacity: 0.6; box-shadow: 0 0 15px var(--primary); }
+}
+
+.healer-engaged {
+    border-color: var(--primary) !important;
+    background: rgba(255, 0, 0, 0.05) !important;
+}
+
+/* Inspector Panel */
+.inspector {
+    position: fixed;
+    top: 1.5rem; bottom: 1.5rem; right: -400px;
+    width: 380px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    border-radius: 16px 0 0 16px;
+    transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: -20px 0 50px rgba(0,0,0,0.5);
+}
+
+.inspector.active { right: 0; }
+
+.inspector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.inspector-section { margin-bottom: 1.5rem; }
+.reasoning-box {
+    background: rgba(139, 92, 246, 0.05);
+    padding: 1rem;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    color: #8B5CF6; /* Purple Intelligence color */
+    white-space: pre-wrap;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    margin-top: 0.5rem;
+    line-height: 1.4;
+}
+
+.json-viewer {
+    background: rgba(0,0,0,0.5);
+    padding: 1rem;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    color: #4ECDC4;
+    white-space: pre-wrap;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.job-meta { margin-bottom: 2rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 1rem; }
+.job-meta .label { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; margin-right: 10px; }
+
+.audit-list { list-style: none; font-size: 0.7rem; color: var(--text-muted); }
+.audit-list li { margin-bottom: 6px; border-left: 2px solid var(--primary); padding-left: 10px; }
+
+/* Utils */
+.success-dot { width: 6px; height: 6px; background: var(--success); border-radius: 50%; box-shadow: 0 0 8px var(--success); margin-left: auto; }
+.inspect-hint { display: flex; align-items: center; gap: 4px; font-size: 0.65rem; color: var(--text-muted); cursor: pointer; }
+.inspect-hint:hover { color: var(--primary); }
+
+.ripple { position: relative; overflow: hidden; }
+.ripple:after {
+    content: "";
+    display: block;
+    position: absolute;
+    width: 100%; height: 100%;
+    top: 0; left: 0;
+    pointer-events: none;
+    background-image: radial-gradient(circle, #fff 10%, transparent 10.01%);
+    background-repeat: no-repeat;
+    background-position: 50%;
+    transform: scale(10, 10);
+    opacity: 0;
+    transition: transform .5s, opacity 1s;
+}
+.ripple:active:after { transform: scale(0, 0); opacity: .2; transition: 0s; }
 
 /* Tab System */
 .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
