@@ -19,162 +19,171 @@ navBtns.forEach(btn => {
     });
 });
 
-// Inspector Logic
-const inspectorPanel = document.getElementById('inspectorPanel');
-const inspectJobId = document.getElementById('inspectJobId');
-const inspectJson = document.getElementById('inspectJson');
-const inspectReasoning = document.getElementById('inspectReasoning');
+// Tony Match Masterclass Box Logic
+const masterclassHero = document.getElementById('masterclassHero');
+const API_BASE = "http://localhost:8000";
 
-window.inspectJob = (jobId) => {
-    inspectJobId.innerText = `#JOB-${jobId}`;
-    inspectorPanel.classList.add('active');
-    
-    // Simulate Grounded Scene JSON extraction
-    const mockData = {
-        "99": {
-            "mode": "presentation",
-            "reasoning": "Topic identified as UPSC History (Arts/Factual). defaulting to Presentation mode to minimize compute while preserving structured text clarity.",
-            "scenes": [
-                { "layout": "title_card", "data": { "title": "UPSC History" } },
-                { "layout": "chaos_chapter", "data": { "title": "The Mughal Empire" } }
-            ]
-        },
-        "102": {
-            "mode": "manim",
-            "reasoning": "Detected MCQ with Probability logic. Upgrading to MANIM path for interactive visual option elimination and correct answer grounding.",
-            "scenes": [
-                { "visual_type": "mcq_layout", "visual_data": { "correct": "B" } }
-            ]
-        },
-        "98": {
-            "mode": "manim",
-            "reasoning": "Medical anatomical topic detected (Bronchopleural Fistula). Manim selected for precise anatomical coordinate mapping and dynamic flow overlays.",
-            "scenes": [
-                { "visual_type": "image_arrow", "visual_data": { "label": "Leaking Air" } }
-            ]
+let lastRenderedStatus = null;
+let activeJobId = null;
+
+async function pollJobs() {
+    try {
+        const response = await fetch(`${API_BASE}/jobs`);
+        const jobs = await response.json();
+        
+        // Find the most interesting job (either building or just finished)
+        const jobIds = Object.keys(jobs).sort((a,b) => b - a);
+        if (jobIds.length === 0) return renderEmpty();
+
+        const latestJob = jobs[jobIds[0]];
+        activeJobId = jobIds[0];
+
+        if (latestJob.status === "completed") {
+            renderPlayer(latestJob);
+        } else {
+            renderBuilding(latestJob);
         }
-    };
-    
-    const data = mockData[jobId] || mockData["99"];
-    inspectJson.innerText = JSON.stringify({render_mode: data.mode, scenes: data.scenes}, null, 4);
-    inspectReasoning.innerText = data.reasoning;
-};
 
-window.closeInspector = () => {
-    inspectorPanel.classList.remove('active');
-};
-
-// Modal Logic
-const bulkModal = document.getElementById('bulkModal');
-const bulkIngestBtn = document.getElementById('bulkIngestBtn');
-const vaultBulkLink = document.getElementById('vaultBulkLink');
-const closeModals = document.querySelectorAll('.close-modal');
-
-const openModal = () => bulkModal.classList.add('active');
-const closeModal = () => bulkModal.classList.remove('active');
-
-bulkIngestBtn.addEventListener('click', openModal);
-vaultBulkLink.addEventListener('click', openModal);
-closeModals.forEach(btn => btn.addEventListener('click', closeModal));
-
-// Grounded Telemetry Log Simulation (Actual Code State Names)
-const consoleOutput = document.querySelector('.console-output');
-const latencyDisplay = document.getElementById('latencyDisplay');
-
-const groundedLogs = [
-    { type: 'info', node: 'DIRECTOR', msg: 'parsed_facts: LOCKED. Ground truth MCQ answer identified for JOB-102.' },
-    { type: 'warning', node: 'HEALER', msg: 'Manim SyntaxError in scene_04.py: LaTeX escape failed. Repairing...' },
-    { type: 'success', node: 'HEALER', msg: 'Scene fixed. Re-injecting into Manim Supervisor.' },
-    { type: 'info', node: 'VISION', msg: 'Gemini Imagen 4.0: Conceptual diagram generation started for {topic}.' },
-    { type: 'success', node: 'DEPLOY', msg: 'Job #JOB-095: artifact_path verified. S3 Upload successful.' },
-    { type: 'info', node: 'ARCHITECT', msg: 'Blueprint validation: checking manim_script_path consistency.' }
-];
-
-const addLogLine = (node = null, message = null, type = 'info') => {
-    const log = node ? {node, msg: message, type} : groundedLogs[Math.floor(Math.random() * groundedLogs.length)];
-    const time = new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit' });
-    
-    const line = document.createElement('div');
-    line.className = 'log-line';
-    line.innerHTML = `<span class="timestamp">[${time}]</span> <span class="${log.type}">${log.node}:</span> ${log.msg}`;
-    
-    const cursor = consoleOutput.querySelector('.active');
-    consoleOutput.insertBefore(line, cursor);
-    consoleOutput.scrollTop = consoleOutput.scrollHeight;
-    
-    // Simulate dynamic latency jitter
-    if (!node) {
-        const lat = (Math.random() * 0.5 + 0.8).toFixed(1);
-        latencyDisplay.innerText = `Claude-4.6 (${lat}s)`;
+        // Also update the telemetry console
+        updateTelemetry(latestJob);
+        
+    } catch (err) {
+        console.error("Dashboard Polling Error:", err);
     }
-};
-
-setInterval(addLogLine, 6000);
-
-// Multi-mode Select Logic for Render Path
-const renderModeSelect = document.getElementById('renderModeSelect');
-const renderModePill = document.getElementById('renderModePill');
-
-if (renderModeSelect) {
-    renderModeSelect.addEventListener('change', (e) => {
-        const val = e.target.value;
-        renderModePill.innerText = e.target.options[e.target.selectedIndex].text;
-        
-        // Map values to pill classes
-        const classMap = {
-            'auto': 'mode-auto',
-            'manim': 'mode-manim',
-            'presentation': 'mode-edu',
-            'explainer': 'mode-explainer',
-            'user_generated_video': 'mode-ugv'
-        };
-        
-        renderModePill.className = "status-pill " + (classMap[val] || "manual");
-        addLogLine("OPERATOR", `Manual State Override: Render Mode set to ${renderModePill.innerText}`, "info");
-    });
 }
 
-// Toggle Logic for Overrides
-document.querySelectorAll('.toggle input').forEach(input => {
-    input.addEventListener('change', (e) => {
-        const item = e.target.closest('.switch-item');
-        const title = item.querySelector('.title').innerText;
-        const pill = item.querySelector('.status-pill');
-        const checked = e.target.checked;
-        
-        if (title === "Render Path") {
-            pill.innerText = checked ? "MANIM" : "PPT";
-            pill.className = "status-pill " + (checked ? "mode-manim" : "mode-edu");
-        } else if (title === "Critic Soul") {
-            pill.innerText = checked ? "EDU" : "MKT";
-            pill.className = "status-pill " + (checked ? "mode-edu" : "manual");
-        } else if (title === "Vision Engine") {
-            pill.innerText = checked ? "AUTO" : "OFF";
-            pill.className = "status-pill " + (checked ? "auto" : "manual");
+function renderEmpty() {
+    masterclassHero.innerHTML = `
+        <div class="empty-state">
+            <i data-lucide="video"></i>
+            <h3>Ready for Production</h3>
+            <p>Waiting for a click from Tony AI to start generating your masterclass.</p>
+        </div>
+    `;
+    lucide.createIcons();
+    lastRenderedStatus = "empty";
+}
+
+function renderBuilding(job) {
+    if (lastRenderedStatus === "building" && activeJobId === job.job_id) {
+        // Just update reasoning text to avoid flicker
+        const rBox = document.querySelector('.building-reasoning');
+        if (rBox && job.logs && job.logs.length > 0) {
+            rBox.innerText = job.logs[job.logs.length - 1].msg;
         }
+        return;
+    }
+    lastRenderedStatus = "building";
 
-        addLogLine("OPERATOR", `Manual State Override: ${title} set to ${pill.innerText}`, "info");
-    });
-});
-
-// Bulk Ingest Simulation
-const startBatchBtn = document.getElementById('startBatchBtn');
-startBatchBtn.addEventListener('click', () => {
-    closeModal();
-    addLogLine("SYSTEM", "BATCH_INIT: Initializing ensemble for 40 chapters.", "success");
-    addLogLine("ORCHESTRATOR", "Allocation complete: 40 threads reserved in api_bridge.", "info");
+    const lastLog = job.logs && job.logs.length > 0 ? job.logs[job.logs.length - 1] : {node: "INGESTION", msg: "Initialized."};
     
-    setTimeout(() => {
-        alert("Batch Production Active. Monitor the matrix for parallel nodes.");
-    }, 2000);
-});
+    masterclassHero.innerHTML = `
+        <div class="hero-header">
+            <div class="avatar-group">
+                <img src="https://ui-avatars.com/api/?name=Tony+AI&background=3B82F6&color=fff" alt="Tony AI">
+                <div>
+                    <span style="display: block; font-weight: 700; font-size: 0.9rem;">Tony AI Teacher</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted);">Industrial Video Generation Active</span>
+                </div>
+            </div>
+            <div style="background: rgba(59, 130, 246, 0.1); color: var(--primary); padding: 4px 12px; border-radius: 8px; font-weight: 800; font-size: 0.7rem;">
+                ${job.topic.toUpperCase()}
+            </div>
+        </div>
+        <div class="hero-body">
+            <h2 class="building-title">Building: ${job.topic}</h2>
+            <div class="building-reasoning">
+                ${lastLog.msg}
+            </div>
+            <div class="progress-belt">
+                <div class="progress-stats">
+                    <span>${lastLog.node}</span>
+                    <span>Processing...</span>
+                </div>
+                <div class="progress-container" style="margin-bottom: 0;">
+                    <div class="progress-bar" style="width: 70%; animation: pulse 2s infinite;"></div>
+                </div>
+            </div>
+        </div>
+    `;
+    lucide.createIcons();
+}
+
+function renderPlayer(job) {
+    if (lastRenderedStatus === "completed") return; 
+    lastRenderedStatus = "completed";
+
+    masterclassHero.innerHTML = `
+        <div class="hero-header">
+            <div class="avatar-group">
+                <img src="https://ui-avatars.com/api/?name=Tony+AI&background=3B82F6&color=fff" alt="Tony AI">
+                <div>
+                    <span style="display: block; font-weight: 700; font-size: 0.9rem;">Tony AI Teacher</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted);">${job.topic} | MC Done</span>
+                </div>
+            </div>
+            <div style="background: rgba(16, 185, 129, 0.1); color: var(--success); padding: 4px 12px; border-radius: 8px; font-weight: 800; font-size: 0.7rem;">
+                COMPLETED
+            </div>
+        </div>
+        <div class="hero-body">
+            <div class="hero-player-container">
+                <video controls autoplay>
+                    <source src="${job.video_url}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h3 style="font-size: 1.1rem; font-weight: 700;">${job.topic}</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted);">Video Masterclass generated successfully.</p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="window.open('${job.video_url}', '_blank')">
+                        <i data-lucide="download"></i> Download
+                    </button>
+                    <button class="btn btn-secondary" onclick="location.reload()" style="background: #F1F5F9; border: 1px solid #E2E8F0; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600;">
+                        Dismiss
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    lucide.createIcons();
+}
+
+const consoleOutput = document.querySelector('.console-output');
+function updateTelemetry(job) {
+    if (!job.logs) return;
+    
+    // Simple log deduplication and scrolling
+    const lastLogs = job.logs.slice(-5);
+    lastLogs.forEach(log => {
+        const time = new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit' });
+        const logId = `log-${job.job_id}-${log.node}-${log.msg.substring(0,10)}`;
+        if (document.getElementById(logId)) return;
+
+        const line = document.createElement('div');
+        line.id = logId;
+        line.className = 'log-line';
+        line.innerHTML = `<span class="timestamp">[${time}]</span> <span class="${log.type}">${log.node}:</span> ${log.msg}`;
+        
+        consoleOutput.appendChild(line);
+    });
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+}
+
+// Start Polling
+setInterval(pollJobs, 2000);
+pollJobs();
 
 // System Halt Sequence
 const haltBtn = document.querySelector('.btn-danger');
-haltBtn.addEventListener('click', () => {
-    if (confirm('CRITICAL: SIGTERM ALL NODES? This will kill all active Manim render processes.')) {
-        document.body.style.filter = 'grayscale(1) brightness(0.4)';
-        document.body.style.pointerEvents = 'none';
-        addLogLine("CORE", "SIGTERM RECEIVED. FACTORY EMERGENCY SHUTDOWN COMPLETE.", "warning");
-    }
-});
+if (haltBtn) {
+    haltBtn.addEventListener('click', () => {
+        if (confirm('CRITICAL: SIGTERM ALL NODES? This will kill all active render processes.')) {
+            document.body.style.filter = 'grayscale(1) brightness(0.4)';
+            document.body.style.pointerEvents = 'none';
+        }
+    });
+}

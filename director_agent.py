@@ -37,6 +37,10 @@ Visual types per mode:
 
   USER_GENERATED_VIDEO:
     subtitle_chunk   {"subtitle": str} # the text to be highlighted word-by-word
+
+  EXPLAINER (Enhanced):
+    counting_metaphor {"item_name": str, "count": int, "style": "3D stylized"} # 6 bananas logic
+    generative_video  {"prompt": str, "metaphor": str} # 2s Higgsfield clips
 """
 
 import os
@@ -64,6 +68,8 @@ _REQUIRED_FIELDS = {
     "concept_image":   {"description": ""},
     "image_arrow":     {"region": "center", "label": ""},
     "b_roll_clip":     {"prompt": "Cinematic visual of...", "metaphor": ""},
+    "counting_metaphor": {"item_name": "apple", "count": 6, "style": "3D stylized", "background_prompt": "A rustic wooden table in a sunlight kitchen"},
+    "generative_video": {"prompt": "Cinematic motion of...", "metaphor": ""},
 }
 
 
@@ -85,6 +91,8 @@ class Scene(BaseModel):
         "concept_image",
         "image_arrow",
         "b_roll_clip",
+        "counting_metaphor",
+        "generative_video",
     ]
     visual_data: dict[str, Any]
 
@@ -158,9 +166,14 @@ PRESENTATION SCENES (5–8 scenes):
   - Keep it simple, no complex visuals
 
 EXPLAINER SCENES (6–10 scenes):
-  - title_card → series of b_roll_clip scenes → summary
-  - Each b_roll_clip must have a cinematic prompt (e.g. "A high-speed train zooming through a dark tunnel, sparks flying, 4k ultra realistic")
+  - title_card → series of multimodal scenes → summary
   - Use metaphors! If explaining a chain reaction, use "falling dominoes". 
+  - ACADEMIC COUNTING: If the narration mentions a number (e.g. "three atoms" or "six steps"), use counting_metaphor. 
+    1. First scene: counting_metaphor with count 1
+    2. Final scene: counting_metaphor with target count (e.g. 6)
+    3. THEMATIC RELEVANCE: Always provide a `background_prompt` for counting_metaphor. (e.g. if counting atoms, background is "A microscopic view of a vibrant molecular structure"). 
+    4. NO PLAIN BACKGROUNDS: Ensure the background prompt provides a "World" for the objects to live in (e.g. "train on tracks", "market table", "blueprint drafting board").
+  - MOOD: Each generative_video must have a cinematic prompt (e.g. "Sparks flying in a high-tech lab, 4k ultra realistic, Higgsfield style")
 
 USER_GENERATED_VIDEO (1–4 long scenes):
   - subtitle_chunk scenes only

@@ -63,8 +63,9 @@ def _manim() -> str:
 
 class TonyState(TypedDict):
     # ── Input ──────────────────────────────────────────
-    raw_input:   str
+    job_id:      Optional[str]
     topic:       str
+    raw_input:   str
 
     # ── After director_node ────────────────────────────
     parsed_facts:  Optional[dict]
@@ -73,6 +74,7 @@ class TonyState(TypedDict):
 
     # ── After vision_node ──────────────────────────────
     image_path:  Optional[str]
+    image_paths: Optional[dict[str, str]] # Map of scene_id or asset_id to local path
 
     # ── After architect_node ───────────────────────────
     manim_script_path: Optional[str]
@@ -106,6 +108,7 @@ class TonyState(TypedDict):
 
 def director_node(state: TonyState) -> TonyState:
     """Parse Tony AI HTML and run Claude director to produce scenes."""
+    _log_progress(state, "DIRECTOR", f"Analyzing curriculum and selecting render path for: {state['topic']}...")
     print(f"🎬 [Director] Parsing HTML and writing scene script for: {state['topic']}")
 
     from html_parser import parse_tony_html
@@ -142,41 +145,75 @@ def director_node(state: TonyState) -> TonyState:
     return state
 
 
-# ── Node 2: Vision ────────────────────────────────────────────────────────────
-
 def vision_node(state: TonyState) -> TonyState:
-    """Generate concept diagram using Gemini Imagen 3."""
-    print(f"🎨 [Vision] Generating concept image for: {state['topic']}")
+    """Generate concept diagrams and multimodal metaphors using Gemini Imagen 3."""
+    _log_progress(state, "VISION", "AI Vision Engine: Initializing high-fidelity asset generation...")
+    print(f"🎨 [Vision] Generating assets for: {state['topic']}")
 
-    # User requested skip or not in Manim mode
-    if state.get("no_vision") or state.get("render_mode") != "manim":
-        print("   Skipping image generation (user-requested or presentation mode)")
+    if state.get("no_vision"):
+        print("   Skipping image generation (user-requested)")
         state["image_path"] = None
+        state["image_paths"] = {}
         return state
 
     from image_generator import generate_concept_image
 
     subject    = state["parsed_facts"].get("subject", "default")
     output_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    os.makedirs(output_dir, exist_ok=True)
 
-    # Use pre-generated image if it already exists
-    pre_path = os.path.join(output_dir, "tony_diagram.png")
-    if os.path.exists(pre_path):
-        print("   Using pre-generated concept image.")
-        state["image_path"] = pre_path
-        return state
+    # ── PATH 1: Manim (Single Diagram) ────────────────
+    if state.get("render_mode") == "manim":
+        pre_path = os.path.join(output_dir, "tony_diagram.png")
+        if os.path.exists(pre_path):
+            state["image_path"] = pre_path
+        else:
+            try:
+                state["image_path"] = generate_concept_image(state["topic"], subject, output_dir=output_dir, filename="tony_diagram.png")
+            except Exception:
+                state["image_path"] = None
 
-    try:
-        path = generate_concept_image(
-            topic=state["topic"],
-            subject=subject,
-            output_dir=output_dir,
-        )
-        state["image_path"] = path
-    except Exception as e:
-        # Non-fatal — template renderer will use a dark background fallback
-        print(f"   ⚠️  Image generation failed: {e}. Continuing with fallback.")
-        state["image_path"] = None
+    # ── PATH 2: Explainer (Multi-Asset) ───────────────
+    elif state.get("render_mode") == "explainer":
+        image_paths = {}
+        scenes = state["scenes"] or []
+        
+        for i, scene in enumerate(scenes):
+            v_type = scene["visual_type"]
+            v_data = scene["visual_data"]
+            
+            if v_type == "counting_metaphor":
+                item = v_data.get("item_name", "item")
+                asset_id = f"counting_{i}_{item}"
+                print(f"   Generating counting item: {item}...")
+                try:
+                    path = generate_concept_image(item, subject="counting_item", output_dir=output_dir, filename=f"{asset_id}.png")
+                    image_paths[asset_id] = path
+                except Exception as e:
+                    print(f"   ⚠️  Counting asset failed: {e}")
+                
+                # BACKGROUND for counting scene
+                bg_prompt = v_data.get("background_prompt")
+                if bg_prompt:
+                    bg_id = f"counting_bg_{i}"
+                    print(f"   Generating thematic background for counting scene {i}: {bg_prompt}...")
+                    try:
+                        bg_path = generate_concept_image(bg_prompt, subject="explainer_background", output_dir=output_dir, filename=f"{bg_id}.png")
+                        image_paths[bg_id] = bg_path
+                    except Exception as e:
+                        print(f"   ⚠️  Counting background failed: {e}")
+
+            elif v_type == "b_roll_clip" or v_type == "generative_video":
+                prompt = v_data.get("prompt", "Educational visual")
+                asset_id = f"metaphor_{i}"
+                print(f"   Generating cinematic metaphor for scene {i}...")
+                try:
+                    path = generate_concept_image(prompt, subject="explainer_metaphor", output_dir=output_dir, filename=f"{asset_id}.png")
+                    image_paths[asset_id] = path
+                except Exception as e:
+                    print(f"   ⚠️  Metaphor asset failed: {e}")
+
+        state["image_paths"] = image_paths
 
     return state
 
@@ -185,6 +222,7 @@ def vision_node(state: TonyState) -> TonyState:
 
 def architect_node(state: TonyState) -> TonyState:
     """Convert scenes into a Manim script (deterministic templates). Manim path only."""
+    _log_progress(state, "ARCHITECT", "Orchestration: Building mathematical animation blueprint...")
     print(f"📐 [Architect] Building Manim script for: {state['topic']}")
 
     job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
@@ -233,6 +271,7 @@ def architect_node(state: TonyState) -> TonyState:
 
 def supervisor_node(state: TonyState) -> TonyState:
     """Render Manim → stitch audio → S3 upload. Manim path only."""
+    _log_progress(state, "SUPERVISOR", "Production: Rendering Manim mathematics animation...")
     print(f"🔍 [Supervisor] Rendering — attempt {state['attempt_count'] + 1}")
 
     job_dir     = os.path.dirname(state["manim_script_path"])
@@ -668,6 +707,7 @@ def ppt_upload_node(state: TonyState) -> TonyState:
 
 def explainer_node(state: TonyState) -> TonyState:
     """Stitch narration with B-roll metaphors (Higgsfield style)."""
+    _log_progress(state, "EXPLAINER", "Production: Starting kinetic layered composition...")
     print(f"🎬 [Explainer Node] Generating narrative explainer for: {state['topic']}")
     
     from tts_generator import generate_audio
@@ -678,9 +718,13 @@ def explainer_node(state: TonyState) -> TonyState:
     os.makedirs(job_dir, exist_ok=True)
 
     # 1. Call explainer generator (B-roll stitching)
-    # Note: generate_explainer_video already handles per-scene TTS internally.
     try:
-        video_path = generate_explainer_video(state["scenes"], job_dir, state["topic"])
+        video_path = generate_explainer_video(
+            state["scenes"], 
+            state.get("image_paths", {}), 
+            job_dir, 
+            state["topic"]
+        )
         state["output_path"] = os.path.abspath(video_path)
         state["video_url"]   = _upload_to_s3(video_path, state["topic"])
     except Exception as e:
@@ -784,6 +828,27 @@ def should_continue(state: TonyState) -> str:
         print(f"⚠️  Render error — routing to healer (attempt {state['attempt_count']})")
         return "healer"
     return END
+
+
+def _log_progress(state: TonyState, node: str, msg: str, log_type: str = "info"):
+    """Internal helper to communicate with the API Bridge for the Factory Portal."""
+    job_id = state.get("job_id")
+    if not job_id:
+        return
+        
+    try:
+        # Cross-file import to avoid circular dependencies during initialization
+        from api_bridge import jobs, _jobs_lock
+        with _jobs_lock:
+            if job_id in jobs:
+                jobs[job_id]["logs"].append({
+                    "node": node,
+                    "msg": msg,
+                    "type": log_type
+                })
+                print(f"📡 [Telemetry] {node}: {msg}")
+    except Exception as e:
+        print(f"⚠️ Telemetry failed: {e}")
 
 
 # ── Graph ─────────────────────────────────────────────────────────────────────

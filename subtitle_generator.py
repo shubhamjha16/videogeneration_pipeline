@@ -22,8 +22,9 @@ def generate_kinetic_subtitles(video_clip, narration_text, audio_duration, style
     
     subtitle_clips = []
     
+    from text_renderer import create_text_clip
+    
     # Text style settings
-    font = 'Arial-Bold'
     font_size = 80
     base_color = 'white'
     highlight_color = 'yellow'
@@ -35,16 +36,14 @@ def generate_kinetic_subtitles(video_clip, narration_text, audio_duration, style
         start_t = i * word_duration
         end_t = (i + 1) * word_duration
         
-        # Current word (Yellow)
-        word_clip = TextClip(
+        # Use PIL-based text renderer instead of TextClip
+        word_clip = create_text_clip(
             word.upper(),
             fontsize=font_size,
             color=highlight_color,
-            font=font,
-            stroke_color=stroke_color,
             stroke_width=stroke_width,
-            method='caption',
-            size=(video_clip.w * 0.9, None)
+            stroke_color=stroke_color,
+            duration=end_t - start_t
         ).set_start(start_t).set_end(end_t).set_position(('center', 'center'))
         
         # Optional: add a slight scaling effect for 'pop'

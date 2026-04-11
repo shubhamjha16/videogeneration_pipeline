@@ -32,11 +32,10 @@ load_dotenv()
 
 app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
 
-# CORS — read allowed origins from env; defaults to localhost only
-_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
+# CORS — allow all origins for local portal development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=["*"],
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
@@ -106,6 +105,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
         from autonomous_graph import app as graph
 
         final_state = graph.invoke({
+            "job_id":            job_id,
             "raw_input":         html,
             "topic":             topic,
             "attempt_count":     0,
@@ -133,10 +133,12 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             if video_url:
                 jobs[job_id]["status"]    = "completed"
                 jobs[job_id]["video_url"] = video_url
+                jobs[job_id]["logs"].append({"node": "DEPLOY", "msg": "Video production finalized and uploaded.", "type": "success"})
                 print(f"✅ Job {job_id} completed: {video_url}")
             else:
                 jobs[job_id]["status"] = "failed"
                 jobs[job_id]["error"]  = final_state.get("rendering_errors", "No output produced")
+                jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": f"Failure: {jobs[job_id]['error']}", "type": "warning"})
                 print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
 
     except Exception as e:
@@ -181,6 +183,7 @@ def start_render(request: RenderRequest):
             "with_avatar": request.with_avatar,
             "video_type":  request.video_type,
             "image_path":  request.image_path,
+            "logs":        [{"node": "SYSTEM", "msg": f"Job initialized for topic: {request.topic}", "type": "info"}]
         }
 
     thread = threading.Thread(
@@ -194,6 +197,12 @@ def start_render(request: RenderRequest):
     print(f"🚀 Job {job_id} queued for: {request.topic}")
     with _jobs_lock:
         return dict(jobs[job_id])
+
+
+@app.get("/jobs")
+def get_all_jobs():
+    """Returns all jobs for the Factory Portal dashboard."""
+    return jobs
 
 
 @app.get("/status/{job_id}", response_model=JobStatus)

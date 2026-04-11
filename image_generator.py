@@ -67,6 +67,16 @@ _PROMPT_TEMPLATES = {
         "clean boxes and arrows, color-coded decision points, "
         "MBA case study illustration quality, no watermarks."
     ),
+    "explainer_metaphor": (
+        "Cinematic educational metaphor for {topic}. "
+        "High-fidelity 3D render, dark atmospheric background, "
+        "vibrant colors, clean and professional, no watermarks."
+    ),
+    "counting_item": (
+        "A single, high-quality 3D stylized {topic} isolated on a dark background. "
+        "Vibrant colors, glossy finish, professional render style similar to premium 3D emojis, "
+        "centered, no distractions, no watermarks."
+    ),
     "default": (
         "Educational diagram explaining {topic}. "
         "Dark background (#1a1a2e), clear visual explanation, "
