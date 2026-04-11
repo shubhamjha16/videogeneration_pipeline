@@ -54,7 +54,8 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                 bg_path = image_paths.get(bg_id)
                 
                 if item_path and os.path.exists(item_path):
-                    scene_clip = _create_counting_clip(item_path, count, dur, bg_path=bg_path)
+                    scene_clip, sub_to_close = _create_counting_clip(item_path, count, dur, bg_path=bg_path)
+                    video_clips_to_close.extend(sub_to_close)
                 else:
                     scene_clip = _create_fallback_clip(f"Count: {count} {item_name}", dur)
             
@@ -79,7 +80,8 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                 asset_id = f"metaphor_{i}"
                 img_path = image_paths.get(asset_id)
                 if img_path and os.path.exists(img_path):
-                    scene_clip = _create_zoom_clip(img_path, dur)
+                    scene_clip, sub_to_close = _create_zoom_clip(img_path, dur)
+                    video_clips_to_close.extend(sub_to_close)
                 else:
                     scene_clip = _create_fallback_clip("Educational visual", dur)
             
@@ -145,7 +147,8 @@ def _create_zoom_clip(img_path, duration):
     def zoom_fn(t):
         return 1.0 + 0.1 * (t / duration)
     
-    return clip.resize(zoom_fn).set_position('center')
+    final_clip = clip.resize(zoom_fn).set_position('center')
+    return final_clip, [clip, final_clip]
 
 def _create_counting_clip(item_path, count, duration, bg_path=None):
     """Composites items with a staggered kinetic pop-in effect over a cinematic background."""
@@ -161,6 +164,9 @@ def _create_counting_clip(item_path, count, duration, bg_path=None):
     
     # Item template
     base_item = ImageClip(item_path).resize(height=180)
+    to_close = [base_item]
+    if isinstance(bg, (ImageClip, VideoFileClip)):
+        to_close.append(bg)
     
     positions = [
         (0.5, 0.4), (0.4, 0.5), (0.6, 0.5), 
@@ -190,8 +196,11 @@ def _create_counting_clip(item_path, count, duration, bg_path=None):
                 
         animated_item = base_item.resize(make_pop).set_start(start_t).set_duration(duration - start_t).set_position(pos, relative=True)
         layers.append(animated_item)
+        to_close.append(animated_item)
         
-    return CompositeVideoClip(layers).set_duration(duration)
+    final_comp = CompositeVideoClip(layers).set_duration(duration)
+    to_close.append(final_comp)
+    return final_comp, to_close
 
 def _create_fallback_clip(text, duration):
     bg = ColorClip(size=(1280, 720), color=(20, 20, 40), duration=duration)

@@ -53,8 +53,18 @@ def run_healer(broken_script: str, error_message: str) -> str:
             )}
         ]
     )
-    fixed = response.choices[0].message.content
+    # Robust extraction: Only take what is inside ```python ... ```
+    # If LLM includes chatter outside the blocks, this prevents a SyntaxError in Manim.
     match = re.search(r'```python\s*(.*?)```', fixed, re.DOTALL)
     if match:
         return match.group(1).strip()
-    return fixed.replace("```python", "").replace("```", "").strip()
+    
+    # Fallback: if no backticks but starts with 'import', it might be naked code
+    if "import " in fixed:
+        # Still try to strip any common LLM lead-in chatter
+        lines = fixed.splitlines()
+        for i, line in enumerate(lines):
+            if line.strip().startswith(("import ", "from ")):
+                return "\n".join(lines[i:]).strip()
+    
+    return fixed.strip()

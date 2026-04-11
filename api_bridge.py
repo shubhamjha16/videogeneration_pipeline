@@ -98,11 +98,11 @@ def _run_pipeline(job_id: str, topic: str, html: str):
     injected_image = job.get("image_path")
     if injected_image and os.path.exists(injected_image):
         import shutil
-        job_dir = os.path.join("output", f"job_{topic.lower().replace(' ', '_')}")
+        job_dir = os.path.join("output", f"job_{job_id}")
         os.makedirs(job_dir, exist_ok=True)
         dest = os.path.join(job_dir, "tony_diagram.png")
         shutil.copy2(injected_image, dest)
-        print(f"📸 Using injected image: {injected_image}")
+        print(f"📸 Using injected image in isolated dir: {dest}")
 
     try:
         from autonomous_graph import app as graph

@@ -158,8 +158,8 @@ def vision_node(state: TonyState) -> TonyState:
 
     from image_generator import generate_concept_image
 
-    subject    = state["parsed_facts"].get("subject", "default")
-    output_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    output_dir = os.path.join("output", job_prefix)
     os.makedirs(output_dir, exist_ok=True)
 
     # ── PATH 1: Manim (Single Diagram) ────────────────
@@ -225,7 +225,8 @@ def architect_node(state: TonyState) -> TonyState:
     _log_progress(state, "ARCHITECT", "Orchestration: Building mathematical animation blueprint...")
     print(f"📐 [Architect] Building Manim script for: {state['topic']}")
 
-    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
     # manim mode — generate TTS first to get real durations, then build Manim script
@@ -341,7 +342,7 @@ def supervisor_node(state: TonyState) -> TonyState:
     state["rendering_errors"]  = None
 
     # ── 4. Upload to S3 ───────────────────────────────
-    state["video_url"] = _upload_to_s3(final_output, state["topic"])
+    state["video_url"] = _upload_to_s3(final_output, state["topic"], state.get("job_id"))
 
     return state
 
@@ -358,14 +359,14 @@ def healer_node(state: TonyState) -> TonyState:
     with open(state["manim_script_path"], "w") as f:
         f.write(fixed_script)
 
-    state["attempt_count"] += 1  # increment here only — supervisor never increments
-    state["rendering_errors"] = None
+    state["attempt_count"] += 1
+    state["rendering_errors"] = None  # Reset error state for the fresh attempt
     return state
 
 
 # ── S3 Upload ─────────────────────────────────────────────────────────────────
 
-def _upload_to_s3(local_path: str, topic: str) -> str:
+def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> str:
     """
     Upload finished video to S3 and return public URL.
     Reads AWS config from environment variables set by ECS task definition.
@@ -379,7 +380,9 @@ def _upload_to_s3(local_path: str, topic: str) -> str:
         return f"file://{local_path}"
 
     import boto3
-    s3_key = f"videos/{topic.lower().replace(' ', '_')}/{os.path.basename(local_path)}"
+    # Inclusion of job_id in S3 key prevents URL collision for identical topics
+    unique_prefix = job_id or os.environ.get("JOB_ID_FALLBACK", "factory")
+    s3_key = f"videos/{unique_prefix}_{topic.lower().replace(' ', '_')}/{os.path.basename(local_path)}"
 
     print(f"   ☁️  Uploading to s3://{bucket}/{s3_key} ...")
     s3 = boto3.client("s3", region_name=region)
@@ -602,12 +605,12 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
     print(f"🖼️  [PPT Renderer] Rendering {len(state['slides'])} slides...")
 
     _root = os.path.dirname(os.path.abspath(__file__))
-    import sys
     if _root not in sys.path:
         sys.path.insert(0, _root)
     from ppt_engine.slide_generator import generate_slide_image
 
-    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
     slide_paths = []
@@ -635,7 +638,8 @@ def ppt_tts_node(state: TonyState) -> TonyState:
 
     from tts_generator import generate_audio
 
-    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_dir = os.path.join("output", job_prefix)
     audio_files = []
 
     for i, slide in enumerate(state["slides"]):
@@ -657,7 +661,8 @@ def ppt_video_node(state: TonyState) -> TonyState:
 
     from ppt_engine.ppt_pipeline import _image_to_video, _concat_clips
 
-    job_dir    = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_dir    = os.path.join("output", job_prefix)
     with_avatar = state.get("with_avatar", False)
     clip_paths  = []
 
@@ -722,7 +727,7 @@ def ppt_video_node(state: TonyState) -> TonyState:
 def ppt_upload_node(state: TonyState) -> TonyState:
     """Upload PPT video to S3."""
     print(f"☁️  [PPT Upload] Uploading to S3...")
-    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"])
+    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"], state.get("job_id"))
     return state
 
 
@@ -735,7 +740,8 @@ def explainer_node(state: TonyState) -> TonyState:
     from moviepy.editor import AudioFileClip, VideoFileClip, concatenate_videoclips
     from explainer_generator import generate_explainer_video
 
-    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
     # 1. Call explainer generator (B-roll stitching)
@@ -747,7 +753,7 @@ def explainer_node(state: TonyState) -> TonyState:
             state["topic"]
         )
         state["output_path"] = os.path.abspath(video_path)
-        state["video_url"]   = _upload_to_s3(video_path, state["topic"])
+        state["video_url"]   = _upload_to_s3(video_path, state["topic"], state.get("job_id"))
     except Exception as e:
         print(f"   ❌ Explainer failed: {e}")
         state["rendering_errors"] = str(e)
@@ -762,7 +768,8 @@ def heygen_node(state: TonyState) -> TonyState:
     from tts_generator import generate_audio
     from heygen_generator import generate_heygen_avatar
 
-    job_dir = os.path.join("output", f"job_{state['topic'].lower().replace(' ', '_')}")
+    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
     # 1. Generate audio for HeyGen to lip-sync to
@@ -829,7 +836,7 @@ def fusion_node(state: TonyState) -> TonyState:
         state["rendering_errors"] = "Final production generation failed across all nodes."
         return state
         
-    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"])
+    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"], state.get("job_id"))
     return state
 
 
@@ -891,6 +898,9 @@ def _log_progress(state: TonyState, node: str, msg: str, log_type: str = "info")
                     "type": log_type
                 })
                 print(f"📡 [Telemetry] {node}: {msg}")
+            
+            # Persist to disk so Factory Portal sees live progress
+            _api_bridge_refs._save_jobs()
     except Exception as e:
         print(f"⚠️ Telemetry failed: {e}")
 

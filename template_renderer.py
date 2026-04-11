@@ -37,8 +37,8 @@ def tex(text: str) -> str:
     """Wrap plain text in LaTeX text mode for Tex()."""
     if not text or not text.strip():
         text = "-"  # empty/space Tex() crashes Manim
-    # Escape special LaTeX chars
     escaped = (text
+        .replace("\\", r"\textbackslash{}")
         .replace("&", r"\&")
         .replace("%", r"\%")
         .replace("$", r"\$")
@@ -49,7 +49,7 @@ def tex(text: str) -> str:
         .replace("~", r"\textasciitilde{}")
         .replace("^", r"\textasciicircum{}")
     )
-    return f'Tex(r"\\text{{{escaped}}}", tex_template=my_template)'
+    return f'Tex(r"\text{{{escaped}}}", tex_template=my_template)'
 
 
 def math(formula: str) -> str:
