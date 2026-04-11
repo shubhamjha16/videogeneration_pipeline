@@ -7,6 +7,7 @@ Called by autonomous_graph.py healer_node on render failure.
 """
 
 import os
+import re
 from groq import Groq
 
 SYSTEM_PROMPT = """You are a Manim expert fixing broken Python animation scripts.
@@ -53,4 +54,7 @@ def run_healer(broken_script: str, error_message: str) -> str:
         ]
     )
     fixed = response.choices[0].message.content
+    match = re.search(r'```python\s*(.*?)```', fixed, re.DOTALL)
+    if match:
+        return match.group(1).strip()
     return fixed.replace("```python", "").replace("```", "").strip()

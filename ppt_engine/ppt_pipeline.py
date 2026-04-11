@@ -340,7 +340,8 @@ def run_ppt_pipeline(
             )
 
             base_clip   = VideoFileClip(base_path)
-            avatar_clip = fx_loop(VideoFileClip(avatar_path).without_audio(), duration=base_clip.duration)
+            raw_avatar  = VideoFileClip(avatar_path).without_audio()
+            avatar_clip = fx_loop(raw_avatar, duration=base_clip.duration)
             av_resized  = avatar_clip.resize(width=320)
 
             W, H = base_clip.size
@@ -350,8 +351,13 @@ def run_ppt_pipeline(
             ]).set_audio(base_clip.audio)
 
             clip_path = os.path.join(job_dir, f"clip_{i:02d}.mp4")
-            composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
-            base_clip.close(); avatar_clip.close()
+            try:
+                composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
+            finally:
+                composite.close()
+                base_clip.close()
+                raw_avatar.close()
+                avatar_clip.close()
             success = os.path.exists(clip_path)
         else:
             # Image + audio → clip (fast ffmpeg path)

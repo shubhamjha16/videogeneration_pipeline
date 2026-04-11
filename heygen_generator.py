@@ -16,8 +16,11 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
             aud = AudioFileClip(audio_path)
             clip = ColorClip(size=(720, 1280), color=(0,0,0), duration=aud.duration)
             clip = clip.set_audio(aud)
-            clip.write_videofile(mock_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
-            clip.close(); aud.close()
+            try:
+                clip.write_videofile(mock_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
+            finally:
+                clip.close()
+                aud.close()
         return mock_path
 
     print(f"🚀 [HeyGen Gen] Requesting avatar video for: {text[:30]}...")

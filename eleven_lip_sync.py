@@ -25,7 +25,7 @@ def generate_lip_sync(video_path, audio_path, output_path):
                 "audio": audio_file
             }
             print(f"👄 Launching ElevenLabs Lip-Sync job for {os.path.basename(audio_path)}...")
-            response = requests.post(url, headers=headers, files=files)
+            response = requests.post(url, headers=headers, files=files, timeout=60)
             
             if response.status_code != 200:
                 print(f"❌ Lip-Sync Job Failed: {response.text}")
@@ -34,28 +34,48 @@ def generate_lip_sync(video_path, audio_path, output_path):
         print(f"❌ File/Network Error in Lip-Sync: {e}")
         return None
     
-    job_id = response.json().get("job_id")
+    try:
+        job_id = response.json().get("job_id")
+        if not job_id:
+            print("❌ Lip-Sync Job Failed: No job_id returned.")
+            return None
+    except Exception as e:
+        print(f"❌ Lip-Sync JSON Parse Error: {e}")
+        return None
     print(f"⏳ Job created: {job_id}. Waiting for completion...")
 
     # Polling for completion
     poll_url = f"https://api.elevenlabs.io/v1/lip_sync/{job_id}"
-    while True:
-        poll_resp = requests.get(poll_url, headers=headers)
-        status = poll_resp.json().get("status")
-        
-        if status == "finished":
-            # Download the resulting video
-            video_resp = requests.get(poll_resp.json().get("video_url"))
-            with open(output_path, "wb") as f:
-                f.write(video_resp.content)
-            print(f"✅ Lip-Sync Success: {output_path}")
-            return output_path
-        elif status == "failed":
-            print(f"❌ Lip-Sync Failed locally.")
-            return None
+    max_attempts = 60
+    for attempt in range(max_attempts):
+        try:
+            poll_resp = requests.get(poll_url, headers=headers, timeout=10)
+            status = poll_resp.json().get("status")
+            
+            if status == "finished":
+                # Download the resulting video
+                video_url = poll_resp.json().get("video_url")
+                if video_url:
+                    video_resp = requests.get(video_url, timeout=30)
+                    with open(output_path, "wb") as f:
+                        f.write(video_resp.content)
+                    print(f"✅ Lip-Sync Success: {output_path}")
+                    return output_path
+                else:
+                    print("❌ Lip-Sync finished but no video_url provided.")
+                    return None
+            elif status == "failed":
+                print(f"❌ Lip-Sync Failed locally.")
+                return None
+                
+        except Exception as e:
+            print(f"⚠️ Lip-Sync polling error: {e}")
         
         print("...")
         time.sleep(5) # Wait 5 seconds before polling again
+        
+    print("❌ Lip-Sync polling timed out.")
+    return None
 
 if __name__ == "__main__":
     # Test path (will fail if files don't exist)

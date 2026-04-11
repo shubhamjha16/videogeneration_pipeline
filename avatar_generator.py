@@ -131,7 +131,12 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
     dur = 30.0 # Standard long duration
     animated_clip = VideoClip(make_frame, duration=dur)
     final = animated_clip.set_audio(audio)
-    final.write_videofile(avatar_video_path, fps=24, codec="libx264")
+    try:
+        final.write_videofile(avatar_video_path, fps=24, codec="libx264")
+    finally:
+        audio.close()
+        animated_clip.close()
+        final.close()
     return avatar_video_path
 
 def create_talking_video_local(video_input, audio_input, output_path):
@@ -173,7 +178,12 @@ def create_talking_video_local(video_input, audio_input, output_path):
     talking = talking.set_audio(aud)
     
     # Use low bitrate for speed
-    talking.write_videofile(output_path, fps=12, codec="libx264", audio_codec="aac", bitrate="500k")
+    try:
+        talking.write_videofile(output_path, fps=12, codec="libx264", audio_codec="aac", bitrate="500k")
+    finally:
+        aud.close()
+        base.close()
+        talking.close()
     return output_path
 
 if __name__ == "__main__":

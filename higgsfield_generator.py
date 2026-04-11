@@ -115,7 +115,7 @@ def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base:
     return _generate_placeholder("Polling timed out", output_path)
 
 def _download_file(url: str, dest_path: str) -> str:
-    with requests.get(url, stream=True) as r:
+    with requests.get(url, stream=True, timeout=60) as r:
         r.raise_for_status()
         with open(dest_path, 'wb') as f:
             for chunk in r.iter_content(chunk_size=8192):

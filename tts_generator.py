@@ -22,7 +22,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".") -> str:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
         headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
         data = {"text": text, "model_id": "eleven_multilingual_v2"}
-        response = requests.post(url, json=data, headers=headers)
+        response = requests.post(url, json=data, headers=headers, timeout=30)
         if response.status_code == 200:
             with open(output_filename, "wb") as f:
                 f.write(response.content)
@@ -35,8 +35,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".") -> str:
                 import subprocess, imageio_ffmpeg
                 aiff_path = output_filename.replace(".m4a", ".aiff")
                 mp3_path  = output_filename.replace(".m4a", ".mp3")
-                safe_text = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
-                os.system(f'say -v "Samantha" -o "{aiff_path}" "{safe_text}"')
+                subprocess.run(["say", "-v", "Samantha", "-o", aiff_path, text])
                 subprocess.run(
                     [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", aiff_path,
                      "-ar", "44100", "-ab", "128k", mp3_path],
@@ -59,8 +58,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".") -> str:
         import subprocess, imageio_ffmpeg
         aiff_path = output_filename.replace(".m4a", ".aiff")
         mp3_path  = output_filename.replace(".m4a", ".mp3")
-        safe_text = text.replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
-        os.system(f'say -v "Samantha" -o "{aiff_path}" "{safe_text}"')
+        subprocess.run(["say", "-v", "Samantha", "-o", aiff_path, text])
         subprocess.run(
             [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", aiff_path,
              "-ar", "44100", "-ab", "128k", mp3_path],
@@ -106,7 +104,7 @@ if __name__ == "__main__":
             url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
             headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
             data = {"text": text_arg, "model_id": "eleven_multilingual_v2"}
-            response = requests.post(url, json=data, headers=headers)
+            response = requests.post(url, json=data, headers=headers, timeout=30)
             if response.status_code == 200:
                 with open(filename_arg, "wb") as f:
                     f.write(response.content)
@@ -114,12 +112,10 @@ if __name__ == "__main__":
             else:
                 print(f"❌ ElevenLabs Error {response.status_code}: {response.text}")
                 # Fallback to local
-                safe_text = text_arg.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
-                cmd = f'say -v "Samantha" -o {filename_arg} "{safe_text}"'
-                os.system(cmd)
+                import subprocess
+                subprocess.run(["say", "-v", "Samantha", "-o", filename_arg, text_arg])
                 print(f"⚠️ Fallback native TTS Saved to: {filename_arg}")
         else:
-            safe_text = text_arg.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
-            cmd = f'say -v "Samantha" -o {filename_arg} "{safe_text}"'
-            os.system(cmd)
+            import subprocess
+            subprocess.run(["say", "-v", "Samantha", "-o", filename_arg, text_arg])
             print(f"✅ Success! CLI native TTS Saved to: {filename_arg}")

@@ -26,8 +26,10 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
     """
     print(f"🎬 [Explainer Gen] Building Multimodal Metaphor Factory for: {topic}")
     
+    clips = []
+    audio_clips = []
+    video_clips_to_close = []
     try:
-        clips = []
         for i, scene in enumerate(scenes):
             v_type = scene["visual_type"]
             v_data = scene["visual_data"]
@@ -36,6 +38,7 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
             # 1. Generate narration audio for timing
             audio_path = generate_audio(narration, f"explainer_{i}", output_dir=output_dir)
             audio_clip = AudioFileClip(audio_path)
+            audio_clips.append(audio_clip)
             dur = audio_clip.duration
             
             # 2. Build visual asset for this scene
@@ -60,7 +63,9 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                 video_path = os.path.join(output_dir, f"gen_video_{i}.mp4")
                 try:
                     video_path = generate_higgsfield_video(prompt, video_path)
-                    raw_v = VideoFileClip(video_path).without_audio()
+                    raw_orig = VideoFileClip(video_path)
+                    raw_v = raw_orig.without_audio()
+                    video_clips_to_close.extend([raw_orig, raw_v])
                     # Loop or stretch if video is shorter than narration (generative is usually 2s)
                     if raw_v.duration < dur:
                         scene_clip = raw_v.loop(duration=dur)
@@ -102,13 +107,25 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
         output_path = os.path.join(output_dir, f"{topic.lower().replace(' ', '_')}_explainer.mp4")
         final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", threads=4)
         
-        # Cleanup
         final_video.close()
-        for c in clips: c.close()
             
     except Exception as e:
         print(f"   ❌ Explainer Gen Error: {e}")
         raise e
+    finally:
+        # Robust cleanup
+        for c in clips:
+            if c:
+                try: c.close()
+                except: pass
+        for a in audio_clips:
+            if a:
+                try: a.close()
+                except: pass
+        for v in video_clips_to_close:
+            if v:
+                try: v.close()
+                except: pass
     
     return output_path
 

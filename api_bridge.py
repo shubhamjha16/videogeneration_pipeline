@@ -22,7 +22,7 @@ import threading
 import requests
 import json
 
-_jobs_lock = threading.Lock()
+_jobs_lock = threading.RLock()
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -32,10 +32,13 @@ load_dotenv()
 
 app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
 
-# CORS — allow all origins for local portal development
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS")
+allowed_origins = allowed_origins_env.split(",") if allowed_origins_env else ["*"]
+
+# CORS — restrict origins natively via env var
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
@@ -113,8 +116,10 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             "render_mode":       job.get("render_mode"),
             "with_avatar":       job.get("with_avatar", False),
             "video_type":        job.get("video_type"),
+            "no_vision":         False,
             "scenes":            None,
             "image_path":        None,
+            "image_paths":       None,
             "audio_files":       None,
             "manim_script_path": None,
             "output_path":       None,
@@ -125,6 +130,9 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             "clip_paths":         None,
             "critic_feedback":    None,
             "ppt_attempt_count":  0,
+            "visual_prompts":     None,
+            "heygen_video_path":  None,
+            "subtitle_style":     None,
         })
 
         video_url = final_state.get("video_url") or ""
@@ -153,7 +161,9 @@ def _run_pipeline(job_id: str, topic: str, html: str):
     webhook_url = os.environ.get("WEBHOOK_URL")
     if webhook_url:
         try:
-            requests.post(webhook_url, json=jobs[job_id], timeout=10)
+            with _jobs_lock:
+                job_snapshot = dict(jobs[job_id])
+            requests.post(webhook_url, json=job_snapshot, timeout=10)
             print(f"📡 Webhook sent to {webhook_url}")
         except Exception as e:
             print(f"⚠️  Webhook failed: {e}")

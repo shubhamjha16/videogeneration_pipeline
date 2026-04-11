@@ -246,8 +246,10 @@ def architect_node(state: TonyState) -> TonyState:
     for i, (scene, audio_path) in enumerate(zip(scenes, audio_files)):
         try:
             clip = AudioFileClip(audio_path)
-            scene["visual_data"]["duration"] = round(clip.duration, 2)
-            clip.close()
+            try:
+                scene["visual_data"]["duration"] = round(clip.duration, 2)
+            finally:
+                clip.close()
         except Exception:
             scene["visual_data"]["duration"] = 3.0  # safe fallback
 
@@ -307,9 +309,12 @@ def supervisor_node(state: TonyState) -> TonyState:
     combined_audio_path = os.path.join(job_dir, "narration_combined.mp3")
     clips = [AudioFileClip(f) for f in audio_files]
     combined = concatenate_audioclips(clips)
-    combined.write_audiofile(combined_audio_path, logger=None)
-    for c in clips:
-        c.close()
+    try:
+        combined.write_audiofile(combined_audio_path, logger=None)
+    finally:
+        combined.close()
+        for c in clips:
+            c.close()
 
     # ── 3. Stitch video + audio via ffmpeg ────────────
     print("   Stitching video + audio...")
@@ -635,7 +640,11 @@ def ppt_tts_node(state: TonyState) -> TonyState:
 
     for i, slide in enumerate(state["slides"]):
         narration = slide.get("narration", "")
-        path = generate_audio(narration, i, output_dir=job_dir)
+        try:
+            path = generate_audio(narration, i, output_dir=job_dir)
+        except Exception as e:
+            print(f"   ⚠️ TTS failed for slide {i}: {e}")
+            path = None
         audio_files.append(path)
 
     state["audio_files"] = audio_files
@@ -653,6 +662,10 @@ def ppt_video_node(state: TonyState) -> TonyState:
     clip_paths  = []
 
     for i, (slide_img, audio_path) in enumerate(zip(state["slide_paths"], state["audio_files"])):
+        if audio_path is None:
+            print(f"   ⚠️ Skipping clip {i} because audio is missing")
+            continue
+
         clip_path = os.path.join(job_dir, f"clip_{i:02d}.mp4")
 
         if with_avatar:
@@ -675,9 +688,15 @@ def ppt_video_node(state: TonyState) -> TonyState:
                 base_clip,
                 av_resized.set_position((W - 340, H - 260)),
             ]).set_audio(base_clip.audio)
-            composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
-            # Close ALL MoviePy clips to prevent file-handle leaks
-            composite.close(); base_clip.close(); raw_avatar.close(); avatar_clip.close()
+            try:
+                composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
+            finally:
+                # Close ALL MoviePy clips to prevent file-handle leaks
+                composite.close()
+                base_clip.close()
+                raw_avatar.close()
+                avatar_clip.close()
+                av_resized.close()
         else:
             # Non-avatar path uses pure ffmpeg subprocess — no MoviePy objects to leak
             _image_to_video(slide_img, audio_path, clip_path)
@@ -690,7 +709,9 @@ def ppt_video_node(state: TonyState) -> TonyState:
 
     safe_topic  = state["topic"].lower().replace(" ", "_").replace("/", "_")
     final_output = os.path.join(job_dir, f"{safe_topic}_presentation.mp4")
-    _concat_clips(clip_paths, final_output)
+    if not _concat_clips(clip_paths, final_output):
+        state["rendering_errors"] = "PPT concat failed"
+        return state
 
     state["output_path"]      = os.path.abspath(final_output)
     state["rendering_errors"] = None
@@ -775,7 +796,13 @@ def subtitle_node(state: TonyState) -> TonyState:
     video_clip = VideoFileClip(video_path)
     try:
         audio_path = state["audio_files"][0]
-        audio_dur  = AudioFileClip(audio_path).duration
+        
+        tmp_aud = AudioFileClip(audio_path)
+        try:
+            audio_dur = tmp_aud.duration
+        finally:
+            tmp_aud.close()
+            
         full_text  = " ".join(s["narration_text"] for s in state["scenes"])
 
         # Apply kinetic styling (Insta Reels style)
@@ -796,6 +823,12 @@ def subtitle_node(state: TonyState) -> TonyState:
 def fusion_node(state: TonyState) -> TonyState:
     """Final assembly and upload."""
     print(f"🔗 [Fusion Node] Finalizing...")
+    
+    if not state.get("output_path") or not os.path.exists(state["output_path"]):
+        print("   ⚠️ No output_path available for upload. Final output missing.")
+        state["rendering_errors"] = "Final production generation failed across all nodes."
+        return state
+        
     state["video_url"] = _upload_to_s3(state["output_path"], state["topic"])
     return state
 
@@ -824,11 +857,13 @@ def critic_should_continue(state: TonyState) -> str:
 
 def should_continue(state: TonyState) -> str:
     """Route to healer on failure, up to 3 times. Manim only."""
-    if state.get("rendering_errors") and state["attempt_count"] < 3:
+    if state.get("rendering_errors") and state["attempt_count"] <= 3:
         print(f"⚠️  Render error — routing to healer (attempt {state['attempt_count']})")
         return "healer"
     return END
 
+
+_api_bridge_refs = None
 
 def _log_progress(state: TonyState, node: str, msg: str, log_type: str = "info"):
     """Internal helper to communicate with the API Bridge for the Factory Portal."""
@@ -836,12 +871,21 @@ def _log_progress(state: TonyState, node: str, msg: str, log_type: str = "info")
     if not job_id:
         return
         
+    global _api_bridge_refs
+    if _api_bridge_refs is None:
+        try:
+            import api_bridge
+            _api_bridge_refs = api_bridge
+        except ImportError:
+            pass
+
+    if _api_bridge_refs is None:
+        return
+
     try:
-        # Cross-file import to avoid circular dependencies during initialization
-        from api_bridge import jobs, _jobs_lock
-        with _jobs_lock:
-            if job_id in jobs:
-                jobs[job_id]["logs"].append({
+        with _api_bridge_refs._jobs_lock:
+            if job_id in _api_bridge_refs.jobs:
+                _api_bridge_refs.jobs[job_id]["logs"].append({
                     "node": node,
                     "msg": msg,
                     "type": log_type
@@ -968,6 +1012,10 @@ if __name__ == "__main__":
             "ppt_attempt_count": 0,
             "attempt_count":     0,
             "no_vision":         args.no_vision,
+            "image_paths":       None,
+            "visual_prompts":    None,
+            "heygen_video_path": None,
+            "subtitle_style":    None,
         }
 
         # Planner → Critic loop (up to 2 retries) → Renderer → TTS → Video
@@ -1006,6 +1054,10 @@ if __name__ == "__main__":
             "critic_feedback":    None,
             "video_type":         None,
             "no_vision":          args.no_vision,
+            "image_paths":        None,
+            "visual_prompts":     None,
+            "heygen_video_path":  None,
+            "subtitle_style":     None,
         })
 
     print(f"\n🏆 Done!")
