@@ -94,8 +94,12 @@ def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base:
                 poll_url = f"{poll_base}/{task_id}"
                 
             res = requests.get(poll_url, headers=headers, timeout=10)
-            data = res.json()
-            
+            try:
+                data = res.json()
+            except (json.JSONDecodeError, ValueError):
+                print(f"   ⚠️ Received non-JSON response from API (Attempt {attempt}). Retrying...")
+                continue
+                
             status = data.get("status", "").lower()
             if status in ["succeeded", "completed", "success"]:
                 video_url = data.get("output", {}).get("video") or data.get("output_url") or data.get("output")
@@ -115,11 +119,18 @@ def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base:
     return _generate_placeholder("Polling timed out", output_path)
 
 def _download_file(url: str, dest_path: str) -> str:
-    with requests.get(url, stream=True, timeout=60) as r:
-        r.raise_for_status()
-        with open(dest_path, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
+    tmp_path = dest_path + ".tmp"
+    try:
+        with requests.get(url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            with open(tmp_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        # Rename only after successful download to avoid corrupted cache
+        os.replace(tmp_path, dest_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
     return dest_path
 
 def _generate_placeholder(prompt: str, output_path: str) -> str:
@@ -131,7 +142,7 @@ def _generate_placeholder(prompt: str, output_path: str) -> str:
         "ffmpeg", "-y", "-f", "lavfi", "-i", "cellauto=s=1280x720:ratio=0.5",
         "-t", "5", "-vf", f"hue=s=0,format=yuv420p", "-c:v", "libx264", output_path
     ]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     return output_path
 
 if __name__ == "__main__":

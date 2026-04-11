@@ -104,18 +104,26 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
             scene_clip = scene_clip.set_audio(audio_clip)
             clips.append(scene_clip)
 
-        # 4. Final Stitching with cross-fades
+        # 4. Final Stitching with atomic export protection
         final_video = concatenate_videoclips(clips, method="compose")
         output_path = os.path.join(output_dir, f"{topic.lower().replace(' ', '_')}_explainer.mp4")
-        final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", threads=4)
+        tmp_output  = output_path + ".tmp"
         
-        final_video.close()
+        try:
+            final_video.write_videofile(tmp_output, fps=24, codec="libx264", audio_codec="aac", threads=4)
+            os.replace(tmp_output, output_path)
+        finally:
+            if os.path.exists(tmp_output):
+                os.remove(tmp_output)
             
     except Exception as e:
         print(f"   ❌ Explainer Gen Error: {e}")
         raise e
     finally:
-        # Robust cleanup
+        # Robust cleanup: Close parents (final_video) before children
+        if 'final_video' in locals() and final_video:
+            try: final_video.close()
+            except: pass
         for c in clips:
             if c:
                 try: c.close()
@@ -157,8 +165,12 @@ def _create_counting_clip(item_path, count, duration, bg_path=None):
         if bg_path.lower().endswith(('.png', '.jpg', '.jpeg')):
             bg = _create_zoom_clip(bg_path, duration)
         else:
-            # Fallback for video backgrounds (if supported later)
-            bg = VideoFileClip(bg_path).set_duration(duration).resize(height=720)
+            # Fallback for video backgrounds (with corruption guard)
+            try:
+                bg = VideoFileClip(bg_path).set_duration(duration).resize(height=720)
+            except Exception as e:
+                print(f"   ⚠️ Corrupt background video detected ({bg_path}): {e}. Falling back to clean slate.")
+                bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
     else:
         bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
     

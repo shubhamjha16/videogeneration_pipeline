@@ -8,26 +8,36 @@ def create_text_clip(text, fontsize=70, color='white', font_path=None, stroke_wi
     ImageMagick-free replacement for TextClip using Pillow.
     Returns a transparent MoviePy ImageClip.
     """
+    # Industrial Discovery Loop: Try multiple standard system fonts
     if not font_path:
-        # Default Mac paths
-        paths = [
+        font_candidates = [
+            os.path.join(os.path.dirname(__file__), "fonts", "Inter-Bold.ttf"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/System/Library/Fonts/Supplemental/Arial.ttf",
-            "/System/Library/Fonts/SFNS.ttf",
-            "/Library/Fonts/Arial.ttf"
+            "/Library/Fonts/Arial.ttf",
+            "Arial.ttf",
+            "Roboto-Bold.ttf",
+            "DejaVuSans.ttf"
         ]
-        for p in paths:
-            if os.path.exists(p):
-                font_path = p
-                break
+    else:
+        font_candidates = [font_path]
     
+    font = None
+    for candidate in font_candidates:
+        try:
+            font = ImageFont.truetype(candidate, fontsize)
+            break
+        except Exception:
+            continue
+            
+    if not font:
+        print("⚠️  Warning: No preferred fonts found. Using basic PIL fallback.")
+        font = ImageFont.load_default()
+
     # Create transparent image
     img = Image.new('RGBA', size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    
-    try:
-        font = ImageFont.truetype(font_path, fontsize)
-    except:
-        font = ImageFont.load_default()
 
     # Calculate text position (center)
     # PIL 10.0+ uses getbbox

@@ -18,6 +18,8 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
       - "pro": Real AI Lip-Sync using ElevenLabs API (Requires tutor_face.png)
       - "user": Your real face from camera! (Requires media/user_face.mp4)
     """
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
     avatar_video_path = os.path.join(output_dir, f"scene_{scene_idx}_avatar.mp4")
     width, height = 320, 240
 
@@ -128,7 +130,7 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
     # Render logic: render a fixed 30s of animation (high-fidelity logo idling)
     # This ensures we never need to loop short segments, avoiding MoviePy seeking bugs.
     audio = AudioFileClip(audio_file)
-    dur = 30.0 # Standard long duration
+    dur = audio.duration
     animated_clip = VideoClip(make_frame, duration=dur)
     final = animated_clip.set_audio(audio)
     try:

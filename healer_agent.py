@@ -52,7 +52,7 @@ def run_healer(broken_script: str, error_message: str) -> str:
                 f"Return the complete fixed script."
             )}
         ]
-    )
+    fixed = response.choices[0].message.content
     # Robust extraction: Only take what is inside ```python ... ```
     # If LLM includes chatter outside the blocks, this prevents a SyntaxError in Manim.
     match = re.search(r'```python\s*(.*?)```', fixed, re.DOTALL)

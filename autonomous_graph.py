@@ -38,25 +38,56 @@ import config
 from healer_agent import run_healer
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Industrial Helpers ───────────────────────────────────────────────────────
 
 def _ffmpeg() -> str:
     import imageio_ffmpeg
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
+_api_bridge_refs = None
+
+def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = "info"):
+    """Industrial Sentinel: Universal progress logger with circular memory capping."""
+    job_id = state.get("job_id")
+    if not job_id: return
+    
+    global _api_bridge_refs
+    if _api_bridge_refs is None:
+        try:
+            import api_bridge
+            _api_bridge_refs = api_bridge
+        except ImportError: pass
+        
+    if _api_bridge_refs:
+        with _api_bridge_refs._jobs_lock:
+            if job_id in _api_bridge_refs.jobs:
+                logs = _api_bridge_refs.jobs[job_id]["logs"]
+                logs.append({"node": node_name, "msg": msg, "type": log_type})
+                if len(logs) > 50:
+                    _api_bridge_refs.jobs[job_id]["logs"] = logs[-50:]
+                print(f"📡 Telemetry [{node_name}]: {msg}")
+        _api_bridge_refs._save_jobs()
+
+def get_job_dir(state: "TonyState") -> str:
+    """Isolated sandbox for the current job."""
+    job_id = state.get("job_id", "fallback")
+    path = os.path.join("output", f"job_{job_id}")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def get_topic_safe(state: "TonyState") -> str:
+    """Returns a filename-friendly topic string truncated to 100 characters."""
+    topic = state.get("topic", "video")
+    safe = topic.lower().replace(" ", "_").replace("/", "_")
+    return safe[:100]
+
 def _manim() -> str:
     """Resolve manim binary — works in venv, Docker, and system installs."""
     import shutil
-    # 1. same venv as running Python
-    venv_manim = os.path.join(os.path.dirname(os.path.abspath(__file__)), "venv", "bin", "manim")
-    if os.path.exists(venv_manim):
-        return venv_manim
-    # 2. system PATH (Docker container installs manim globally)
     system_manim = shutil.which("manim")
-    if system_manim:
-        return system_manim
-    raise RuntimeError("manim binary not found — install with: pip install manim")
+    if system_manim: return system_manim
+    raise RuntimeError("manim binary not found")
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -161,6 +192,8 @@ def vision_node(state: TonyState) -> TonyState:
     job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
     output_dir = os.path.join("output", job_prefix)
     os.makedirs(output_dir, exist_ok=True)
+
+    subject = state.get("parsed_facts", {}).get("subject", "default")
 
     # ── PATH 1: Manim (Single Diagram) ────────────────
     if state.get("render_mode") == "manim":
@@ -281,10 +314,11 @@ def supervisor_node(state: TonyState) -> TonyState:
     script_path = state["manim_script_path"]
     topic_safe  = state["topic"].replace(" ", "").replace("-", "")
 
-    # ── 1. Render Manim ───────────────────────────────
-    print("   Rendering Manim animation...")
+    # ── 1. Render Manim (Industrial Hardening: Sandbox-Local Cache) ──
+    print("   Rendering Manim animation with cache isolation...")
     render_result = subprocess.run(
-        [_manim(), "-ql", script_path, "EaseToLearnScene", "--media_dir", job_dir],
+        [_manim(), "-ql", script_path, "EaseToLearnScene", 
+         "--media_dir", os.path.join(job_dir, "manim_media")],
         capture_output=True, text=True
     )
 
@@ -712,8 +746,14 @@ def ppt_video_node(state: TonyState) -> TonyState:
 
     state["clip_paths"] = clip_paths
 
+    if not clip_paths:
+        state["rendering_errors"] = "No slide clips were successfully rendered (likely TTS failures)."
+        return state
+
     safe_topic  = state["topic"].lower().replace(" ", "_").replace("/", "_")
     final_output = os.path.join(job_dir, f"{safe_topic}_presentation.mp4")
+    
+    os.makedirs(job_dir, exist_ok=True) # Final safety check
     if not _concat_clips(clip_paths, final_output):
         state["rendering_errors"] = "PPT concat failed"
         return state
@@ -724,10 +764,24 @@ def ppt_video_node(state: TonyState) -> TonyState:
     return state
 
 
-def ppt_upload_node(state: TonyState) -> TonyState:
-    """Upload PPT video to S3."""
-    print(f"☁️  [PPT Upload] Uploading to S3...")
-    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"], state.get("job_id"))
+def _upload_to_s3_node(state: TonyState) -> TonyState:
+    """Final node: upload the generated video to S3."""
+    _log_progress(state, "DEPLOY", "Uploading final video to production CDN...")
+    job_id = state.get("job_id")
+    video_url = _upload_to_s3(state["output_path"], state["topic"], job_id)
+    state["video_url"] = video_url
+    
+    # Industrial Disk Hygiene: Purge local job folder after cloud sync
+    if video_url and os.environ.get("AUTO_DELETE_JOB_DIR", "false").lower() == "true":
+        job_dir = os.path.join("output", f"job_{job_id}")
+        if os.path.exists(job_dir):
+            import shutil
+            try:
+                shutil.rmtree(job_dir)
+                print(f"🧹 [Hygiene] Job Dir {job_id} purged after cloud sync.")
+            except Exception as e:
+                print(f"⚠️  Disk Hygiene Failure for {job_id}: {e}")
+                
     return state
 
 
@@ -753,7 +807,7 @@ def explainer_node(state: TonyState) -> TonyState:
             state["topic"]
         )
         state["output_path"] = os.path.abspath(video_path)
-        state["video_url"]   = _upload_to_s3(video_path, state["topic"], state.get("job_id"))
+        # Note: Handed off to deploy_node for S3 sync and Disk Hygiene
     except Exception as e:
         print(f"   ❌ Explainer failed: {e}")
         state["rendering_errors"] = str(e)
@@ -828,117 +882,70 @@ def subtitle_node(state: TonyState) -> TonyState:
 
 
 def fusion_node(state: TonyState) -> TonyState:
-    """Final assembly and upload."""
-    print(f"🔗 [Fusion Node] Finalizing...")
+    """Final assembly sentinel."""
+    print(f"🔗 [Fusion Node] Finalizing assembly...")
     
     if not state.get("output_path") or not os.path.exists(state["output_path"]):
-        print("   ⚠️ No output_path available for upload. Final output missing.")
-        state["rendering_errors"] = "Final production generation failed across all nodes."
-        return state
+        print("   ⚠️ No output_path found. Final generation failed.")
+        state["rendering_errors"] = "Final production failed — check logs."
         
-    state["video_url"] = _upload_to_s3(state["output_path"], state["topic"], state.get("job_id"))
     return state
 
-
-# ── Router ────────────────────────────────────────────────────────────────────
-
-def route_by_mode(state: TonyState) -> str:
-    """After vision — branch to one of the 4 paths."""
-    mode = state.get("render_mode")
-    if mode == "presentation":
-        return "ppt_planner"
-    elif mode == "explainer":
-        return "explainer"
-    elif mode == "user_generated_video":
-        return "heygen"
-    return "architect"
-
-
-def critic_should_continue(state: TonyState) -> str:
-    """After critic — retry planner if rejected (max 2 retries), else proceed to renderer."""
-    if state.get("critic_feedback") and state.get("ppt_attempt_count", 0) < 2:
-        print(f"   ↩️  Sending back to planner (attempt {state['ppt_attempt_count']})")
-        return "ppt_planner"
-    return "ppt_renderer"
-
-
-def should_continue(state: TonyState) -> str:
-    """Route to healer on failure, up to 3 times. Manim only."""
-    if state.get("rendering_errors") and state["attempt_count"] <= 3:
-        print(f"⚠️  Render error — routing to healer (attempt {state['attempt_count']})")
-        return "healer"
-    return END
-
-
-_api_bridge_refs = None
-
-def _log_progress(state: TonyState, node: str, msg: str, log_type: str = "info"):
-    """Internal helper to communicate with the API Bridge for the Factory Portal."""
+def deploy_node(state: TonyState) -> TonyState:
+    """Industrial Deployment Sentinel: Unified S3 Sync + Post-Deploy Disk Hygiene."""
+    _log_progress(state, "DEPLOY", "Synchronizing final assets with Production CDN...")
+    
     job_id = state.get("job_id")
-    if not job_id:
-        return
+    output_path = state.get("output_path")
+    topic = state.get("topic")
+    
+    if not output_path or not os.path.exists(output_path):
+        _log_progress(state, "DEPLOY", "Handover Failure: Final video asset not found.", "warning")
+        return state
         
-    global _api_bridge_refs
-    if _api_bridge_refs is None:
-        try:
-            import api_bridge
-            _api_bridge_refs = api_bridge
-        except ImportError:
-            pass
+    video_url = _upload_to_s3(output_path, topic, job_id)
+    state["video_url"] = video_url
+    
+    # Industrial Disk Hygiene: Purge local job sandbox after successful cloud handover.
+    if video_url and os.environ.get("AUTO_DELETE_JOB_DIR", "false").lower() == "true":
+        job_dir = os.path.join("output", f"job_{job_id}")
+        if os.path.exists(job_dir):
+            import shutil
+            try:
+                shutil.rmtree(job_dir)
+                _log_progress(state, "SYSTEM", f"Zenith Hygiene: Local sandbox {job_id} purged.")
+            except Exception as e:
+                print(f"⚠️ Hygiene Error: {e}")
 
-    if _api_bridge_refs is None:
-        return
+    return state
 
-    try:
-        with _api_bridge_refs._jobs_lock:
-            if job_id in _api_bridge_refs.jobs:
-                _api_bridge_refs.jobs[job_id]["logs"].append({
-                    "node": node,
-                    "msg": msg,
-                    "type": log_type
-                })
-                print(f"📡 [Telemetry] {node}: {msg}")
-            
-            # Persist to disk so Factory Portal sees live progress
-            _api_bridge_refs._save_jobs()
-    except Exception as e:
-        print(f"⚠️ Telemetry failed: {e}")
-
-
-# ── Graph ─────────────────────────────────────────────────────────────────────
+# ── Graph Configuration ───────────────────────────────────────────────────────
 
 workflow = StateGraph(TonyState)
 
-# ── Shared nodes ───────────────────────────────────────────────────────────────
-workflow.add_node("director",    director_node)
-workflow.add_node("vision",      vision_node)
+# Universal Node Definitions
+workflow.add_node("director",      director_node)
+workflow.add_node("vision",        vision_node)
+workflow.add_node("architect",     architect_node)
+workflow.add_node("supervisor",    supervisor_node)
+workflow.add_node("healer",        healer_node)
 
-# ── Manim path ─────────────────────────────────────────────────────────────────
-workflow.add_node("architect",   architect_node)
-workflow.add_node("supervisor",  supervisor_node)
-workflow.add_node("healer",      healer_node)
+workflow.add_node("ppt_planner",   ppt_planner_node)
+workflow.add_node("ppt_critic",    ppt_critic_node)
+workflow.add_node("ppt_renderer",  ppt_renderer_node)
+workflow.add_node("ppt_tts",       ppt_tts_node)
+workflow.add_node("ppt_video",     ppt_video_node)
+workflow.add_node("explainer",     explainer_node)
+workflow.add_node("heygen",        heygen_node)
+workflow.add_node("subtitles",     subtitle_node)
+workflow.add_node("fusion",        fusion_node)
+workflow.add_node("deploy",        deploy_node)  # ← Unified Deployment Sentinel
 
-# ── PPT path ───────────────────────────────────────────────────────────────────
-workflow.add_node("ppt_planner",  ppt_planner_node)
-workflow.add_node("ppt_critic",   ppt_critic_node)
-workflow.add_node("ppt_renderer", ppt_renderer_node)
-workflow.add_node("ppt_tts",      ppt_tts_node)
-workflow.add_node("ppt_video",    ppt_video_node)
-workflow.add_node("ppt_upload",   ppt_upload_node)
-
-# ── Explainer path ─────────────────────────────────────────────────────────────
-workflow.add_node("explainer",    explainer_node)
-
-# ── User Generated path ────────────────────────────────────────────────────────
-workflow.add_node("heygen",       heygen_node)
-workflow.add_node("subtitles",    subtitle_node)
-workflow.add_node("fusion",       fusion_node)
-
-# ── Edges ──────────────────────────────────────────────────────────────────────
+# Execution Flow
 workflow.set_entry_point("director")
+
 workflow.add_edge("director", "vision")
 
-# Branch after vision
 workflow.add_conditional_edges("vision", route_by_mode, {
     "architect":   "architect",
     "ppt_planner": "ppt_planner",
@@ -946,130 +953,82 @@ workflow.add_conditional_edges("vision", route_by_mode, {
     "heygen":      "heygen",
 })
 
-# Manim path (unchanged)
+# Path 1: Scientific/Math (Manim)
 workflow.add_edge("architect",  "supervisor")
 workflow.add_edge("healer",     "supervisor")
-workflow.add_conditional_edges("supervisor", should_continue)
+workflow.add_conditional_edges("supervisor", should_continue, {
+    "healer": "healer",
+    "deploy": "deploy",
+    END:      "deploy" # Ensure even un-healed failures reach deploy for status update
+})
 
-# PPT path
-workflow.add_edge("ppt_planner",  "ppt_critic")
+# Path 2: Educational Presentations (PPT)
+workflow.add_edge("ppt_planner",   "ppt_critic")
 workflow.add_conditional_edges("ppt_critic", critic_should_continue, {
     "ppt_planner": "ppt_planner",
     "ppt_renderer": "ppt_renderer",
 })
-workflow.add_edge("ppt_renderer", "ppt_tts")
-workflow.add_edge("ppt_tts",      "ppt_video")
-workflow.add_edge("ppt_video",    "ppt_upload")
-workflow.add_edge("ppt_upload",   END)
+workflow.add_edge("ppt_renderer",  "ppt_tts")
+workflow.add_edge("ppt_tts",       "ppt_video")
+workflow.add_edge("ppt_video",     "deploy")
 
-# Explainer path
-workflow.add_edge("explainer", END)
+# Path 3: Narrative Explainers (B-roll)
+workflow.add_edge("explainer",     "deploy")
 
-# User Generated path
-workflow.add_edge("heygen",    "subtitles")
-workflow.add_edge("subtitles", "fusion")
-workflow.add_edge("fusion",    END)
+# Path 4: Personalized Human Avatars (Deep-Fake)
+workflow.add_edge("heygen",        "subtitles")
+workflow.add_edge("subtitles",     "fusion")
+workflow.add_edge("fusion",        "deploy")
+
+# Terminal Deployment Node
+workflow.add_edge("deploy",        END)
 
 app = workflow.compile()
 
 
-# ── CLI test ──────────────────────────────────────────────────────────────────
+# ── Production CLI Engine ─────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse
     from dotenv import load_dotenv
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="EaseToLearn Autonomous Graph")
-    parser.add_argument("input",  nargs="?", default="bpf_source.html",
-                        help="HTML file (normal mode) or plain text file (--marketing mode)")
-    parser.add_argument("topic",  nargs="?", default="Bronchopleural Fistula",
-                        help="Topic name")
-    parser.add_argument("--marketing", action="store_true",
-                        help="Skip director/vision, run PPT path with marketing critic. "
-                             "Input file must be plain text.")
-    parser.add_argument("--no-vision", action="store_true",
-                        help="Skip vision_node (Gemini Imagen) for Manim videos.")
+    parser = argparse.ArgumentParser(description="EaseToLearn Autonomous Factory")
+    parser.add_argument("input",  nargs="?", default="bpf_source.html", help="HTML Source")
+    parser.add_argument("topic",  nargs="?", default="Bronchopleural Fistula", help="Topic")
+    parser.add_argument("--marketing", action="store_true", help="Marketing Critic Path")
+    parser.add_argument("--no-vision", action="store_true", help="Skip Gemini Vision")
     args = parser.parse_args()
 
-    if args.marketing:
-        # ── Marketing shortcut ──────────────────────────────────────────────────
-        # Bypasses director (needs HTML) — pre-builds state with plain text content
-        # then invokes node functions directly so the critic marketing lens fires.
-        with open(args.input) as f:
-            content = f.read()
+    if not os.path.exists(args.input):
+        print(f"❌ Error: File {args.input} not found.")
+        sys.exit(1)
 
-        print(f"🚀 [Marketing mode] Topic: {args.topic}")
+    with open(args.input) as f:
+        content = f.read()
 
-        state = {
-            "raw_input":         content,
-            "topic":             args.topic,
-            "render_mode":       "presentation",
-            "video_type":        "marketing",   # ← marketing critic lens
-            "parsed_facts":      None,
-            "scenes":            [{"narration_text": content}],  # planner reads this
-            "image_path":        None,
-            "audio_files":       None,
-            "manim_script_path": None,
-            "output_path":       None,
-            "video_url":         None,
-            "rendering_errors":  None,
-            "with_avatar":       False,
-            "slides":            None,
-            "slide_paths":       None,
-            "clip_paths":        None,
-            "critic_feedback":   None,
-            "ppt_attempt_count": 0,
-            "attempt_count":     0,
-            "no_vision":         args.no_vision,
-            "image_paths":       None,
-            "visual_prompts":    None,
-            "heygen_video_path": None,
-            "subtitle_style":    None,
-        }
+    print(f"🚀 Starting Industrial Render: {args.topic}")
+    final = app.invoke({
+        "raw_input":          content,
+        "topic":              args.topic,
+        "attempt_count":      0,
+        "ppt_attempt_count":  0,
+        "no_vision":          args.no_vision,
+        "job_id":             "cli_test_" + str(os.getpid()),
+        "parsed_facts":       None, "render_mode": None, "scenes": None,
+        "image_path":         None, "audio_files": None, "manim_script_path": None,
+        "output_path":        None, "video_url":   None, "rendering_errors":  None,
+        "with_avatar":        False,
+        "slides":             None, "slide_paths": None, "clip_paths": None,
+        "critic_feedback":    None,
+        "video_type":         "marketing" if args.marketing else "curriculum",
+        "image_paths":        None,
+        "visual_prompts":     None,
+        "heygen_video_path":  None,
+        "subtitle_style":     None,
+    })
 
-        # Planner → Critic loop (up to 2 retries) → Renderer → TTS → Video
-        state = ppt_planner_node(state)
-        for _ in range(3):
-            state = ppt_critic_node(state)
-            if not state.get("critic_feedback"):
-                print("   ✅ Critic approved")
-                break
-            if state.get("ppt_attempt_count", 0) >= 2:
-                print("   ⚠️  Max retries — proceeding")
-                break
-            state = ppt_planner_node(state)
+    print(f"\n🏆 Curtain Call: {args.topic}")
+    print(f"   Industrial Video URL: {final.get('video_url')}")
+    print(f"   Local Cache Snapshot: {final.get('output_path')}")
 
-        state = ppt_renderer_node(state)
-        state = ppt_tts_node(state)
-        state = ppt_video_node(state)
-        final = state
-
-    else:
-        # ── Normal flow: HTML → director → vision → manim or PPT ───────────────
-        with open(args.input) as f:
-            html = f.read()
-
-        print(f"🚀 Starting pipeline for: {args.topic}")
-        final = app.invoke({
-            "raw_input":          html,
-            "topic":              args.topic,
-            "attempt_count":      0,
-            "ppt_attempt_count":  0,
-            "parsed_facts":       None, "render_mode": None, "scenes": None,
-            "image_path":         None, "audio_files": None, "manim_script_path": None,
-            "output_path":        None, "video_url":   None, "rendering_errors":  None,
-            "with_avatar":        False,
-            "slides":             None, "slide_paths": None, "clip_paths": None,
-            "critic_feedback":    None,
-            "video_type":         None,
-            "no_vision":          args.no_vision,
-            "image_paths":        None,
-            "visual_prompts":     None,
-            "heygen_video_path":  None,
-            "subtitle_style":     None,
-        })
-
-    print(f"\n🏆 Done!")
-    print(f"   Video URL : {final.get('video_url')}")
-    print(f"   Local path: {final.get('output_path')}")

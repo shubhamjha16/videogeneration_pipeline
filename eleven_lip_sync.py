@@ -45,7 +45,7 @@ def generate_lip_sync(video_path, audio_path, output_path):
     print(f"⏳ Job created: {job_id}. Waiting for completion...")
 
     # Polling for completion
-    poll_url = f"https://api.elevenlabs.io/v1/lip_sync/{job_id}"
+    poll_url = f"https://api.elevenlabs.io/v1/video/lip-sync/{job_id}"
     max_attempts = 60
     for attempt in range(max_attempts):
         try:
@@ -57,8 +57,14 @@ def generate_lip_sync(video_path, audio_path, output_path):
                 video_url = poll_resp.json().get("video_url")
                 if video_url:
                     video_resp = requests.get(video_url, timeout=30)
-                    with open(output_path, "wb") as f:
-                        f.write(video_resp.content)
+                    tmp_path = output_path + ".tmp"
+                    try:
+                        with open(tmp_path, "wb") as f:
+                            f.write(video_resp.content)
+                        os.replace(tmp_path, output_path)
+                    finally:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
                     print(f"✅ Lip-Sync Success: {output_path}")
                     return output_path
                 else:

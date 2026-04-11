@@ -26,6 +26,7 @@ _jobs_lock = threading.RLock()
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Literal, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -43,36 +44,114 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Persistence Helper ────────────────────────────────────────────────────────
-JOBS_FILE = "jobs.json"
+# ── Security Sentinel ──────────────────────────────────────────────────────────
+
+def verify_api_key(api_key: str = Header(None, alias="X-API-Key")):
+    """Industrial Sentinel: Checks for X-API-Key if FACTORY_API_KEY is set."""
+    expected_key = os.environ.get("FACTORY_API_KEY")
+    if expected_key and api_key != expected_key:
+        raise HTTPException(status_code=403, detail="Unauthorized: Invalid Factory API Key")
+    return api_key
+
+SecurityDep = Depends(verify_api_key)
+
+
+# ── Persistence Helper ────────────────────────────────────────────────────────# Persistence
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+JOBS_FILE = os.path.join(BASE_DIR, "jobs.json")
+jobs = {}
+
+# Industrial Concurrency Cap: Max 3 high-compute jobs (Manim/Video) at once
+# This prevents RAM/CPU exhaustion during traffic spikes.
+RENDER_SEMAPHORE = threading.BoundedSemaphore(3)
+
+def _sanitize_stalled_jobs():
+    """Industrial Sentinel: Clean up 'Processing' jobs that were abandoned by a crash/restart."""
+    global jobs
+    found_stalled = False
+    with _jobs_lock:
+        for job_id, details in jobs.items():
+            if details.get("status") == "processing":
+                print(f"♻️  Sanitizing stalled job {job_id} (found in 'processing' state on boot)")
+                details["status"] = "failed"
+                details["error"]  = "Server was restarted during production. Please re-trigger."
+                found_stalled = True
+    if found_stalled:
+        _save_jobs()
 
 def _load_jobs():
     if os.path.exists(JOBS_FILE):
         try:
             with open(JOBS_FILE, "r") as f:
-                return json.load(f)
-        except:
+                data = json.load(f)
+            # Perform Disaster Recovery sanitization logic
+            global jobs
+            jobs = data
+            _sanitize_stalled_jobs()
+            return jobs
+        except (json.JSONDecodeError, ValueError):
             return {}
     return {}
 
 def _save_jobs():
+    """Disk persistence for jobs DB with Atomic Write protection."""
     with _jobs_lock:
-        with open(JOBS_FILE, "w") as f:
-            json.dump(jobs, f, indent=2)
+        tmp_file = JOBS_FILE + ".tmp"
+        try:
+            with open(tmp_file, "w") as f:
+                json.dump(jobs, f, indent=2)
+            # Atomic swap ensures jobs.json is never corrupted by partial writes
+            os.replace(tmp_file, JOBS_FILE)
+        except Exception as e:
+            print(f"❌ Error saving jobs state: {e}")
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
 
 # ── In-memory job store ───────────────────────────────────────────────────────
-jobs: dict = _load_jobs()
+jobs = _load_jobs()
 
 
-# ── Request / Response schemas ────────────────────────────────────────────────
+def _notify_webhook_with_retry(job_id: str, status: str, video_url: str = "", error: str = ""):
+    """Industrial Sentinel: Robust notification with exponential backoff."""
+    webhook_url = os.environ.get("WEBHOOK_URL")
+    if not webhook_url:
+        return
+
+    payload = {
+        "job_id":      job_id,
+        "status":      status,
+        "video_url":   video_url,
+        "error":       error,
+    }
+
+    import time
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(webhook_url, json=payload, timeout=15)
+            if resp.status_code < 300:
+                print(f"🔔 Webhook Success (Job {job_id}) on attempt {attempt + 1}")
+                return
+            else:
+                print(f"⚠️  Webhook Status {resp.status_code} on attempt {attempt + 1}")
+        except Exception as e:
+            print(f"⚠️  Webhook Retry {attempt + 1} for job {job_id}: {e}")
+        
+        if attempt < max_retries - 1:
+            time.sleep(2 ** attempt) # Exponential backoff: 1, 2, 4s
+
+    print(f"❌ Webhook FAILED (Job {job_id}) after {max_retries} attempts.")
+
+
+# ── Pipeline runner ───────────────────────────────────────────────────────────
 
 class RenderRequest(BaseModel):
     topic:       str
     html:        str
-    render_mode: str  = None   # "manim" | "presentation" | None (auto — Claude decides)
-    with_avatar: bool = False  # presentation only — composite avatar on slides
-    video_type:  str  = None   # "marketing" | "educational" | None (default: educational)
-    image_path:  str  = None   # optional: inject your own image, skips Gemini Imagen
+    render_mode: Optional[Literal["manim", "presentation", "explainer", "user_generated_video"]] = None
+    with_avatar: bool = False
+    video_type:  Optional[Literal["marketing", "educational"]] = None
+    image_path:  Optional[str] = None
 
 
 class JobStatus(BaseModel):
@@ -88,90 +167,95 @@ class JobStatus(BaseModel):
 # ── Pipeline runner ───────────────────────────────────────────────────────────
 
 def _run_pipeline(job_id: str, topic: str, html: str):
-    """Run the full LangGraph pipeline in a background thread."""
-    with _jobs_lock:
-        jobs[job_id]["status"] = "processing"
-        job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
+    """Run the full LangGraph pipeline with Concurrency Sentinel protection."""
+    global RENDER_SEMAPHORE
 
-    # If caller provided an image, copy it to the job folder as tony_diagram.png
-    # vision_node will detect it and skip Gemini Imagen automatically
-    injected_image = job.get("image_path")
-    if injected_image and os.path.exists(injected_image):
-        import shutil
-        job_dir = os.path.join("output", f"job_{job_id}")
-        os.makedirs(job_dir, exist_ok=True)
-        dest = os.path.join(job_dir, "tony_diagram.png")
-        shutil.copy2(injected_image, dest)
-        print(f"📸 Using injected image in isolated dir: {dest}")
-
-    try:
-        from autonomous_graph import app as graph
-
-        final_state = graph.invoke({
-            "job_id":            job_id,
-            "raw_input":         html,
-            "topic":             topic,
-            "attempt_count":     0,
-            "parsed_facts":      None,
-            "render_mode":       job.get("render_mode"),
-            "with_avatar":       job.get("with_avatar", False),
-            "video_type":        job.get("video_type"),
-            "no_vision":         False,
-            "scenes":            None,
-            "image_path":        None,
-            "image_paths":       None,
-            "audio_files":       None,
-            "manim_script_path": None,
-            "output_path":       None,
-            "video_url":         None,
-            "rendering_errors":  None,
-            "slides":             None,
-            "slide_paths":        None,
-            "clip_paths":         None,
-            "critic_feedback":    None,
-            "ppt_attempt_count":  0,
-            "visual_prompts":     None,
-            "heygen_video_path":  None,
-            "subtitle_style":     None,
-        })
-
-        video_url = final_state.get("video_url") or ""
-
+    # Wait for a slot in the compute queue (Max 3 concurrent renders)
+    with RENDER_SEMAPHORE:
         with _jobs_lock:
-            if video_url:
-                jobs[job_id]["status"]    = "completed"
-                jobs[job_id]["video_url"] = video_url
-                jobs[job_id]["logs"].append({"node": "DEPLOY", "msg": "Video production finalized and uploaded.", "type": "success"})
-                print(f"✅ Job {job_id} completed: {video_url}")
-            else:
+            jobs[job_id]["status"] = "processing"
+            job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
+
+        # If caller provided an image, copy it to the job folder as tony_diagram.png
+        # vision_node will detect it and skip Gemini Imagen automatically
+        injected_image = job.get("image_path")
+        if injected_image and os.path.exists(injected_image):
+            import shutil
+            job_dir = os.path.join("output", f"job_{job_id}")
+            os.makedirs(job_dir, exist_ok=True)
+            dest = os.path.join(job_dir, "tony_diagram.png")
+            shutil.copy2(injected_image, dest)
+            print(f"📸 Using injected image in isolated dir: {dest}")
+
+        try:
+            from autonomous_graph import app as graph
+
+            final_state = graph.invoke({
+                "job_id":            job_id,
+                "raw_input":         html,
+                "topic":             topic,
+                "attempt_count":     0,
+                "parsed_facts":      None,
+                "render_mode":       job.get("render_mode"),
+                "with_avatar":       job.get("with_avatar", False),
+                "video_type":        job.get("video_type"),
+                "no_vision":         False,
+                "scenes":            None,
+                "image_path":        None,
+                "image_paths":       None,
+                "audio_files":       None,
+                "manim_script_path": None,
+                "output_path":       None,
+                "video_url":         None,
+                "rendering_errors":  None,
+                "slides":             None,
+                "slide_paths":        None,
+                "clip_paths":         None,
+                "critic_feedback":    None,
+                "ppt_attempt_count":  0,
+                "visual_prompts":     None,
+                "heygen_video_path":  None,
+                "subtitle_style":     None,
+            })
+        except Exception as e:
+            print(f"❌ Pipeline Error for job {job_id}: {e}")
+            with _jobs_lock:
                 jobs[job_id]["status"] = "failed"
-                jobs[job_id]["error"]  = final_state.get("rendering_errors", "No output produced")
-                jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": f"Failure: {jobs[job_id]['error']}", "type": "warning"})
-                print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
+                jobs[job_id]["error"]  = str(e)
+            _save_jobs()
+            return
 
-    except Exception as e:
-        with _jobs_lock:
+    # ── Post-Render Phase (Network I/O) ──
+    # Semaphore is released. Proceed with S3 result processing and persistence.
+    video_url = final_state.get("video_url") or ""
+    error_msg = final_state.get("rendering_errors", "")
+
+    with _jobs_lock:
+        if video_url:
+            jobs[job_id]["status"]    = "completed"
+            jobs[job_id]["video_url"] = video_url
+            jobs[job_id]["logs"].append({"node": "DEPLOY", "msg": "Video production finalized and uploaded.", "type": "success"})
+            print(f"✅ Job {job_id} completed: {video_url}")
+        else:
             jobs[job_id]["status"] = "failed"
-            jobs[job_id]["error"]  = str(e)
-        print(f"❌ Job {job_id} exception: {e}")
+            jobs[job_id]["error"]  = error_msg or "No output produced"
+            jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": f"Failure: {jobs[job_id]['error']}", "type": "warning"})
+            print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
 
     _save_jobs()
 
-    # ── Webhook callback to Spring Boot ───────────────────────────────────────
-    webhook_url = os.environ.get("WEBHOOK_URL")
-    if webhook_url:
-        try:
-            with _jobs_lock:
-                job_snapshot = dict(jobs[job_id])
-            requests.post(webhook_url, json=job_snapshot, timeout=10)
-            print(f"📡 Webhook sent to {webhook_url}")
-        except Exception as e:
-            print(f"⚠️  Webhook failed: {e}")
+    # Final Webhook Handover with 3-attempt exponential backoff
+    _notify_webhook_with_retry(
+        job_id=job_id,
+        status=jobs[job_id]["status"],
+        video_url=video_url,
+        error=jobs[job_id]["error"]
+    )
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@app.post("/render", response_model=JobStatus)
+@app.post("/render", response_model=JobStatus, dependencies=[SecurityDep])
 def start_render(request: RenderRequest):
     """
     Start a video generation job.
@@ -181,7 +265,12 @@ def start_render(request: RenderRequest):
     if not request.topic or not request.html:
         raise HTTPException(status_code=400, detail="topic and html are required")
 
-    job_id = str(uuid.uuid4())[:12]
+    # Industrial Sentinel: UUID Collision Guard for Infinite Scale
+    while True:
+        job_id = str(uuid.uuid4())[:12]
+        with _jobs_lock:
+            if job_id not in jobs:
+                break
 
     with _jobs_lock:
         jobs[job_id] = {
@@ -209,13 +298,13 @@ def start_render(request: RenderRequest):
         return dict(jobs[job_id])
 
 
-@app.get("/jobs")
+@app.get("/jobs", dependencies=[SecurityDep])
 def get_all_jobs():
     """Returns all jobs for the Factory Portal dashboard."""
     return jobs
 
 
-@app.get("/status/{job_id}", response_model=JobStatus)
+@app.get("/status/{job_id}", response_model=JobStatus, dependencies=[SecurityDep])
 def get_status(job_id: str):
     """
     Poll job status.

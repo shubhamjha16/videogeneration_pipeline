@@ -211,7 +211,7 @@ def _ffmpeg() -> str:
 
 def _image_to_video(image_path: str, audio_path: str, output_path: str) -> bool:
     """Combine a PNG slide + MP3 audio into a video clip using ffmpeg."""
-    result = subprocess.run([
+    subprocess.run([
         _ffmpeg(), "-y",
         "-loop", "1",
         "-i", image_path,
@@ -224,11 +224,7 @@ def _image_to_video(image_path: str, audio_path: str, output_path: str) -> bool:
         "-shortest",
         "-preset", "veryfast",
         output_path
-    ], capture_output=True, text=True)
-
-    if result.returncode != 0:
-        print(f"   ❌ ffmpeg error: {result.stderr[-500:]}")
-        return False
+    ], capture_output=True, text=True, check=True)
     return True
 
 
@@ -239,20 +235,23 @@ def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
         for clip in clip_paths:
             f.write(f"file '{os.path.abspath(clip)}'\n")
 
-    result = subprocess.run([
-        _ffmpeg(), "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", list_file,
-        "-c", "copy",
-        output_path
-    ], capture_output=True, text=True)
-
-    os.remove(list_file)
-
-    if result.returncode != 0:
-        print(f"   ❌ concat error: {result.stderr[-500:]}")
-        return False
+    tmp_output = output_path + ".tmp"
+    try:
+        subprocess.run([
+            _ffmpeg(), "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", list_file,
+            "-c", "copy",
+            tmp_output
+        ], capture_output=True, text=True, check=True)
+        os.replace(tmp_output, output_path)
+        return True
+    finally:
+        if os.path.exists(list_file):
+            os.remove(list_file)
+        if os.path.exists(tmp_output):
+            os.remove(tmp_output)
     return True
 
 
@@ -358,6 +357,7 @@ def run_ppt_pipeline(
                 base_clip.close()
                 raw_avatar.close()
                 avatar_clip.close()
+                av_resized.close()
             success = os.path.exists(clip_path)
         else:
             # Image + audio → clip (fast ffmpeg path)
@@ -383,6 +383,20 @@ def run_ppt_pipeline(
 
     print(f"\n✅ PPT video done: {final_output}")
     print(f"   Slides: {len(clip_paths)} | Topic: {topic}")
+
+    # ── 4. Cleanup temporary clips ─────────────────────────────────────────────
+    import shutil
+    try:
+        for clip in clip_paths:
+            if os.path.exists(clip):
+                os.remove(clip)
+        # Also clean up any 'base_' clips from avatar path
+        for f in os.listdir(job_dir):
+            if f.startswith("base_") and f.endswith(".mp4"):
+                os.remove(os.path.join(job_dir, f))
+    except Exception as e:
+        print(f"   ⚠️ Cleanup warning: {e}")
+
     return os.path.abspath(final_output)
 
 
