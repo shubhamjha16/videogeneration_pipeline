@@ -9,7 +9,7 @@ VOICE_ID = "QTKSa2Iyv0yoxvXY2V8a"
 def _generate_silent_audio(output_filename: str, duration: float = 1.0) -> str:
     """The Engine of Last Resort: Produces a silent WAV to prevent pipeline crashes."""
     import wave, struct
-    # Must write exactly to output_filename to prevent downstream mismatches
+    output_filename = output_filename.replace(".m4a", ".wav").replace(".mp3", ".wav")
 
     print(f"⚠️  Ironclad Fallback: Generating {duration}s silent audio -> {output_filename}")
     with wave.open(output_filename, "w") as wf:

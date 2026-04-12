@@ -122,7 +122,7 @@ def _narration_strip(img, draw, narration: str):
 
     # Brand
     draw.text((W-40, H-12), "www.easetolearn.com",
-              font=_font(bold=False, size=26), fill=(160, 140, 60), anchor="rs")
+              font=_font(bold=False, size=26), fill=(255, 255, 255), anchor="rs")
     return img, draw
 
 

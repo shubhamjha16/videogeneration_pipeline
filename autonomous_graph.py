@@ -1048,6 +1048,7 @@ if __name__ == "__main__":
     final = app.invoke({
         "raw_input":          content,
         "topic":              args.topic,
+        "visual_prompts":     None,
         "attempt_count":      0,
         "ppt_attempt_count":  0,
         "no_vision":          args.no_vision,

@@ -225,7 +225,16 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             with _jobs_lock:
                 jobs[job_id]["status"] = "failed"
                 jobs[job_id]["error"]  = str(e)
+                final_status = "failed"
+                final_error = str(e)
             _save_jobs()
+            
+            _notify_webhook_with_retry(
+                job_id=job_id,
+                status=final_status,
+                video_url="",
+                error=final_error
+            )
             return
 
         # ── Post-Render Phase (Network I/O) ──

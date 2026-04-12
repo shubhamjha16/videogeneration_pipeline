@@ -236,6 +236,7 @@ def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
             f.write(f"file '{os.path.abspath(clip)}'\n")
 
     tmp_output = output_path + ".tmp"
+    success = True
     try:
         subprocess.run([
             _ffmpeg(), "-y",
@@ -246,16 +247,15 @@ def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
             tmp_output
         ], capture_output=True, text=True, check=True)
         os.replace(tmp_output, output_path)
-        return True
     except subprocess.CalledProcessError as e:
         print(f"❌ _concat_clips Failed: {e.stderr}")
-        return False
+        success = False
     finally:
         if os.path.exists(list_file):
             os.remove(list_file)
         if os.path.exists(tmp_output):
             os.remove(tmp_output)
-    return True
+    return success
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

@@ -157,6 +157,7 @@ def _create_zoom_clip(img_path, duration):
 
 def _create_counting_clip(item_path, count, duration, bg_path=None):
     """Composites items with a staggered kinetic pop-in effect over a cinematic background."""
+    to_close = []
     if bg_path and os.path.exists(bg_path):
         # Use existing zoom_clip logic for the background if it's an image
         if bg_path.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -174,7 +175,7 @@ def _create_counting_clip(item_path, count, duration, bg_path=None):
     
     # Item template
     base_item = ImageClip(item_path).resize(height=180)
-    to_close = [base_item]
+    to_close.append(base_item)
     if isinstance(bg, (ImageClip, VideoFileClip)):
         to_close.append(bg)
     

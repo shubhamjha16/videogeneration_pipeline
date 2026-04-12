@@ -118,15 +118,24 @@ def generate_concept_image(
 
     print(f"🎨 Generating image for: {topic} [{subject}]...")
 
-    response = client.models.generate_images(
-        model="imagen-4.0-generate-001",
-        prompt=prompt,
-        config=types.GenerateImagesConfig(
-            number_of_images=1,
-            aspect_ratio="16:9",          # matches video frame
-            safety_filter_level="block_low_and_above",
-        ),
-    )
+    import time
+    for attempt in range(3):
+        try:
+            response = client.models.generate_images(
+                model="imagen-4.0-generate-001",
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    aspect_ratio="16:9",          # matches video frame
+                    safety_filter_level="block_low_and_above",
+                ),
+            )
+            break
+        except Exception as e:
+            if attempt == 2 or "429" not in str(e):
+                raise
+            print(f"   ⚠️ Imagen rate limit (429). Retrying in {2**attempt}s...")
+            time.sleep(2**attempt)
 
     if not response.generated_images:
         raise RuntimeError(f"Imagen returned no images for topic: {topic}")
