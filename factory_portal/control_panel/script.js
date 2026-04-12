@@ -37,6 +37,9 @@ async function pollJobs() {
             console.error("Dashboard Polling Error: 403 Forbidden. Set localStorage.setItem('FACTORY_API_KEY', 'your_key') in console.");
             return;
         }
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
+        }
         const jobs = await response.json();
         
         // Find the most interesting job (either building or just finished)
@@ -57,6 +60,14 @@ async function pollJobs() {
         
     } catch (err) {
         console.error("Dashboard Polling Error:", err);
+        masterclassHero.innerHTML = `
+            <div class="empty-state">
+                <i data-lucide="alert-triangle" style="color: #ff4444"></i>
+                <h3 style="color: #ff4444">Connection Error</h3>
+                <p>Lost contact with Factory Backend. Retrying...</p>
+            </div>
+        `;
+        lucide.createIcons();
     }
 }
 

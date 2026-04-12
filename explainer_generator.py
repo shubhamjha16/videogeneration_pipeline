@@ -196,9 +196,9 @@ def _create_counting_clip(item_path, count, duration, bg_path=None):
         
         # Create a "pop" animation: scale from 0 to 1 quickly
         pop_duration = 0.3
-        def make_pop(t):
-            if t < start_t: return 0.01 # Invisible
-            progress = min((t - start_t) / pop_duration, 1.0)
+        def make_pop(t, _st=start_t):
+            if t < _st: return 0.01 # Invisible
+            progress = min((t - _st) / pop_duration, 1.0)
             # Subtle overshoot for "snap" feel
             if progress < 0.8:
                 return max(progress * 1.4, 0.01) # Increased snap, forced positive

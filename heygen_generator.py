@@ -8,7 +8,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
     """
     api_key = os.environ.get("HEYGEN_API_KEY")
     if not api_key:
-        print("⚠️ HEYGEN_API_KEY not found. Returning placeholder path.")
+        print("❌ CRITICAL: HEYGEN_API_KEY not found! Returning black mock video.")
         import os
         base_name = os.path.splitext(audio_path)[0]
         mock_path = base_name + "_heygen_mock.mp4"

@@ -60,7 +60,7 @@ _REQUIRED_FIELDS = {
     "step_by_step":    {"heading": "Solution", "steps": ["Step 1"]},
     "mcq_layout":      {"options": {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}},
     "option_highlight": {"letter": "A", "name": "", "body": "", "color": "#FFFFFF"},
-    "cross_out":       {"letter": "A", "name": ""},
+    "cross_out":       {"letters": ["A", "B", "C"]},
     "answer_reveal":   {"letter": "A", "name": "", "explanation": ""},
     "graph_hint":      {"graph_type": "generic", "description": "", "highlight": ""},
     "summary":         {"heading": "Key Takeaways", "points": ["Remember this"]},
@@ -217,7 +217,7 @@ def run_director(parsed_facts: dict) -> DirectorOutput:
     system_prompt_with_schema = SYSTEM_PROMPT + "\n\nCRITICAL: Output valid JSON exactly matching this schema:\n" + json.dumps(DirectorOutput.model_json_schema(),)
     
     response = client.messages.create(
-        model="claude-3-opus-20240229",
+        model="claude-opus-4-6",
         max_tokens=4000,
         system=system_prompt_with_schema,
         messages=[{"role": "user", "content": user_message}],

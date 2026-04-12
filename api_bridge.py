@@ -61,7 +61,7 @@ SecurityDep = Depends(verify_api_key)
 
 # ── Persistence Helper ────────────────────────────────────────────────────────# Persistence
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-JOBS_FILE = os.path.join(BASE_DIR, "jobs.json")
+JOBS_FILE = os.environ.get("JOBS_FILE_PATH", "/tmp/jobs.json")
 jobs = {}
 
 # Industrial Concurrency Cap: Max 3 high-compute jobs (Manim/Video) at once

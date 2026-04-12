@@ -593,7 +593,7 @@ class EaseToLearnScene(Scene):
     def construct(self):
         # Set default template for all Tex/MathTex objects in this scene
         self.camera.background_color = "#0d0d1a"
-''' + "\n".join([f"        {line}" for line in scenes_code.splitlines()]) + f'''
+''' + scenes_code + f'''
         self.wait(1)
 '''
 
