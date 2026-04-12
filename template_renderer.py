@@ -239,9 +239,12 @@ def _scene_cross_out(scene: dict, idx: int) -> str:
     d        = scene["visual_data"]
     duration = d.get("duration", 2.0)
 
-    # Support both single "letter" and array "letters" from LLM
+    # Support both single "letter" and array "letters" from LLM, or string "B,C,D"
     raw = d.get("letters") or d.get("letter", "A")
-    letters = raw if isinstance(raw, list) else [raw]
+    if isinstance(raw, str):
+        letters = [l.strip().upper() for l in raw.replace(" ", "").split(",")]
+    else:
+        letters = raw
     letters = [l for l in letters if l in ("A", "B", "C", "D")]
     if not letters:
         letters = ["A"]

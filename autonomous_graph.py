@@ -755,7 +755,16 @@ def ppt_video_node(state: TonyState) -> TonyState:
     final_output = os.path.join(job_dir, f"{safe_topic}_presentation.mp4")
     
     os.makedirs(job_dir, exist_ok=True) # Final safety check
-    if not _concat_clips(clip_paths, final_output):
+    
+    try:
+        concat_success = _concat_clips(clip_paths, final_output)
+    finally:
+        for cpath in clip_paths:
+            if os.path.exists(cpath):
+                try: os.remove(cpath)
+                except: pass
+                
+    if not concat_success:
         state["rendering_errors"] = "PPT concat failed"
         return state
 

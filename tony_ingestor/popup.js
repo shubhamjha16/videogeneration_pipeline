@@ -15,9 +15,13 @@ document.getElementById('captureBtn').addEventListener('click', async () => {
       status.textContent = "🚀 Sending to Factory...";
       
       try {
+          const headers = { 'Content-Type': 'application/json' };
+          const apiKey = localStorage.getItem('FACTORY_API_KEY');
+          if (apiKey) headers['X-API-Key'] = apiKey;
+          
           const apiResponse = await fetch('http://localhost:8000/render', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headers,
             body: JSON.stringify({
               topic: response.data.title.split(':')[0].trim(),
               html: response.data.html
@@ -43,9 +47,13 @@ document.getElementById('manualBtn').addEventListener('click', async () => {
     
     status.textContent = "🚀 Sending Manual Data...";
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        const apiKey = localStorage.getItem('FACTORY_API_KEY');
+        if (apiKey) headers['X-API-Key'] = apiKey;
+        
         const apiResponse = await fetch('http://localhost:8000/render', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify({
             topic: "ManualEntry_" + Date.now(),
             html: input
@@ -62,7 +70,11 @@ function pollStatus(job_id) {
     const status = document.getElementById('status');
     const interval = setInterval(async () => {
         try {
-            const res = await fetch(`http://localhost:8000/status/${job_id}`);
+            const headers = {};
+            const apiKey = localStorage.getItem('FACTORY_API_KEY');
+            if (apiKey) headers['X-API-Key'] = apiKey;
+            
+            const res = await fetch(`http://localhost:8000/status/${job_id}`, { headers });
             const data = await res.json();
             
             if (data.status === "completed") {

@@ -34,7 +34,7 @@ load_dotenv()
 app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
 
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS")
-allowed_origins = allowed_origins_env.split(",") if allowed_origins_env else ["*"]
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")] if allowed_origins_env else ["*"]
 
 # CORS — restrict origins natively via env var
 app.add_middleware(
@@ -242,14 +242,17 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": f"Failure: {jobs[job_id]['error']}", "type": "warning"})
                 print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
 
+            final_status = jobs[job_id]["status"]
+            final_error  = jobs[job_id]["error"]
+
         _save_jobs()
 
     # Final Webhook Handover with 3-attempt exponential backoff
     _notify_webhook_with_retry(
         job_id=job_id,
-        status=jobs[job_id]["status"],
+        status=final_status,
         video_url=video_url,
-        error=jobs[job_id]["error"]
+        error=final_error
     )
 
 

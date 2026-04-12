@@ -28,7 +28,15 @@ let activeJobId = null;
 
 async function pollJobs() {
     try {
-        const response = await fetch(`${API_BASE}/jobs`);
+        const headers = {};
+        const apiKey = localStorage.getItem('FACTORY_API_KEY');
+        if (apiKey) headers['X-API-Key'] = apiKey;
+        
+        const response = await fetch(`${API_BASE}/jobs`, { headers });
+        if (response.status === 403) {
+            console.error("Dashboard Polling Error: 403 Forbidden. Set localStorage.setItem('FACTORY_API_KEY', 'your_key') in console.");
+            return;
+        }
         const jobs = await response.json();
         
         // Find the most interesting job (either building or just finished)
