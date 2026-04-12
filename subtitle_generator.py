@@ -1,4 +1,4 @@
-from moviepy.editor import TextClip, CompositeVideoClip, ColorClip
+from moviepy.editor import CompositeVideoClip, ColorClip
 import numpy as np
 
 def generate_kinetic_subtitles(video_clip, narration_text, audio_duration, style="insta_reels"):

@@ -120,22 +120,19 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
         print(f"   ❌ Explainer Gen Error: {e}")
         raise e
     finally:
-        # Robust cleanup: Close parents (final_video) before children
-        if 'final_video' in locals() and final_video:
-            try: final_video.close()
-            except: pass
-        for c in clips:
-            if c:
+        # Robust cleanup: Close parents (final_video) before children, safely tracking by ID
+        closed_ids = set()
+        def safe_close(c):
+            if c and id(c) not in closed_ids:
                 try: c.close()
                 except: pass
-        for a in audio_clips:
-            if a:
-                try: a.close()
-                except: pass
-        for v in video_clips_to_close:
-            if v:
-                try: v.close()
-                except: pass
+                closed_ids.add(id(c))
+                
+        if 'final_video' in locals() and final_video:
+            safe_close(final_video)
+        for c in clips: safe_close(c)
+        for a in audio_clips: safe_close(a)
+        for v in video_clips_to_close: safe_close(v)
     
     return output_path
 

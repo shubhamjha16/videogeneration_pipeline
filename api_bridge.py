@@ -23,7 +23,7 @@ import requests
 import json
 
 _jobs_lock = threading.RLock()
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal, Optional
@@ -225,24 +225,24 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             _save_jobs()
             return
 
-    # ── Post-Render Phase (Network I/O) ──
-    # Semaphore is released. Proceed with S3 result processing and persistence.
-    video_url = final_state.get("video_url") or ""
-    error_msg = final_state.get("rendering_errors", "")
+        # ── Post-Render Phase (Network I/O) ──
+        # Semaphore is held during state persistence to avoid race conditions.
+        video_url = final_state.get("video_url") or ""
+        error_msg = final_state.get("rendering_errors", "")
 
-    with _jobs_lock:
-        if video_url:
-            jobs[job_id]["status"]    = "completed"
-            jobs[job_id]["video_url"] = video_url
-            jobs[job_id]["logs"].append({"node": "DEPLOY", "msg": "Video production finalized and uploaded.", "type": "success"})
-            print(f"✅ Job {job_id} completed: {video_url}")
-        else:
-            jobs[job_id]["status"] = "failed"
-            jobs[job_id]["error"]  = error_msg or "No output produced"
-            jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": f"Failure: {jobs[job_id]['error']}", "type": "warning"})
-            print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
+        with _jobs_lock:
+            if video_url:
+                jobs[job_id]["status"]    = "completed"
+                jobs[job_id]["video_url"] = video_url
+                jobs[job_id]["logs"].append({"node": "DEPLOY", "msg": "Video production finalized and uploaded.", "type": "success"})
+                print(f"✅ Job {job_id} completed: {video_url}")
+            else:
+                jobs[job_id]["status"] = "failed"
+                jobs[job_id]["error"]  = error_msg or "No output produced"
+                jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": f"Failure: {jobs[job_id]['error']}", "type": "warning"})
+                print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
 
-    _save_jobs()
+        _save_jobs()
 
     # Final Webhook Handover with 3-attempt exponential backoff
     _notify_webhook_with_retry(

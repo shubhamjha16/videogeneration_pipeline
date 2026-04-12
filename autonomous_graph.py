@@ -28,6 +28,7 @@ Orchestrates the full video generation flow:
 """
 
 import os
+import sys
 import glob
 import subprocess
 import importlib
@@ -919,6 +920,34 @@ def deploy_node(state: TonyState) -> TonyState:
 
     return state
 
+# ── Router ────────────────────────────────────────────────────────────────────
+
+def route_by_mode(state: TonyState) -> str:
+    """After vision — branch to one of the 4 paths."""
+    mode = state.get("render_mode")
+    if mode == "presentation":
+        return "ppt_planner"
+    elif mode == "explainer":
+        return "explainer"
+    elif mode == "user_generated_video":
+        return "heygen"
+    return "architect"
+
+def critic_should_continue(state: TonyState) -> str:
+    """After critic — retry planner if rejected (max 2 retries), else proceed to renderer."""
+    if state.get("critic_feedback") and state.get("ppt_attempt_count", 0) < 2:
+        print(f"   ↩️  Sending back to planner (attempt {state['ppt_attempt_count']})")
+        return "ppt_planner"
+    return "ppt_renderer"
+
+def should_continue(state: TonyState) -> str:
+    """Route to healer on failure, up to 3 times. Otherwise deploy."""
+    if state.get("rendering_errors") and state["attempt_count"] < 3:
+        print(f"⚠️  Render error — routing to healer (attempt {state['attempt_count'] + 1}/3)")
+        return "healer"
+    return "deploy"
+
+
 # ── Graph Configuration ───────────────────────────────────────────────────────
 
 workflow = StateGraph(TonyState)
@@ -958,8 +987,7 @@ workflow.add_edge("architect",  "supervisor")
 workflow.add_edge("healer",     "supervisor")
 workflow.add_conditional_edges("supervisor", should_continue, {
     "healer": "healer",
-    "deploy": "deploy",
-    END:      "deploy" # Ensure even un-healed failures reach deploy for status update
+    "deploy": "deploy"
 })
 
 # Path 2: Educational Presentations (PPT)

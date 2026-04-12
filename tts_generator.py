@@ -1,3 +1,11 @@
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+VOICE_ID = "QTKSa2Iyv0yoxvXY2V8a"
+
 def _generate_silent_audio(output_filename: str, duration: float = 1.0) -> str:
     """The Engine of Last Resort: Produces a silent WAV to prevent pipeline crashes."""
     import wave, struct
