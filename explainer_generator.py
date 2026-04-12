@@ -160,7 +160,8 @@ def _create_counting_clip(item_path, count, duration, bg_path=None):
     if bg_path and os.path.exists(bg_path):
         # Use existing zoom_clip logic for the background if it's an image
         if bg_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-            bg = _create_zoom_clip(bg_path, duration)
+            bg, bg_to_close = _create_zoom_clip(bg_path, duration)
+            to_close.extend(bg_to_close)
         else:
             # Fallback for video backgrounds (with corruption guard)
             try:

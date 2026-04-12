@@ -247,6 +247,9 @@ def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
         ], capture_output=True, text=True, check=True)
         os.replace(tmp_output, output_path)
         return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ _concat_clips Failed: {e.stderr}")
+        return False
     finally:
         if os.path.exists(list_file):
             os.remove(list_file)

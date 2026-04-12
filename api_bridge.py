@@ -36,6 +36,9 @@ app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS")
 allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")] if allowed_origins_env else ["*"]
 
+if not allowed_origins_env and not os.environ.get("FACTORY_API_KEY"):
+    print("⚠️  SECURITY WARNING: ALLOWED_ORIGINS and FACTORY_API_KEY both unset. API is completely open!")
+
 # CORS — restrict origins natively via env var
 app.add_middleware(
     CORSMiddleware,
@@ -217,7 +220,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 "heygen_video_path":  None,
                 "subtitle_style":     None,
             })
-        except Exception as e:
+        except BaseException as e:
             print(f"❌ Pipeline Error for job {job_id}: {e}")
             with _jobs_lock:
                 jobs[job_id]["status"] = "failed"

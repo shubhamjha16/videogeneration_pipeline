@@ -211,32 +211,24 @@ def run_director(parsed_facts: dict) -> DirectorOutput:
     Returns:
         DirectorOutput with render_mode and scenes list
     """
-    # client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     user_message = _build_prompt(parsed_facts)
-    # response = client.messages.parse(
-    #     model="claude-opus-4-6",
-    #     max_tokens=4000,
-    #     thinking={"type": "adaptive"},
-    #     system=SYSTEM_PROMPT,
-    #     messages=[{"role": "user", "content": user_message}],
-    #     output_format=DirectorOutput,
-    # )
-    # return response.parsed_output
-
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    # Claude Opus parses JSON schema natively.
+    system_prompt_with_schema = SYSTEM_PROMPT + "\n\nCRITICAL: Output valid JSON exactly matching this schema:\n" + json.dumps(DirectorOutput.model_json_schema(),)
     
-    system_prompt_with_schema = SYSTEM_PROMPT + "\n\nCRITICAL: Output valid JSON exactly matching this schema:\n" + json.dumps(DirectorOutput.model_json_schema(), indent=2)
-    
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt_with_schema},
-            {"role": "user", "content": user_message}
-        ],
-        response_format={"type": "json_object"}
+    response = client.messages.create(
+        model="claude-3-opus-20240229",
+        max_tokens=4000,
+        system=system_prompt_with_schema,
+        messages=[{"role": "user", "content": user_message}],
     )
     
-    return DirectorOutput.model_validate_json(response.choices[0].message.content)
+    # Simple struct parse
+    try:
+        data = json.loads(response.content[0].text)
+        return DirectorOutput(**data)
+    except Exception as e:
+        raise ValueError(f"Director Agent failed to yield structured JSON: {e}")
 
 
 def _build_prompt(facts: dict) -> str:

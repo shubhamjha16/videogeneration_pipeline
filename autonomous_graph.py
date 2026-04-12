@@ -731,12 +731,12 @@ def ppt_video_node(state: TonyState) -> TonyState:
             try:
                 composite.write_videofile(clip_path, fps=24, codec="libx264", logger=None)
             finally:
-                # Close ALL MoviePy clips to prevent file-handle leaks
-                composite.close()
-                base_clip.close()
-                raw_avatar.close()
-                avatar_clip.close()
-                av_resized.close()
+                # Close ALL MoviePy clips to prevent file-handle leaks (child first)
+                if 'av_resized' in locals(): av_resized.close()
+                if 'avatar_clip' in locals(): avatar_clip.close()
+                if 'raw_avatar' in locals(): raw_avatar.close()
+                if 'composite' in locals(): composite.close()
+                if 'base_clip' in locals(): base_clip.close()
         else:
             # Non-avatar path uses pure ffmpeg subprocess — no MoviePy objects to leak
             _image_to_video(slide_img, audio_path, clip_path)
