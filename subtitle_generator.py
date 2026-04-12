@@ -46,10 +46,7 @@ def generate_kinetic_subtitles(video_clip, narration_text, audio_duration, style
             duration=end_t - start_t
         ).set_start(start_t).set_end(end_t).set_position(('center', 'center'))
         
-        # Upgrade: 'Snap Zoom' effect for premium kinetic feel
-        # Scales from 0.8 to 1.1 quickly, then settles to 1.0
-        word_clip = word_clip.resize(lambda t: min(1.0, 0.8 + 2.0 * t) if t < 0.1 else 1.0)
-        
+        # Upgrade: removed time-based lambda resize for MoviePy 1.0.3 compatibility
         subtitle_clips.append(word_clip)
 
     return CompositeVideoClip([video_clip] + subtitle_clips)

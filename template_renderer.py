@@ -446,6 +446,11 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
         code = resp.choices[0].message.content.strip()
         # Strip any markdown fences Groq might add
         code = re.sub(r"```(?:python)?", "", code).replace("```", "").strip()
+        
+        # Enforce exact 8-space base indentation to prevent block mismatch in build_manim_script
+        code = textwrap.dedent(code)
+        code = "\n".join([f"        {line}" if line.strip() else "" for line in code.splitlines()])
+        
         print(f"   🔢 graph_hint scene {idx}: LLM generated {len(code.splitlines())} lines")
         return f"\n        # Scene {idx}: graph_hint — {graph_type} (LLM-generated)\n" + code + "\n"
     except Exception as e:

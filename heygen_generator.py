@@ -9,7 +9,9 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
     api_key = os.environ.get("HEYGEN_API_KEY")
     if not api_key:
         print("⚠️ HEYGEN_API_KEY not found. Returning placeholder path.")
-        mock_path = audio_path.replace(".mp3", "_heygen_mock.mp4")
+        import os
+        base_name = os.path.splitext(audio_path)[0]
+        mock_path = base_name + "_heygen_mock.mp4"
         if not os.path.exists(mock_path):
             from moviepy.editor import ColorClip, AudioFileClip
             # Create a dummy clip with the real audio to test subtitle sync
