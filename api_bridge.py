@@ -39,12 +39,13 @@ allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")] 
 if not allowed_origins_env and not os.environ.get("FACTORY_API_KEY"):
     print("⚠️  SECURITY WARNING: ALLOWED_ORIGINS and FACTORY_API_KEY both unset. API is completely open!")
 
-# CORS — restrict origins natively via env var
+# CORS — strictly restrict origins via env var (REQUIRED in production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_methods=["POST", "GET"],
-    allow_headers=["*"],
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["X-API-Key", "Content-Type", "Authorization"],
+    allow_credentials=True,
 )
 
 # ── Security Sentinel ──────────────────────────────────────────────────────────

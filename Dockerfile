@@ -44,18 +44,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. LaTeX — Manim uses pdflatex + dvisvgm to render equations
-#    These packages cover all standard Tex/MathTex needs across subjects
+# 3. LaTeX (Heavy Layer) — Optimized for Science/Math Masterclasses
+# We split this to allow easier layer auditing.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-extra \
+    texlive-science \
     texlive-fonts-recommended \
     texlive-fonts-extra \
-    texlive-science \
-    texlive-pictures \
-    cm-super \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     dvipng \
     dvisvgm \
+    cm-super \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python dependencies ───────────────────────────────────────────────────────

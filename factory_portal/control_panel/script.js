@@ -21,7 +21,11 @@ navBtns.forEach(btn => {
 
 // Tony Match Masterclass Box Logic
 const masterclassHero = document.getElementById('masterclassHero');
-const API_BASE = "http://localhost:8000";
+
+// Industrial URL Detection: Priority 1: Current Origin, Priority 2: localhost fallback
+const API_BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") 
+    ? "http://localhost:8000" 
+    : window.location.origin;
 
 let lastRenderedStatus = null;
 let activeJobId = null;
