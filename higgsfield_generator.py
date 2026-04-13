@@ -48,37 +48,38 @@ def generate_higgsfield_video(prompt: str, output_path: str) -> str:
 
     print(f"🚀 [Higgsfield] Attempting Video Gen for: {prompt[:40]}...")
 
-    # --- PATH A: Higgsfield Cloud Direct ---
+    # --- PATH A: Muapi Premium (Kling v1.5) ---
     try:
-        # Header for direct cloud.higgsfield.ai authentication
+        # Standard Muapi Header
         headers = {
-            "Authorization": f"Key {api_id}:{api_key}",
+            "x-api-key": api_key,
             "Content-Type": "application/json"
         }
-        submit_url = "https://api.higgsfield.ai/v1/generations"
+        # Correct Muapi V1 model submission
+        model_endpoint = api_id if api_id else "kling-v1.5"
+        submit_url = f"https://api.muapi.ai/api/v1/{model_endpoint}"
         payload = {
-            "model": "higgsfield-v1-text-to-video",
             "prompt": prompt,
-            "duration": 5,
-            "aspect_ratio": "16:9"
+            "aspect_ratio": "16:9",
+            "duration": 5
         }
         
         response = requests.post(submit_url, json=payload, headers=headers, timeout=30)
-        if response.status_code in [200, 201]:
-            task_id = response.json().get("id") or response.json().get("generation_id")
+        if response.status_code in [200, 201, 202]:
+            task_id = response.json().get("request_id") or response.json().get("id")
             if task_id:
-                return _poll_and_download(task_id, output_path, headers, "https://api.higgsfield.ai/v1/generations")
+                return _poll_and_download(task_id, output_path, headers, "https://api.muapi.ai/api/v1/predictions")
     except Exception as e:
-        print(f"   ℹ️ Path A (Direct) failed: {e}")
+        print(f"   ℹ️ Path A (Muapi Premium) failed: {e}")
 
-    # --- PATH B: Muapi Bridge (Fallback) ---
+    # --- PATH B: Muapi Standard (Wan v2.1) ---
     try:
         headers = {
             "x-api-key": api_key,
             "Content-Type": "application/json"
         }
-        # Many Muapi models use the ID as the endpoint name
-        submit_url = f"https://api.muapi.ai/api/v1/{api_id}"
+        # Fallback to Wan v2.1 if primary fails
+        submit_url = "https://api.muapi.ai/api/v1/wan-v2.1"
         payload = {
             "prompt": prompt,
             "negative_prompt": "blurry, low quality",
@@ -169,6 +170,7 @@ def _generate_placeholder(prompt: str, output_path: str) -> str:
         "ffmpeg", "-y", "-f", "lavfi", "-i", "cellauto=s=1280x720:ratio=0.5",
         "-t", "5", "-vf", f"hue=s=0,format=yuv420p", "-c:v", "libx264", output_path
     ]
+    print(f"   🚨 [Hygiene] All AI endpoints failed. Generated GREY PLACEHOLDER for: {prompt[:30]}")
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     return output_path
 

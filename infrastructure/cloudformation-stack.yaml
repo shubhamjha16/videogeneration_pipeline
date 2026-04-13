@@ -170,8 +170,30 @@ Resources:
       Name: factory-keys
       Description: 'API Keys for EaseToLearn Video Generation Service'
       GenerateSecretString:
-        SecretStringTemplate: '{"ANTHROPIC_API_KEY": "PLACEHOLDER", "GROQ_API_KEY": "PLACEHOLDER", "GEMINI_API_KEY": "PLACEHOLDER", "ELEVENLABS_API_KEY": "PLACEHOLDER", "HEYGEN_API_KEY": "PLACEHOLDER", "FACTORY_API_KEY": "PLACEHOLDER"}'
+        SecretStringTemplate: '{"ANTHROPIC_API_KEY": "PLACEHOLDER", "GROQ_API_KEY": "PLACEHOLDER", "GEMINI_API_KEY": "PLACEHOLDER", "ELEVENLABS_API_KEY": "PLACEHOLDER", "HEYGEN_API_KEY": "PLACEHOLDER", "HIGGSFIELD_API_KEY": "PLACEHOLDER", "FACTORY_API_KEY": "PLACEHOLDER"}'
         GenerateStringKey: 'dummy'
+
+  # ── Logging ──
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}'
+      RetentionInDays: 7
+
+  # ── Storage (S3) ──
+  VideoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-videos-${AWS::AccountId}' # Unique bucket name
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-videos'
+
 
   # ── IAM Roles ──
   ECSTaskExecutionRole:
@@ -211,14 +233,43 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: ['s3:PutObject', 's3:GetObject', 's3:ListBucket']
-                Resource: ['*'] # Narrow this to specific bucket in production
+                Action: ['s3:PutObject', 's3:GetObject', 's3:ListBucket', 's3:GetBucketLocation']
+                Resource: 
+                  - !GetAtt VideoBucket.Arn
+                  - !Sub '${VideoBucket.Arn}/*'
 
-  # ── ECS Cluster ──
+
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub '${ProjectName}-cluster'
+
+  # ── ECS Service ──
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: Listener
+    Properties:
+      ServiceName: factory-service
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DesiredCount: 1
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]
+          SecurityGroups: [ !Ref ECSSecurityGroup ]
+      LoadBalancers:
+        - ContainerName: factory-fastapi
+          ContainerPort: 8000
+          TargetGroupArn: !Ref TargetGroup
+      # TaskDefinition is omitted here because it's managed by the deploy.sh script
+      # via dynamic registration. The first deployment will need a manual task creation
+      # or we can point it to a dummy one. For industrial standard, we'll keep the Service
+      # definition but deploy.sh will handle the TaskDef updates.
+
 
 Outputs:
   ALBDNSName:
@@ -233,3 +284,8 @@ Outputs:
     Value: !GetAtt ECSTaskRole.Arn
   SecretArn:
     Value: !Ref FactorySecrets
+  VideoBucketName:
+    Value: !Ref VideoBucket
+  LogGroupName:
+    Value: !Ref LogGroup
+

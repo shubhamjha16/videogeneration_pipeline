@@ -24,18 +24,24 @@
         { "name": "PYTHONUNBUFFERED", "value": "1" },
         { "name": "MANIM_MEDIA_DIR", "value": "/app/output" },
         { "name": "JOBS_FILE_PATH", "value": "/app/output/jobs.json" },
-        { "name": "S3_BUCKET", "value": "easetolearn-factory-videos" },
+        { "name": "S3_BUCKET", "value": "<S3_BUCKET>" },
         { "name": "AWS_REGION", "value": "ap-south-1" },
-        { "name": "WEBHOOK_URL", "value": "https://api.easetolearn.com/videos/webhook" }
+        { "name": "WEBHOOK_URL", "value": "https://api.easetolearn.com/videos/webhook" },
+        { "name": "AUTO_DELETE_JOB_DIR", "value": "true" },
+        { "name": "DEFAULT_HEYGEN_AVATAR", "value": "josh_video_20230607" }
       ],
+
+
       "secrets": [
         { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ANTHROPIC_API_KEY::" },
         { "name": "GROQ_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:GROQ_API_KEY::" },
         { "name": "GEMINI_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:GEMINI_API_KEY::" },
         { "name": "ELEVENLABS_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ELEVENLABS_API_KEY::" },
         { "name": "HEYGEN_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HEYGEN_API_KEY::" },
+        { "name": "HIGGSFIELD_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HIGGSFIELD_API_KEY::" },
         { "name": "FACTORY_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:FACTORY_API_KEY::" }
       ],
+
       "mountPoints": [
         {
           "sourceVolume": "factory-efs-volume",

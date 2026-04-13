@@ -1,33 +1,45 @@
 import os
 import time
 import requests
-from config import HEYGEN_API_KEY
 
-def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_id: str = "tony_avatar_id") -> str:
+
+def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_id: str = None) -> str:
     """
     HeyGen API Integration (Production Ready).
     1. Uploads ElevenLabs generated audio to HeyGen as an Asset.
     2. Submits Video Generation task to HeyGen v2.
     3. Polls until completion and downloads mp4.
     """
-    api_key = os.environ.get("HEYGEN_API_KEY", HEYGEN_API_KEY)
+    api_key = os.environ.get("HEYGEN_API_KEY")
+
+    # Industrial Hardening: avatar_id from environment variable (set in ECS)
+    avatar_id = avatar_id or os.environ.get("HEYGEN_AVATAR_ID") or os.environ.get("DEFAULT_HEYGEN_AVATAR") or "josh_video_20230607"
+
+
+
+
     if not api_key:
-        print("❌ CRITICAL: HEYGEN_API_KEY not found! Returning black mock video.")
-        import os
-        base_name = os.path.splitext(audio_path)[0]
-        mock_path = base_name + "_heygen_mock.mp4"
-        if not os.path.exists(mock_path):
-            from moviepy.editor import ColorClip, AudioFileClip
-            # Create a dummy clip with the real audio to test subtitle sync
+        print(f"❌ [HeyGen] HEYGEN_API_KEY not found! Returning high-fidelity mock: {output_path}")
+        if not os.path.exists(output_path):
+            from moviepy.editor import ColorClip, AudioFileClip, ImageClip, CompositeVideoClip
             aud = AudioFileClip(audio_path)
-            clip = ColorClip(size=(720, 1280), color=(0,0,0), duration=aud.duration)
-            clip = clip.set_audio(aud)
+            # Create a more useful mock with a logo/static image
+            bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=aud.duration)
+            
+            # Try to add logo if it exists
+            final_clip = bg
+            logo_path = os.path.join(config.BASE_DIR, "factory_portal", "control_panel", "assets", "logo.png")
+            if os.path.exists(logo_path):
+                logo = ImageClip(logo_path).set_duration(aud.duration).resize(height=200).set_position(('center', 'center'))
+                final_clip = CompositeVideoClip([bg, logo])
+            
+            final_clip = final_clip.set_audio(aud)
             try:
-                clip.write_videofile(mock_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
+                final_clip.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
             finally:
-                clip.close()
+                final_clip.close()
                 aud.close()
-        return mock_path
+        return output_path
 
     print(f"🚀 [HeyGen Gen] Initializing HeyGen avatar workflow for: {text[:30]}...")
     headers = {
@@ -82,9 +94,9 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
         print(f"❌ [HeyGen] Generation request failed: {e}")
         return audio_path
 
-    # 3. Poll for Status
+    # 3. Poll for Status (v2 Protocol)
     print(f"   ⏳ [HeyGen] Task {video_id[:8]}... created. Polling for results...")
-    poll_url = f"https://api.heygen.com/v1/video_status.get?video_id={video_id}"
+    poll_url = f"https://api.heygen.com/v2/video/get_status?video_id={video_id}"
     
     import urllib3
     session = requests.Session()
@@ -99,6 +111,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
             status = data.get("status")
             
             if status in ["completed", "success"]:
+                # v2 status response has video_url at top level of data
                 video_url = data.get("video_url")
                 if video_url:
                     print(f"   ✅ [HeyGen] Video ready! Downloading...")
@@ -109,6 +122,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
                                  f.write(chunk)
                     return output_path
             elif status in ["failed", "canceled"]:
+
                 print(f"❌ [HeyGen] Generation failed: {data.get('error', 'unknown error')}")
                 return None # Return None to trigger pipeline failure instead of corrupt output
         except Exception as e:

@@ -38,13 +38,19 @@ _FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 def _font(bold=False, size=24):
     candidates = [
+        # Linux / ECS Production Paths (Priority)
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        
+        # Brand Font (Manual Asset - MUST BE IN assets/fonts/)
         os.path.join(_FONT_DIR, "Caveat-Bold.ttf" if bold else "Caveat-Regular.ttf"),
+        
+        # Mac / System Fallbacks
         "/Library/Fonts/Arial{}.ttf".format(" Bold" if bold else ""),
         "/System/Library/Fonts/Supplemental/Arial{}.ttf".format(" Bold" if bold else ""),
         "/System/Library/Fonts/Helvetica.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans{}.ttf".format("-Bold" if bold else ""),
-        "/usr/share/fonts/truetype/liberation/LiberationSans{}-Regular.ttf".format("-Bold" if bold else ""),
     ]
+
     for p in candidates:
         try:
             return ImageFont.truetype(p, size)

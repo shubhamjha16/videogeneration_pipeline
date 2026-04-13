@@ -16,11 +16,12 @@ Flow:
   OR webhook  ← POST to WEBHOOK_URL {job_id, status, video_url}
 """
 
-import os
-import uuid
 import threading
 import requests
 import json
+import fcntl
+import shutil
+from datetime import datetime
 
 _jobs_lock = threading.RLock()
 from fastapi import FastAPI, HTTPException, Header, Depends
@@ -70,69 +71,88 @@ jobs = {}
 RENDER_SEMAPHORE = threading.BoundedSemaphore(3)
 
 def _sanitize_stalled_jobs():
-    """Industrial Sentinel: Clean up 'Processing' jobs that were abandoned by a crash/restart."""
+    """Industrial Sentinel: Clean up 'Processing' jobs and purge their heavy storage folders."""
     global jobs
     found_stalled = False
     with _jobs_lock:
-        for job_id, details in jobs.items():
+        for job_id, details in list(jobs.items()):
             if details.get("status") == "processing":
                 print(f"♻️  Sanitizing stalled job {job_id} (found in 'processing' state on boot)")
                 details["status"] = "failed"
                 details["error"]  = "Server was restarted during production. Please re-trigger."
+                
+                # ── Disk Hygiene: Purge orphan folder on boot ──
+                media_root = os.environ.get("MANIM_MEDIA_DIR", "output")
+                job_dir = os.path.join(media_root, f"job_{job_id}")
+                if os.path.exists(job_dir):
+                    try:
+                        shutil.rmtree(job_dir)
+                        print(f"🧹 [Auto-Hygiene] Purged orphan directory: {job_dir}")
+                    except Exception as e:
+                        print(f"⚠️ Hygiene Failure: {e}")
+                
                 found_stalled = True
     if found_stalled:
         _save_jobs()
 
+
 def _load_jobs():
+    """Loads jobs with cross-process file-level locking protection."""
     if os.path.exists(JOBS_FILE):
         try:
             with open(JOBS_FILE, "r") as f:
+                # Lock for shared reading (across workers)
+                fcntl.flock(f, fcntl.LOCK_SH)
                 data = json.load(f)
-            # Perform Disaster Recovery sanitization logic
+                fcntl.flock(f, fcntl.LOCK_UN)
+            
             global jobs
             jobs = data
             _sanitize_stalled_jobs()
             return jobs
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError, Exception) as e:
+            print(f"⚠️ Error loading jobs: {e}")
             return {}
     return {}
 
 def _save_jobs():
-    """Disk persistence for jobs DB with Atomic Write protection."""
+    """Disk persistence with cross-process Exclusive Locking and Atomic Write protection."""
     with _jobs_lock:
         tmp_file = JOBS_FILE + ".tmp"
         try:
+            # 1. Write the new state to a temporary file
             with open(tmp_file, "w") as f:
                 json.dump(jobs, f, indent=2)
-            # Atomic swap ensures jobs.json is never corrupted by partial writes
-            os.replace(tmp_file, JOBS_FILE)
+            
+            # 2. Acquire an exclusive lock on the main jobs file before swapping
+            # This ensures other workers wait until the swap is complete.
+            lock_file = JOBS_FILE + ".lock"
+            with open(lock_file, "w") as lf:
+                fcntl.flock(lf, fcntl.LOCK_EX)
+                os.replace(tmp_file, JOBS_FILE)
+                fcntl.flock(lf, fcntl.LOCK_UN)
+                
         except Exception as e:
             print(f"❌ Error saving jobs state: {e}")
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
 
+
 # ── In-memory job store ───────────────────────────────────────────────────────
 jobs = _load_jobs()
 
 
-def _notify_webhook_with_retry(job_id: str, status: str, video_url: str = "", error: str = ""):
-    """Industrial Sentinel: Robust notification with exponential backoff."""
+def _notify_webhook_with_retry(job_id: str, status_data: dict):
+    """Industrial Sentinel: Robust notification with exponential backoff and full payload parity."""
     webhook_url = os.environ.get("WEBHOOK_URL")
     if not webhook_url:
         return
-
-    payload = {
-        "job_id":      job_id,
-        "status":      status,
-        "video_url":   video_url,
-        "error":       error,
-    }
 
     import time
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            resp = requests.post(webhook_url, json=payload, timeout=15)
+            resp = requests.post(webhook_url, json=status_data, timeout=15)
             if resp.status_code < 300:
                 print(f"🔔 Webhook Success (Job {job_id}) on attempt {attempt + 1}")
                 return
@@ -147,6 +167,7 @@ def _notify_webhook_with_retry(job_id: str, status: str, video_url: str = "", er
     print(f"❌ Webhook FAILED (Job {job_id}) after {max_retries} attempts.")
 
 
+
 # ── Pipeline runner ───────────────────────────────────────────────────────────
 
 class RenderRequest(BaseModel):
@@ -159,13 +180,19 @@ class RenderRequest(BaseModel):
 
 
 class JobStatus(BaseModel):
-    job_id:      str
-    status:      str        # queued | processing | completed | failed
-    video_url:   str  = ""
-    error:       str  = ""
-    render_mode: str  = None   # echoed back so callers know which path ran
-    with_avatar: bool = False
-    video_type:  str  = None   # echoed back: "marketing" | "educational"
+    job_id:       str
+    status:       str         # queued | processing | completed | failed
+    video_url:    str  = ""
+    error:        str  = ""
+    progress:     int  = 0    # 0 to 100
+    current_step: str  = ""
+    render_mode:  str  = None
+    with_avatar:  bool = False
+    video_type:   str  = None
+    created_at:   str  = ""   # ISO timestamp
+    updated_at:   str  = ""   # ISO timestamp
+    logs:         list = []   # Telemetry for "Tony AI" Mission Control dashboard
+
 
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
@@ -177,8 +204,13 @@ def _run_pipeline(job_id: str, topic: str, html: str):
     # Wait for a slot in the compute queue (Max 3 concurrent renders)
     with RENDER_SEMAPHORE:
         with _jobs_lock:
+            from datetime import datetime
+            now_iso = datetime.utcnow().isoformat() + "Z"
             jobs[job_id]["status"] = "processing"
+            jobs[job_id]["progress"] = 10
+            jobs[job_id]["updated_at"] = now_iso
             job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
+
 
         # Industrial Path Sanity: Use absolute MEDIA_DIR from environment
         media_root = os.environ.get("MANIM_MEDIA_DIR", "output")
@@ -263,12 +295,14 @@ def _run_pipeline(job_id: str, topic: str, html: str):
         _save_jobs()
 
     # Final Webhook Handover with 3-attempt exponential backoff
+    with _jobs_lock:
+        final_payload = dict(jobs[job_id])
+    
     _notify_webhook_with_retry(
         job_id=job_id,
-        status=final_status,
-        video_url=video_url,
-        error=final_error
+        status_data=final_payload
     )
+
 
     # RECURSIVE HYGIENE: Final check to ensure failed/successful job dirs are purged from EFS
     if os.environ.get("AUTO_DELETE_JOB_DIR", "false").lower() == "true":
@@ -302,18 +336,26 @@ def start_render(request: RenderRequest):
             if job_id not in jobs:
                 break
 
+    from datetime import datetime
+    now_iso = datetime.utcnow().isoformat() + "Z"
+
     with _jobs_lock:
         jobs[job_id] = {
-            "job_id":      job_id,
-            "status":      "queued",
-            "video_url":   "",
-            "error":       "",
-            "render_mode": request.render_mode,
-            "with_avatar": request.with_avatar,
-            "video_type":  request.video_type,
-            "image_path":  request.image_path,
-            "logs":        [{"node": "SYSTEM", "msg": f"Job initialized for topic: {request.topic}", "type": "info"}]
+            "job_id":       job_id,
+            "status":       "queued",
+            "video_url":    "",
+            "error":        "",
+            "progress":     0,
+            "current_step": "Initializing",
+            "render_mode":  request.render_mode,
+            "with_avatar":  request.with_avatar,
+            "video_type":   request.video_type,
+            "image_path":   request.image_path,
+            "created_at":   now_iso,
+            "updated_at":   now_iso,
+            "logs":         [{"node": "SYSTEM", "msg": f"Job initialized for topic: {request.topic}", "type": "info"}]
         }
+
 
     thread = threading.Thread(
         target=_run_pipeline,

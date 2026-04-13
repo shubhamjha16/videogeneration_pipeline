@@ -40,8 +40,15 @@ def run_healer(broken_script: str, error_message: str) -> str:
     Returns:
         Fixed Python script as a string
     """
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        print("⚠️ [Healer] GROQ_API_KEY missing. Skipping autonomous repair.")
+        # Return the original script so the pipeline has some code to attempt, 
+        # but the failure will persist until manually fixed.
+        return broken_script
 
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    client = Groq(api_key=api_key)
+
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[

@@ -61,6 +61,8 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
             
             elif v_type == "generative_video":
                 prompt = v_data.get("prompt", "Cinematic motion")
+                asset_id = f"metaphor_{i}"
+                img_path = image_paths.get(asset_id)
                 video_path = os.path.join(output_dir, f"gen_video_{i}.mp4")
                 try:
                     video_path = generate_higgsfield_video(prompt, video_path)
@@ -73,8 +75,13 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                     else:
                         scene_clip = raw_v.set_duration(dur)
                 except Exception as e:
-                    print(f"   ⚠️ Higgsfield failed: {e}")
-                    scene_clip = _create_fallback_clip(prompt, dur)
+                    print(f"   ⚠️ Higgsfield failed: {e} — falling back to Imagen asset")
+                    if img_path and os.path.exists(img_path):
+                        scene_clip, sub_to_close = _create_zoom_clip(img_path, dur)
+                        video_clips_to_close.extend(sub_to_close)
+                    else:
+                        scene_clip = _create_fallback_clip(prompt, dur)
+
 
             elif v_type == "b_roll_clip" or v_type == "concept_image":
                 asset_id = f"metaphor_{i}"
@@ -214,12 +221,19 @@ def _create_counting_clip(item_path, count, duration, bg_path=None):
     return final_comp, to_close
 
 def _create_fallback_clip(text, duration):
-    bg = ColorClip(size=(1280, 720), color=(20, 20, 40), duration=duration)
+    """Deep Blue Kinetic Fallback Card."""
+    # Create an aesthetic dark gradient card instead of a plain color or 'cellauto'
+    bg = ColorClip(size=(1280, 720), color=(13, 13, 26), duration=duration)
+    
     # Use PIL-based renderer instead of TextClip
     txt = create_text_clip(
         text, 
-        fontsize=40, 
+        fontsize=46, 
         color='white',
+        stroke_width=1,
+        stroke_color='black',
         duration=duration
     ).set_position('center')
+    
     return CompositeVideoClip([bg, txt])
+

@@ -18,8 +18,11 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     # Tell Manim where to write media (mapped to EFS/ephemeral in ECS)
     MANIM_MEDIA_DIR=/app/output \
+    # Tell MoviePy exactly where FFmpeg is (critical for Linux containers)
+    FFMPEG_BINARY=/usr/bin/ffmpeg \
     # Manim config: no GUI, low quality default (overridden per job)
     MANIM_CONFIG_FILE=/app/manim.cfg
+
 
 # ── System dependencies ───────────────────────────────────────────────────────
 # Split into groups so Docker layer cache stays valid when only one group changes
@@ -50,6 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-extra \
     texlive-science \
+    texlive-lang-indic \
     texlive-fonts-recommended \
     texlive-fonts-extra \
     && rm -rf /var/lib/apt/lists/*
@@ -58,7 +62,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dvipng \
     dvisvgm \
     cm-super \
+    fonts-indic \
     && rm -rf /var/lib/apt/lists/*
+
 
 # ── Python dependencies ───────────────────────────────────────────────────────
 WORKDIR /app

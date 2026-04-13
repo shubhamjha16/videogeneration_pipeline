@@ -175,8 +175,8 @@ class TonyState(TypedDict):
     ppt_attempt_count: int             # how many times planner has been retried by critic
 
     # ── Explainer/HeyGen-specific ─────────────────────
-    visual_prompts:   Optional[list]   # B-roll prompts for Explainer mode
     heygen_video_path: Optional[str]   # Path to downloaded HeyGen video
+
     subtitle_style:   Optional[str]    # "insta_reels" | "classic"
 
     # ── Control ────────────────────────────────────────
@@ -1175,7 +1175,7 @@ if __name__ == "__main__":
     final = app.invoke({
         "raw_input":          content,
         "topic":              args.topic,
-        "visual_prompts":     None,
+
         "attempt_count":      0,
         "ppt_attempt_count":  0,
         "no_vision":          args.no_vision,
@@ -1186,9 +1186,10 @@ if __name__ == "__main__":
         "with_avatar":        False,
         "slides":             None, "slide_paths": None, "clip_paths": None,
         "critic_feedback":    None,
-        "video_type":         "marketing" if args.marketing else "curriculum",
+        "video_type":         "marketing" if args.marketing else "educational",
+
         "image_paths":        None,
-        "visual_prompts":     None,
+
         "heygen_video_path":  None,
         "subtitle_style":     None,
     })

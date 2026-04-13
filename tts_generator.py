@@ -78,17 +78,24 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".") -> str:
             if os.path.exists(aiff_path):
                 os.remove(aiff_path)
     
-    # Fallback Path 2: Linux gTTS
+    # Fallback Path 2: Linux gTTS (Hardened for Hindi/Indic)
     try:
         from gtts import gTTS
-        tts = gTTS(text=text, lang="en", slow=False)
+        # Detection: If text contains Devanagari characters, use 'hi'
+        # Range for Devanagari: \u0900-\u097F
+        import re
+        lang = "hi" if re.search("[\u0900-\u097F]", text) else "en"
+        
+        print(f"   [TTS Fallback] Detected language: {lang}")
+        tts = gTTS(text=text, lang=lang, slow=False)
         mp3_path = output_filename.replace(".m4a", ".mp3")
         tts.save(mp3_path)
         output_filename = mp3_path
-        print(f"Generated gTTS audio for scene {scene_idx} -> {output_filename}")
+        print(f"Generated gTTS ({lang}) audio for scene {scene_idx} -> {output_filename}")
         return output_filename
     except Exception as e:
         print(f"❌ gTTS failed: {e} — falling back to Silent Sentinel")
+
         # Heuristic: ~12 words per second for a comfortable reading pace
         word_count = len(text.split())
         heuristic_duration = max(1.0, word_count / 3.0) 

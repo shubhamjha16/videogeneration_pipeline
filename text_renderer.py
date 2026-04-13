@@ -10,16 +10,18 @@ def create_text_clip(text, fontsize=70, color='white', font_path=None, stroke_wi
     """
     # Industrial Discovery Loop: Try multiple standard system fonts
     if not font_path:
+        # Standardize candidates to avoid path mismatches in Docker
         font_candidates = [
-            os.path.join(os.path.dirname(__file__), "fonts", "Inter-Bold.ttf"),
+            # Linux Paths (Priority for ECS)
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            # Standard Assets Path
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts", "Inter-Bold.ttf"),
+            # Mac Fallbacks
             "/System/Library/Fonts/Supplemental/Arial.ttf",
             "/Library/Fonts/Arial.ttf",
-            "Arial.ttf",
-            "Roboto-Bold.ttf",
-            "DejaVuSans.ttf"
         ]
+
     else:
         font_candidates = [font_path]
     
