@@ -34,7 +34,7 @@ from datetime import datetime
 _jobs_lock = threading.RLock()
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 from dotenv import load_dotenv
 
@@ -231,12 +231,12 @@ class JobStatus(BaseModel):
     error:        str  = ""
     progress:     int  = 0    # 0 to 100
     current_step: str  = ""
-    render_mode:  str  = None
+    render_mode:  Optional[str] = None
     with_avatar:  bool = False
-    video_type:   str  = None
+    video_type:   Optional[str] = None
     created_at:   str  = ""   # ISO timestamp
     updated_at:   str  = ""   # ISO timestamp
-    logs:         list = []   # Telemetry for "Tony AI" Mission Control dashboard
+    logs:         list = Field(default_factory=list)   # Telemetry for "Tony AI" Mission Control dashboard
 
 
 
