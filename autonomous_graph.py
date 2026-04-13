@@ -129,10 +129,15 @@ def get_job_dir(state: "TonyState") -> str:
     return path
 
 def get_topic_safe(state: "TonyState") -> str:
-    """Returns a filename-friendly topic string truncated to 100 characters."""
+    """Returns a filesystem-safe topic string truncated to 50 characters."""
+    import re
     topic = state.get("topic", "video")
-    safe = topic.lower().replace(" ", "_").replace("/", "_")
-    return safe[:100]
+    # Strip everything except alphanumeric, underscore, dash
+    safe = re.sub(r'[^a-zA-Z0-9_\-]', '_', topic.lower().strip())
+    # Collapse multiple underscores
+    safe = re.sub(r'_+', '_', safe)
+    return safe[:50]
+
 
 def _manim() -> str:
     """Resolve manim binary — works in venv, Docker, and system installs."""
@@ -205,7 +210,13 @@ def director_node(state: TonyState) -> TonyState:
     director_output = run_director(parsed)
     # Respect user-specified render_mode — only use Claude's decision as fallback
     state["render_mode"] = state.get("render_mode") or director_output.render_mode
-    scenes = [s.model_dump() for s in director_output.scenes]
+
+    # Industrial Hardening: Pydantic v1/v2 compatibility
+    scenes = [
+        (s.model_dump() if hasattr(s, "model_dump") else s.dict()) 
+        for s in director_output.scenes
+    ]
+
 
     # ── MCQ correction: override LLM answer with ground truth from HTML ───────
     # LLMs hallucinate wrong answers — parsed_facts has the real correct answer
@@ -364,7 +375,8 @@ def supervisor_node(state: TonyState) -> TonyState:
 
     job_dir     = os.path.dirname(state["manim_script_path"])
     script_path = state["manim_script_path"]
-    topic_safe  = state["topic"].replace(" ", "").replace("-", "")
+    topic_safe  = get_topic_safe(state)
+
 
     # ── 1. Render Manim (Industrial Hardening: Sandbox-Local Cache) ──
     print("   Rendering Manim animation with cache isolation...")
@@ -372,8 +384,10 @@ def supervisor_node(state: TonyState) -> TonyState:
         render_result = subprocess.run(
             [_manim(), "-ql", script_path, "EaseToLearnScene",
              "--media_dir", os.path.join(job_dir, "manim_media")],
-            capture_output=True, text=True, timeout=_MANIM_TIMEOUT_SECONDS
+            capture_output=True, text=True, timeout=_MANIM_TIMEOUT_SECONDS,
+            env=os.environ
         )
+
     except subprocess.TimeoutExpired:
         _record_error(state, "SUPERVISOR", f"Manim render timed out after {_MANIM_TIMEOUT_SECONDS}s")
         return state
@@ -425,7 +439,9 @@ def supervisor_node(state: TonyState) -> TonyState:
             "-movflags", "+faststart",
             "-shortest",
             final_output,
-        ], capture_output=True, text=True, timeout=_FFMPEG_TIMEOUT_SECONDS)
+        ], capture_output=True, text=True, timeout=_FFMPEG_TIMEOUT_SECONDS,
+        env=os.environ)
+
     except subprocess.TimeoutExpired:
         _record_error(state, "SUPERVISOR", f"FFmpeg stitch timed out after {_FFMPEG_TIMEOUT_SECONDS}s")
         return state

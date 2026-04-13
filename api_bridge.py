@@ -21,7 +21,12 @@ import uuid
 import threading
 import requests
 import json
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    # Windows compatibility fallback — prevents crash on local dev
+    fcntl = None
+
 import shutil
 from datetime import datetime
 
@@ -38,7 +43,8 @@ load_dotenv()
 app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
 
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS")
-allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")] if allowed_origins_env else ["*"]
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()] if allowed_origins_env else ["*"]
+
 
 if not allowed_origins_env and not os.environ.get("FACTORY_API_KEY"):
     print("⚠️  SECURITY WARNING: ALLOWED_ORIGINS and FACTORY_API_KEY both unset. API is completely open!")
@@ -103,11 +109,13 @@ def _load_jobs():
     """Loads jobs with cross-process file-level locking protection."""
     if os.path.exists(JOBS_FILE):
         try:
-            with open(JOBS_FILE, "r") as f:
+            with open(JOBS_FILE, "r", encoding='utf-8') as f:
                 # Lock for shared reading (across workers)
-                fcntl.flock(f, fcntl.LOCK_SH)
+                if fcntl: fcntl.flock(f, fcntl.LOCK_SH)
                 data = json.load(f)
-                fcntl.flock(f, fcntl.LOCK_UN)
+                if fcntl: fcntl.flock(f, fcntl.LOCK_UN)
+
+
             
             global jobs
             jobs = data
@@ -123,17 +131,51 @@ def _save_jobs():
     with _jobs_lock:
         tmp_file = JOBS_FILE + ".tmp"
         try:
-            # 1. Write the new state to a temporary file
-            with open(tmp_file, "w") as f:
-                json.dump(jobs, f, indent=2)
-            
-            # 2. Acquire an exclusive lock on the main jobs file before swapping
-            # This ensures other workers wait until the swap is complete.
+            # 1. Acquire an exclusive lock on the main jobs file BEFORE doing anything
             lock_file = JOBS_FILE + ".lock"
             with open(lock_file, "w") as lf:
-                fcntl.flock(lf, fcntl.LOCK_EX)
+                if fcntl: fcntl.flock(lf, fcntl.LOCK_EX)
+                
+                # 2. RELOAD the absolute current state from disk to merge
+                disk_state = {}
+                if os.path.exists(JOBS_FILE):
+                    try:
+                        with open(JOBS_FILE, "r", encoding='utf-8') as f:
+                            disk_state = json.load(f)
+                    except: pass
+                
+                # 3. MERGE the in-memory changes into the disk state
+                # Industrial Sentinel: Perform a DEEP MERGE on 'logs' to prevent telemetry loss
+                for job_id, local_job in jobs.items():
+                    if job_id in disk_state:
+                        # Only update fields, but APPEND to logs instead of overwriting
+                        for k, v in local_job.items():
+                            if k == "logs":
+                                existing_logs = disk_state[job_id].get("logs", [])
+                                # Only add new logs (avoid duplicates)
+                                existing_stamps = [str(l) for l in existing_logs]
+                                for l in v:
+                                    if str(l) not in existing_stamps:
+                                        existing_logs.append(l)
+                                disk_state[job_id]["logs"] = existing_logs[-100:]
+                            else:
+                                disk_state[job_id][k] = v
+                    else:
+                        disk_state[job_id] = local_job
+                
+                # 4. Write the merged state to a temporary file
+                with open(tmp_file, "w", encoding='utf-8') as f:
+                    json.dump(disk_state, f, indent=2, ensure_ascii=False)
+
+                
+                # 5. Atomic swap
                 os.replace(tmp_file, JOBS_FILE)
-                fcntl.flock(lf, fcntl.LOCK_UN)
+                
+                # 6. Synchronize our global memory 'jobs' with the merger
+                jobs.update(disk_state)
+                
+                if fcntl: fcntl.flock(lf, fcntl.LOCK_UN)
+
                 
         except Exception as e:
             print(f"❌ Error saving jobs state: {e}")
@@ -338,12 +380,16 @@ def start_render(request: RenderRequest):
     if not request.topic or not request.html:
         raise HTTPException(status_code=400, detail="topic and html are required")
 
+    # INDUSTRIAL SENTINEL: Refresh memory state before collision check
+    _load_jobs()
+    
     # Industrial Sentinel: UUID Collision Guard for Infinite Scale
     while True:
         job_id = str(uuid.uuid4())[:12]
         with _jobs_lock:
             if job_id not in jobs:
                 break
+
 
     from datetime import datetime
     now_iso = datetime.utcnow().isoformat() + "Z"
@@ -382,7 +428,9 @@ def start_render(request: RenderRequest):
 @app.get("/jobs", dependencies=[SecurityDep])
 def get_all_jobs():
     """Returns all jobs for the Factory Portal dashboard."""
+    _load_jobs()
     return jobs
+
 
 
 @app.get("/status/{job_id}", response_model=JobStatus, dependencies=[SecurityDep])
@@ -391,9 +439,11 @@ def get_status(job_id: str):
     Poll job status.
     Spring Boot polls this every 5s until status is 'completed' or 'failed'.
     """
+    _load_jobs()
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return jobs[job_id]
+
 
 
 @app.get("/health")

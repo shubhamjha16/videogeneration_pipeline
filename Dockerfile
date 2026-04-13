@@ -21,7 +21,11 @@ ENV PYTHONUNBUFFERED=1 \
     # Tell MoviePy exactly where FFmpeg is (critical for Linux containers)
     FFMPEG_BINARY=/usr/bin/ffmpeg \
     # Manim config: no GUI, low quality default (overridden per job)
-    MANIM_CONFIG_FILE=/app/manim.cfg
+    MANIM_CONFIG_FILE=/app/manim.cfg \
+    # Explicit UTF-8 for Hindi/Indic character safety
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
 
 
 # ── System dependencies ───────────────────────────────────────────────────────

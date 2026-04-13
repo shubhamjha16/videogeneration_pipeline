@@ -224,8 +224,10 @@ def _image_to_video(image_path: str, audio_path: str, output_path: str) -> bool:
         "-shortest",
         "-preset", "veryfast",
         output_path
-    ], capture_output=True, text=True, check=True)
+    ], capture_output=True, text=True, check=True, timeout=300, env=os.environ)
     return True
+
+
 
 
 def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
@@ -245,8 +247,10 @@ def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
             "-i", list_file,
             "-c", "copy",
             tmp_output
-        ], capture_output=True, text=True, check=True)
+        ], capture_output=True, text=True, check=True, timeout=600, env=os.environ)
         os.replace(tmp_output, output_path)
+
+
     except subprocess.CalledProcessError as e:
         print(f"❌ _concat_clips Failed: {e.stderr}")
         success = False
@@ -285,7 +289,10 @@ def run_ppt_pipeline(
     from ppt_engine.slide_generator import generate_slide_image
     from tts_generator import generate_audio
 
-    safe_topic = topic.lower().replace(" ", "_").replace("/", "_").replace("'", "").replace("'", "")
+    import re
+    safe_topic = re.sub(r'[^a-zA-Z0-9_\-]', '_', topic.lower().strip())
+    safe_topic = re.sub(r'_+', '_', safe_topic)[:50]
+
     job_dir = output_dir or os.path.join("output", f"ppt_{safe_topic}")
     os.makedirs(job_dir, exist_ok=True)
 

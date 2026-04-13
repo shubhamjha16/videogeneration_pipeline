@@ -50,9 +50,12 @@ def generate_kinetic_subtitles(video_clip, narration_text, audio_duration, style
                 # Space encountered, end current word if any
                 if current_word_chars:
                     full_w = "".join(current_word_chars)
-                    word_timestamps.append((full_w, current_word_start, ends[i-1]))
+                    # Use current character's start time as the proxy if i=0
+                    actual_end = ends[i-1] if i > 0 else ends[0]
+                    word_timestamps.append((full_w, current_word_start, actual_end))
                     current_word_chars = []
                     current_word_start = None
+
         
         # Append last word if pending
         if current_word_chars:

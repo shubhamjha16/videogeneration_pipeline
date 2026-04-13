@@ -1,6 +1,8 @@
 import os
 import time
 import requests
+import config
+
 
 
 def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_id: str = None) -> str:

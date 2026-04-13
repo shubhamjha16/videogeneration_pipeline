@@ -142,9 +142,12 @@ def generate_concept_image(
 
     # Save the image
     os.makedirs(output_dir, exist_ok=True)
+    import re
+    safe_topic = re.sub(r'[^a-zA-Z0-9_\-]', '_', topic.lower().strip())
     safe_name = filename or (
-        topic.lower().replace(" ", "_").replace("/", "_") + "_diagram.png"
+        safe_topic[:50] + "_diagram.png"
     )
+
     output_path = os.path.join(output_dir, safe_name)
 
     image_bytes = response.generated_images[0].image.image_bytes
