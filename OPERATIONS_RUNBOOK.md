@@ -38,10 +38,16 @@ Current defaults:
 
 Tune by environment:
 - Lower timeouts for staging to detect regressions quickly.
-- Keep higher timeouts in production for large jobs.
-- Increase Groq attempts only if provider reliability is poor and latency budget allows.
+- Keep higher timeouts for complex medical/physics masterclasses.
 
-## 4) Triage guide
+## 4) Storage & Resource Hygiene
+
+-   **Telemetry**: Monitor the `jobs.json` file on your EFS mount to track real-time factory throughput.
+-   **Disk Hygiene**: Periodic cleanup of the `output/` directory is mandatory. If the EFS volume reaches 90% capacity, FFmpeg staging and Git synchronization processes will fail.
+-   **Health Check**: Monitor the `/health` endpoint from your external load balancer to verify worker responsiveness.
+-   **Resource Monitoring**: Monitor RAM usage during Manim renders; use the `RENDER_SEMAPHORE` in `api_bridge.py` to tune concurrency.
+
+## 5) Triage guide
 
 When a job fails:
 1. Check `rendering_errors` first (canonical error surface).

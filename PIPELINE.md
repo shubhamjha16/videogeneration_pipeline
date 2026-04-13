@@ -106,5 +106,6 @@ flowchart TD
 |------|------|--------|
 | `manim` | Maths, Physics, Medical MCQ, Chemistry | Manim + Gemini diagram |
 | `presentation` | English, UPSC, MBA, simple concepts | Slide + avatar (tony_pipeline) |
-| `human_face` | Conversational (future) | — |
+| `user_generated_video` | Conversational (future) | — |
+
 ```

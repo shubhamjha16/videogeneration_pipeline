@@ -93,8 +93,9 @@ def generate_manim_video(text: str, scene_idx: int, output_dir: str = ".") -> st
     cmd = ["manim", "-qm", "--media_dir", media_dir, "-o", f"scene_{scene_idx}_manim.mp4", script_filename, "GeneratedScene"]
     
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600, env=os.environ)
     except subprocess.CalledProcessError as e:
+
         print(f"Manim rendering failed for scene {scene_idx}. Error: {e}")
         return ""
         

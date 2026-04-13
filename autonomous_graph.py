@@ -451,13 +451,12 @@ def supervisor_node(state: TonyState) -> TonyState:
             "-i", combined_audio_path,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
             "-c:a", "aac", "-b:a", "128k",
-            "-map", "0:v:0", "-map", "1:a:0",
+            "-map", "0:v", "-map", "1:a",
             "-movflags", "+faststart",
             "-shortest",
             final_output,
         ], capture_output=True, text=True, timeout=_FFMPEG_TIMEOUT_SECONDS,
         env=os.environ)
-
     except subprocess.TimeoutExpired:
         _record_error(state, "SUPERVISOR", f"FFmpeg stitch timed out after {_FFMPEG_TIMEOUT_SECONDS}s")
         return state
@@ -465,6 +464,7 @@ def supervisor_node(state: TonyState) -> TonyState:
     if stitch_result.returncode != 0:
         _record_error(state, "SUPERVISOR", stitch_result.stderr)
         return state
+
 
     print(f"   ✅ Final video: {final_output}")
     state["output_path"]       = os.path.abspath(final_output)
@@ -566,6 +566,7 @@ STEP 1 — Deeply understand the content before anything else:
 STEP 2 — Design a presentation that could ONLY be about this topic:
 - Every slide must be uniquely tied to this specific content
 - No generic slides that could apply to any topic
+
 - The narration must sound like a teacher who genuinely finds this fascinating
 - Use contrast, surprise, and specific numbers/names/dates — not vague generalities
 
@@ -900,7 +901,9 @@ def ppt_video_node(state: TonyState) -> TonyState:
         for cpath in clip_paths:
             if os.path.exists(cpath):
                 try: os.remove(cpath)
-                except: pass
+                except Exception as e:
+                    print(f"⚠️ Cleanup Warning: Could not remove ephemeral clip {os.path.basename(cpath)}: {e}")
+
                 
     if not concat_success:
         _record_error(state, "PPT_VIDEO", "PPT concat failed")

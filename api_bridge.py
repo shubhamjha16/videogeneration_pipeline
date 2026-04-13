@@ -122,9 +122,16 @@ def _load_jobs():
             _sanitize_stalled_jobs()
             return jobs
         except (json.JSONDecodeError, ValueError, Exception) as e:
-            print(f"⚠️ Error loading jobs: {e}")
+            import time, sys
+            timestamp = int(time.time())
+            corrupt_path = f"{JOBS_FILE}.corrupt_{timestamp}"
+            print(f"❌ DATA CORRUPTION ALERT: {JOBS_FILE} is unreadable. Archiving to {corrupt_path}", file=sys.stderr)
+            try:
+                os.rename(JOBS_FILE, corrupt_path)
+            except: pass # Absolute fallback if disk is read-only
             return {}
     return {}
+
 
 def _save_jobs():
     """Disk persistence with cross-process Exclusive Locking and Atomic Write protection."""
@@ -142,7 +149,10 @@ def _save_jobs():
                     try:
                         with open(JOBS_FILE, "r", encoding='utf-8') as f:
                             disk_state = json.load(f)
-                    except: pass
+                    except Exception as e:
+                        import sys
+                        print(f"⚠️ Merge Warning: Could not reload disk state for mutation ({e})", file=sys.stderr)
+
                 
                 # 3. MERGE the in-memory changes into the disk state
                 # Industrial Sentinel: Perform a DEEP MERGE on 'logs' to prevent telemetry loss
@@ -197,7 +207,9 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            resp = requests.post(webhook_url, json=status_data, timeout=15)
+            # Industrial Sentinel: Explicit 30s timeout for webhook resilience
+            resp = requests.post(webhook_url, json=status_data, timeout=30)
+
             if resp.status_code < 300:
                 print(f"🔔 Webhook Success (Job {job_id}) on attempt {attempt + 1}")
                 return
@@ -248,13 +260,25 @@ def _run_pipeline(job_id: str, topic: str, html: str):
 
     # Wait for a slot in the compute queue (Max 3 concurrent renders)
     with RENDER_SEMAPHORE:
+        # Industrial Sentinel: Refresh local memory from disk before processing starts
+        # This prevents Worker A from ignoring Worker B's recent job starts.
+        _load_jobs()
+        
         with _jobs_lock:
             from datetime import datetime
             now_iso = datetime.utcnow().isoformat() + "Z"
+            if job_id not in jobs:
+                print(f"⚠️  Job {job_id} missing during thread pickup. Aborting.")
+                return
+
             jobs[job_id]["status"] = "processing"
             jobs[job_id]["progress"] = 10
             jobs[job_id]["updated_at"] = now_iso
             job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
+        
+        # PERSIST: Notify all workers of the 'processing' state
+        _save_jobs()
+
 
 
         # Industrial Path Sanity: Use absolute MEDIA_DIR from environment

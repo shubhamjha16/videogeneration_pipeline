@@ -1,9 +1,19 @@
 import os
 import json
-from dotenv import load_dotenv
-from autonomous_graph import app as graph
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("⚠️  Warning: 'python-dotenv' not found. Environment variables must be set manually.")
+
+try:
+    from autonomous_graph import app as graph
+except ImportError as e:
+    print(f"❌ Error: Could not import autonomous_graph. Ensure dependencies are installed. ({e})")
+    import sys
+    sys.exit(1)
+
 
 def run_test_job():
     topic = "exploring linear patterns finding the steady path"

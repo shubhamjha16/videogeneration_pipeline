@@ -290,8 +290,10 @@ def run_ppt_pipeline(
     from tts_generator import generate_audio
 
     import re
+    # Industrial Sentinel: Ultra-hardened sanitization matches S3/Imagen paths
     safe_topic = re.sub(r'[^a-zA-Z0-9_\-]', '_', topic.lower().strip())
     safe_topic = re.sub(r'_+', '_', safe_topic)[:50]
+
 
     job_dir = output_dir or os.path.join("output", f"ppt_{safe_topic}")
     os.makedirs(job_dir, exist_ok=True)

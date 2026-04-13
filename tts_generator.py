@@ -61,13 +61,15 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".") -> str:
         import subprocess, imageio_ffmpeg
         aiff_path = output_filename.replace(".m4a", ".aiff")
         mp3_path  = output_filename.replace(".m4a", ".mp3")
-        subprocess.run(["say", "-v", "Samantha", "-o", aiff_path, text], check=True)
+        subprocess.run(["say", "-v", "Samantha", "-o", aiff_path, text], check=True, timeout=120, env=os.environ)
         try:
             subprocess.run(
                 [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", aiff_path,
                  "-ar", "44100", "-ab", "128k", mp3_path],
                 capture_output=True,
-                check=True
+                check=True,
+                timeout=60,
+                env=os.environ
             )
             output_filename = mp3_path
             print(f"Generated Mac TTS fallback audio for scene {scene_idx} -> {output_filename}")
@@ -144,7 +146,8 @@ if __name__ == "__main__":
         else:
             import subprocess
             aiff_path = filename_arg.replace(".mp3", ".aiff").replace(".m4a", ".aiff")
-            subprocess.run(["say", "-v", "Samantha", "-o", aiff_path, text_arg], check=True)
+            subprocess.run(["say", "-v", "Samantha", "-o", aiff_path, text_arg], check=True, timeout=120, env=os.environ)
+
             try:
                 import imageio_ffmpeg
                 subprocess.run(

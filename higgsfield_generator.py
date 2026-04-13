@@ -171,7 +171,9 @@ def _generate_placeholder(prompt: str, output_path: str) -> str:
         "-t", "5", "-vf", f"hue=s=0,format=yuv420p", "-c:v", "libx264", output_path
     ]
     print(f"   🚨 [Hygiene] All AI endpoints failed. Generated GREY PLACEHOLDER for: {prompt[:30]}")
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    # Industrial Sentinel: Standardize concat execution
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=600, env=os.environ)
+
     return output_path
 
 if __name__ == "__main__":

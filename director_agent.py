@@ -2,7 +2,8 @@
 Step 2: Director Agent (LLM — Claude Opus)
 
 Responsibilities:
-  1. Decides the render mode  : manim | presentation | human_face
+  1. Decides the render mode  : manim | presentation | user_generated_video
+
   2. Writes the teaching script: ordered list of scenes
 
 Render modes:
