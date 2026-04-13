@@ -131,8 +131,10 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
         closed_ids = set()
         def safe_close(c):
             if c and id(c) not in closed_ids:
-                try: c.close()
-                except: pass
+                try:
+                    c.close()
+                except Exception as close_error:
+                    print(f"   ⚠️ Cleanup warning while closing clip: {close_error}")
                 closed_ids.add(id(c))
                 
         if 'final_video' in locals() and final_video:
@@ -236,4 +238,3 @@ def _create_fallback_clip(text, duration):
     ).set_position('center')
     
     return CompositeVideoClip([bg, txt])
-

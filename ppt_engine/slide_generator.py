@@ -54,8 +54,8 @@ def _font(bold=False, size=24):
     for p in candidates:
         try:
             return ImageFont.truetype(p, size)
-        except:
-            pass
+        except (OSError, IOError):
+            continue
     return ImageFont.load_default()
 
 

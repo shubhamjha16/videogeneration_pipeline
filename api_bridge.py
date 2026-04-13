@@ -21,6 +21,7 @@ import uuid
 import threading
 import requests
 import json
+import copy
 try:
     import fcntl
 except ImportError:
@@ -118,7 +119,8 @@ def _load_jobs():
 
             
             global jobs
-            jobs = data
+            with _jobs_lock:
+                jobs = data
             _sanitize_stalled_jobs()
             return jobs
         except (json.JSONDecodeError, ValueError, Exception) as e:
@@ -128,7 +130,8 @@ def _load_jobs():
             print(f"❌ DATA CORRUPTION ALERT: {JOBS_FILE} is unreadable. Archiving to {corrupt_path}", file=sys.stderr)
             try:
                 os.rename(JOBS_FILE, corrupt_path)
-            except: pass # Absolute fallback if disk is read-only
+            except Exception as archive_error:
+                print(f"⚠️  Failed to archive corrupt jobs file: {archive_error}", file=sys.stderr)
             return {}
     return {}
 
@@ -191,6 +194,7 @@ def _save_jobs():
             print(f"❌ Error saving jobs state: {e}")
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
+            raise
 
 
 # ── In-memory job store ───────────────────────────────────────────────────────
@@ -215,7 +219,7 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
                 return
             else:
                 print(f"⚠️  Webhook Status {resp.status_code} on attempt {attempt + 1}")
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"⚠️  Webhook Retry {attempt + 1} for job {job_id}: {e}")
         
         if attempt < max_retries - 1:
@@ -324,7 +328,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 "heygen_video_path":  None,
                 "subtitle_style":     None,
             })
-        except BaseException as e:
+        except Exception as e:
             print(f"❌ Pipeline Error for job {job_id}: {e}")
             with _jobs_lock:
                 jobs[job_id]["status"] = "failed"
@@ -446,14 +450,15 @@ def start_render(request: RenderRequest):
 
     print(f"🚀 Job {job_id} queued for: {request.topic}")
     with _jobs_lock:
-        return dict(jobs[job_id])
+        return copy.deepcopy(jobs[job_id])
 
 
 @app.get("/jobs", dependencies=[SecurityDep])
 def get_all_jobs():
     """Returns all jobs for the Factory Portal dashboard."""
     _load_jobs()
-    return jobs
+    with _jobs_lock:
+        return copy.deepcopy(jobs)
 
 
 
@@ -466,7 +471,8 @@ def get_status(job_id: str):
     _load_jobs()
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-    return jobs[job_id]
+    with _jobs_lock:
+        return copy.deepcopy(jobs[job_id])
 
 
 

@@ -7,6 +7,8 @@ load_dotenv()
 def discover():
     api_id = os.environ.get("HIGGSFIELD_API_ID")
     api_key = os.environ.get("HIGGSFIELD_API_KEY")
+    if not api_id or not api_key:
+        raise RuntimeError("HIGGSFIELD_API_ID and HIGGSFIELD_API_KEY must be set before endpoint discovery.")
     
     # Common Muapi/Aggregator patterns
     bases = [
@@ -55,9 +57,8 @@ def discover():
                     print(f"   🔑 Valid path but Auth Denied: {url}")
                     found = True
                     
-            except Exception as e:
-                # print(f"   [ERR] {url}: {e}")
-                pass
+            except requests.RequestException as e:
+                print(f"   [ERR] {url}: {e}")
                 
     if not found:
         print("   ❌ No valid endpoint found. Investigating alternative Higgsfield direct hosts...")
@@ -67,7 +68,8 @@ def discover():
             try:
                 res = requests.post(h_url, headers={"Authorization": f"Bearer {api_key}"}, json={"prompt": "test"}, timeout=5)
                 print(f"   [{res.status_code}] {h_url}")
-            except: pass
+            except requests.RequestException as e:
+                print(f"   [ERR] {h_url}: {e}")
 
 if __name__ == "__main__":
     discover()

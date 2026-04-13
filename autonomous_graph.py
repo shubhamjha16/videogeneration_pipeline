@@ -110,6 +110,8 @@ def _groq_json_with_retry(client: Any, *, model: str, messages: list[dict], node
             )
             return json.loads(response.choices[0].message.content)
         except Exception as e:
+            if isinstance(e, (json.JSONDecodeError, KeyError, TypeError, ValueError)):
+                raise RuntimeError(f"Groq response was non-retryable for {node_name}: {e}") from e
             last_exc = e
             if attempt < _GROQ_MAX_ATTEMPTS:
                 _log_fallback(
@@ -282,8 +284,9 @@ def vision_node(state: TonyState) -> TonyState:
         else:
             try:
                 state["image_path"] = generate_concept_image(state["topic"], subject, output_dir=output_dir, filename="tony_diagram.png")
-            except Exception:
+            except Exception as e:
                 state["image_path"] = None
+                _log_fallback(state, "VISION", "skip_concept_image", str(e), type(e).__name__)
 
     # ── PATH 2: Explainer (Multi-Asset) ───────────────
     elif state.get("render_mode") == "explainer":
@@ -363,7 +366,8 @@ def architect_node(state: TonyState) -> TonyState:
                 scene["visual_data"]["duration"] = round(clip.duration, 2)
             finally:
                 clip.close()
-        except Exception:
+        except Exception as e:
+            _log_fallback(state, "ARCHITECT", "duration_default_3s", str(e), type(e).__name__)
             scene["visual_data"]["duration"] = 3.0  # safe fallback
 
     state["audio_files"] = audio_files
@@ -702,6 +706,9 @@ def ppt_planner_node(state: TonyState) -> TonyState:
         for i, s in enumerate(slides):
             print(f"     {i+1}. [{s.get('layout','?')}] {s.get('data',{}).get('title') or s.get('data',{}).get('heading') or s.get('data',{}).get('statement','')[:40]}")
     except Exception as e:
+        if isinstance(e, (json.JSONDecodeError, KeyError, TypeError, ValueError)):
+            _record_error(state, "PPT_PLANNER", f"Non-retryable planner failure: {e}")
+            return state
         print(f"   ⚠️  Groq failed: {e} — using fallback")
         _log_fallback(state, "PPT_PLANNER", "fallback_split", str(e), type(e).__name__)
         from ppt_engine.ppt_pipeline import _fallback_split
@@ -759,9 +766,10 @@ def ppt_critic_node(state: TonyState) -> TonyState:
         state["ppt_attempt_count"] = state.get("ppt_attempt_count", 0) + (0 if approved else 1)
 
     except Exception as e:
-        print(f"   ⚠️  Critic failed: {e} — auto-approving")
-        _log_fallback(state, "PPT_CRITIC", "auto_approve", str(e), type(e).__name__)
-        state["critic_feedback"] = None
+        print(f"   ⚠️  Critic failed: {e} — forcing planner retry")
+        _log_fallback(state, "PPT_CRITIC", "force_replan", str(e), type(e).__name__)
+        state["critic_feedback"] = "Automatic critic unavailable. Replan with stronger narrative specificity and layout diversity."
+        state["ppt_attempt_count"] = state.get("ppt_attempt_count", 0) + 1
 
     return state
 
@@ -819,8 +827,8 @@ def ppt_tts_node(state: TonyState) -> TonyState:
         try:
             path = generate_audio(narration, i, output_dir=job_dir)
         except Exception as e:
-            print(f"   ⚠️ TTS failed for slide {i}: {e}")
-            path = None
+            _record_error(state, "PPT_TTS", f"TTS failed for slide {i}: {e}")
+            return state
         audio_files.append(path)
 
     state["audio_files"] = audio_files
@@ -903,6 +911,7 @@ def ppt_video_node(state: TonyState) -> TonyState:
                 try: os.remove(cpath)
                 except Exception as e:
                     print(f"⚠️ Cleanup Warning: Could not remove ephemeral clip {os.path.basename(cpath)}: {e}")
+                    _log_fallback(state, "PPT_VIDEO", "cleanup_clip_failed", str(e), type(e).__name__)
 
                 
     if not concat_success:
@@ -935,6 +944,7 @@ def _upload_to_s3_node(state: TonyState) -> TonyState:
                 print(f"🧹 [Hygiene] Job Dir {job_id} purged after cloud sync.")
             except Exception as e:
                 print(f"⚠️  Disk Hygiene Failure for {job_id}: {e}")
+                _log_fallback(state, "DEPLOY", "job_dir_cleanup_failed", str(e), type(e).__name__)
                 
     return state
 
@@ -963,6 +973,7 @@ def explainer_node(state: TonyState) -> TonyState:
     except Exception as e:
         print(f"   ❌ Explainer failed: {e}")
         _record_error(state, "EXPLAINER", str(e))
+        state["render_mode"] = "presentation"
 
     return state
 
@@ -991,6 +1002,7 @@ def heygen_node(state: TonyState) -> TonyState:
     except Exception as e:
         _record_error(state, "HEYGEN", f"HeyGen path failed: {e}")
         print(f"   ❌ {state['rendering_errors']}")
+        state["render_mode"] = "presentation"
     
     return state
 
@@ -1010,8 +1022,9 @@ def subtitle_node(state: TonyState) -> TonyState:
             state["output_path"] = os.path.abspath(video_path)
         return state
 
-    video_clip = VideoFileClip(video_path)
+    video_clip = None
     try:
+        video_clip = VideoFileClip(video_path)
         audio_path = state["audio_files"][0]
 
         tmp_aud = AudioFileClip(audio_path)
@@ -1048,7 +1061,8 @@ def subtitle_node(state: TonyState) -> TonyState:
         state["output_path"] = os.path.abspath(video_path)
         state["rendering_errors"] = None
     finally:
-        video_clip.close()
+        if video_clip is not None:
+            video_clip.close()
 
     return state
 
