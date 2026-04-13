@@ -34,6 +34,7 @@ import time
 import subprocess
 import importlib
 import json
+import re
 from typing import TypedDict, List, Optional, Any
 
 from langgraph.graph import StateGraph, END
@@ -228,9 +229,24 @@ def director_node(state: TonyState) -> TonyState:
                 scene["visual_data"]["letter"] = correct_letter
                 scene["visual_data"]["name"]   = correct_name
             elif scene["visual_type"] == "cross_out":
-                # only cross out if it's actually wrong
-                if scene["visual_data"].get("letter") == correct_letter:
-                    scene["visual_data"]["letter"] = ""  # skip crossing correct answer
+                # Ensure cross_out never targets the correct answer and prefers list form.
+                data = scene["visual_data"]
+                raw_letters = data.get("letters") or data.get("letter") or []
+                if isinstance(raw_letters, str):
+                    letters = re.findall(r"\b([A-D])\b", raw_letters.upper())
+                elif isinstance(raw_letters, list):
+                    letters = []
+                    for item in raw_letters:
+                        letters.extend(re.findall(r"\b([A-D])\b", str(item).upper()))
+                else:
+                    letters = []
+
+                cleaned = [l for l in letters if l in ("A", "B", "C", "D") and l != correct_letter]
+                if not cleaned:
+                    # Fall back to all wrong letters even when parsed options are incomplete.
+                    cleaned = [l for l in ("A", "B", "C", "D") if l != correct_letter]
+                data["letters"] = cleaned
+                data.pop("letter", None)
         print(f"   Correct answer locked: {correct_letter}. {correct_name}")
 
     state["scenes"] = scenes
@@ -501,8 +517,13 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
 
     import boto3
     # Inclusion of job_id in S3 key prevents URL collision for identical topics
-    unique_prefix = job_id or os.environ.get("JOB_ID_FALLBACK", "factory")
-    s3_key = f"videos/{unique_prefix}_{topic.lower().replace(' ', '_')}/{os.path.basename(local_path)}"
+    normalized_topic = str(topic or "video").lower()
+    safe_topic = "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in normalized_topic)
+    safe_topic = "_".join(filter(None, safe_topic.split("_"))) or "video"
+    raw_prefix = str(job_id or os.environ.get("JOB_ID_FALLBACK", "factory"))
+    unique_prefix = "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in raw_prefix)
+    unique_prefix = "_".join(filter(None, unique_prefix.split("_"))) or "factory"
+    s3_key = f"videos/{unique_prefix}_{safe_topic}/{os.path.basename(local_path)}"
 
     import botocore
 
