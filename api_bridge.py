@@ -16,12 +16,15 @@ Flow:
   OR webhook  ← POST to WEBHOOK_URL {job_id, status, video_url}
 """
 
+import os
+import uuid
 import threading
 import requests
 import json
 import fcntl
 import shutil
 from datetime import datetime
+
 
 _jobs_lock = threading.RLock()
 from fastapi import FastAPI, HTTPException, Header, Depends
@@ -266,10 +269,16 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             
             _notify_webhook_with_retry(
                 job_id=job_id,
-                status=final_status,
-                video_url="",
-                error=final_error
+                status_data={
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error": str(e),
+                    "video_url": "",
+                    "progress": 0,
+                    "updated_at": datetime.utcnow().isoformat() + "Z"
+                }
             )
+
             return
 
         # ── Post-Render Phase (Network I/O) ──
