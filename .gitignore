@@ -19,6 +19,9 @@ media/
 *.jpg
 *.jpeg
 *.json
+!infrastructure/*.json
+!factory_portal/**/*.json
+!*.env.template
 .gemini/
 .env
 

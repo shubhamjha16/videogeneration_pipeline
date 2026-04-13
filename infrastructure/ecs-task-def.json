@@ -1,0 +1,64 @@
+{
+  "family": "easetolearn-factory",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskRole",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "4096",
+  "memory": "16384",
+  "containerDefinitions": [
+    {
+      "name": "factory-fastapi",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/easetolearn-factory:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        { "name": "PYTHONUNBUFFERED", "value": "1" },
+        { "name": "MANIM_MEDIA_DIR", "value": "/app/output" },
+        { "name": "JOBS_FILE_PATH", "value": "/app/output/jobs.json" },
+        { "name": "S3_BUCKET", "value": "easetolearn-factory-videos" },
+        { "name": "AWS_REGION", "value": "ap-south-1" },
+        { "name": "WEBHOOK_URL", "value": "https://api.easetolearn.com/videos/webhook" }
+      ],
+      "secrets": [
+        { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ANTHROPIC_API_KEY::" },
+        { "name": "GROQ_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:GROQ_API_KEY::" },
+        { "name": "GEMINI_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:GEMINI_API_KEY::" },
+        { "name": "ELEVENLABS_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ELEVENLABS_API_KEY::" },
+        { "name": "HEYGEN_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HEYGEN_API_KEY::" },
+        { "name": "FACTORY_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:FACTORY_API_KEY::" }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "factory-efs-volume",
+          "containerPath": "/app/output"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/easetolearn-factory",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "factory-efs-volume",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "<EFS_FS_ID>",
+        "transitEncryption": "ENABLED"
+      }
+    }
+  ]
+}
