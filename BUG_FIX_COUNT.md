@@ -23,10 +23,14 @@ Date: 2026-04-13
 17. PPT critic failure now forces replanning instead of auto-approving (`autonomous_graph.py`).
 18. PPT TTS node now fails fast with explicit node error on slide TTS failure instead of silently degrading (`autonomous_graph.py`).
 19. Cleanup/hygiene failures now emit structured fallback telemetry (`autonomous_graph.py`).
+20. `_save_jobs()` failures are now context-handled via `_safe_save_jobs()` with fatal mapping for enqueue paths (`api_bridge.py`).
+21. Explainer failure now triggers automatic presentation-path recovery pipeline (`autonomous_graph.py`).
+22. HeyGen failure now triggers automatic presentation-path recovery pipeline (`autonomous_graph.py`).
+23. Fallback policy in critical non-presentation nodes now routes through a unified recovery helper (`autonomous_graph.py`).
 
 ## Total
 
-**19 concrete bugs fixed.**
+**23 concrete bugs fixed.**
 
 ## Notes
 

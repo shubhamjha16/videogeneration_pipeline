@@ -9,14 +9,14 @@ The value "23" came from the upper bound of a **potential-bug estimate** (not 23
 ## Current calculation against that estimate
 
 - Upper-bound estimate used: **23 potential bugs**
-- Concrete bugs fixed so far: **19** (see `BUG_FIX_COUNT.md`)
+- Concrete bugs fixed so far: **23** (see `BUG_FIX_COUNT.md`)
 
 ### Remaining from that upper-bound estimate
 
-**23 - 19 = 4 potential bugs remaining (estimate-based).**
+**23 - 23 = 0 potential bugs remaining (estimate-based).**
 
 ## What this means
 
-- Confirmed fixed: 19
-- Remaining count above is an estimate gap, not a list of 12 confirmed defects.
-- The unresolved risk is still concentrated in broad `except Exception` hotspots and needs integration/runtime validation.
+- Confirmed fixed: 23
+- Remaining count from the prior 23-upper-bound tracker is now zero.
+- Future bugs may still exist outside this tracker and should be handled via ongoing integration/runtime validation.

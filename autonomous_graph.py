@@ -949,6 +949,27 @@ def _upload_to_s3_node(state: TonyState) -> TonyState:
     return state
 
 
+def _run_presentation_fallback(state: TonyState, source_node: str) -> TonyState:
+    """Recover failed non-presentation paths by running the presentation pipeline."""
+    _log_fallback(state, source_node, "presentation_recovery", "Falling back to presentation pipeline.", "Fallback")
+    state["render_mode"] = "presentation"
+    state = ppt_planner_node(state)
+    if state.get("rendering_errors"):
+        return state
+    state = ppt_critic_node(state)
+    if state.get("critic_feedback"):
+        state = ppt_planner_node(state)
+    if state.get("rendering_errors"):
+        return state
+    state = ppt_renderer_node(state)
+    if state.get("rendering_errors"):
+        return state
+    state = ppt_tts_node(state)
+    if state.get("rendering_errors"):
+        return state
+    return ppt_video_node(state)
+
+
 def explainer_node(state: TonyState) -> TonyState:
     """Stitch narration with B-roll metaphors (Higgsfield style)."""
     _log_progress(state, "EXPLAINER", "Production: Starting kinetic layered composition...")
@@ -973,7 +994,7 @@ def explainer_node(state: TonyState) -> TonyState:
     except Exception as e:
         print(f"   ❌ Explainer failed: {e}")
         _record_error(state, "EXPLAINER", str(e))
-        state["render_mode"] = "presentation"
+        return _run_presentation_fallback(state, "EXPLAINER")
 
     return state
 
@@ -1002,7 +1023,7 @@ def heygen_node(state: TonyState) -> TonyState:
     except Exception as e:
         _record_error(state, "HEYGEN", f"HeyGen path failed: {e}")
         print(f"   ❌ {state['rendering_errors']}")
-        state["render_mode"] = "presentation"
+        return _run_presentation_fallback(state, "HEYGEN")
     
     return state
 

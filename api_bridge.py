@@ -103,7 +103,7 @@ def _sanitize_stalled_jobs():
                 
                 found_stalled = True
     if found_stalled:
-        _save_jobs()
+        _safe_save_jobs("startup stalled-job sanitization")
 
 
 def _load_jobs():
@@ -197,6 +197,18 @@ def _save_jobs():
             raise
 
 
+def _safe_save_jobs(context: str, fatal: bool = False) -> bool:
+    """Persist jobs with contextual logging and optional HTTP failure propagation."""
+    try:
+        _save_jobs()
+        return True
+    except Exception as e:
+        print(f"❌ Jobs persistence failure during {context}: {e}")
+        if fatal:
+            raise HTTPException(status_code=500, detail="Failed to persist job state")
+        return False
+
+
 # ── In-memory job store ───────────────────────────────────────────────────────
 jobs = _load_jobs()
 
@@ -281,7 +293,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
         
         # PERSIST: Notify all workers of the 'processing' state
-        _save_jobs()
+        _safe_save_jobs(f"pipeline start ({job_id})")
 
 
 
@@ -335,7 +347,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 jobs[job_id]["error"]  = str(e)
                 final_status = "failed"
                 final_error = str(e)
-            _save_jobs()
+            _safe_save_jobs(f"pipeline failure ({job_id})")
             
             _notify_webhook_with_retry(
                 job_id=job_id,
@@ -371,7 +383,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             final_status = jobs[job_id]["status"]
             final_error  = jobs[job_id]["error"]
 
-        _save_jobs()
+        _safe_save_jobs(f"pipeline finalize ({job_id})")
 
     # Final Webhook Handover with 3-attempt exponential backoff
     with _jobs_lock:
@@ -446,7 +458,7 @@ def start_render(request: RenderRequest):
         daemon=True,
     )
     thread.start()
-    _save_jobs()
+    _safe_save_jobs(f"start_render enqueue ({job_id})", fatal=True)
 
     print(f"🚀 Job {job_id} queued for: {request.topic}")
     with _jobs_lock:

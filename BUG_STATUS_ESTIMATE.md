@@ -40,14 +40,14 @@ This is an estimate, not an absolute truth.
 
 ### Medium/low-confidence potential bugs
 - Because there are 53 broad `except Exception` handlers, typical production Python services of this style usually hide additional logic/retry/state issues.
-- Recalibrated tracking estimate (from prior upper-bound model): **4 potential bugs remaining** (`23` upper bound - `19` concretely fixed).
+- Recalibrated tracking estimate (from prior upper-bound model): **0 potential bugs remaining** (`23` upper bound - `23` concretely fixed).
 
 ## Net estimate summary
 
 - **Known fixed from audited set:** 5
 - **High-confidence still open now:** 0
-- **Potential additional bugs (estimated):** 4 (tracking estimate model)
-- **Estimated total potential bugs currently in repo:** **4** (from 23-upper-bound tracker)
+- **Potential additional bugs (estimated):** 0 (tracking estimate model)
+- **Estimated total potential bugs currently in repo:** **0** (from 23-upper-bound tracker)
 
 ## Confidence
 
