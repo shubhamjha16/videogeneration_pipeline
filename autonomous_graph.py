@@ -30,8 +30,10 @@ Orchestrates the full video generation flow:
 import os
 import sys
 import glob
+import time
 import subprocess
 import importlib
+import json
 from typing import TypedDict, List, Optional, Any
 
 from langgraph.graph import StateGraph, END
@@ -47,6 +49,12 @@ def _ffmpeg() -> str:
 
 
 _api_bridge_refs = None
+_MAX_ERROR_LEN = 2000
+_S3_UPLOAD_MAX_ATTEMPTS = 3
+_S3_RETRY_SLEEP_SECONDS = 1
+_MANIM_TIMEOUT_SECONDS = 600
+_FFMPEG_TIMEOUT_SECONDS = 600
+_GROQ_MAX_ATTEMPTS = 2
 
 def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = "info"):
     """Industrial Sentinel: Universal progress logger with circular memory capping."""
@@ -69,6 +77,49 @@ def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = 
                     _api_bridge_refs.jobs[job_id]["logs"] = logs[-50:]
                 print(f"📡 Telemetry [{node_name}]: {msg}")
         _api_bridge_refs._save_jobs()
+
+def _record_error(state: "TonyState", node_name: str, error: str) -> None:
+    """Set consistent error message and push it to job telemetry."""
+    compact_error = (error or "Unknown pipeline error").strip()
+    compact_error = compact_error[-_MAX_ERROR_LEN:]
+    state["rendering_errors"] = compact_error
+    _log_progress(state, node_name, compact_error, "error")
+
+def _log_fallback(state: "TonyState", node_name: str, fallback: str, reason: str, error_class: str = "RuntimeError") -> None:
+    """Emit structured warning telemetry for non-fatal fallback paths."""
+    payload = {
+        "event": "fallback",
+        "node": node_name,
+        "fallback": fallback,
+        "reason": reason[:400],
+        "error_class": error_class,
+        "job_id": state.get("job_id"),
+    }
+    _log_progress(state, node_name, json.dumps(payload, ensure_ascii=False), "warning")
+
+def _groq_json_with_retry(client: Any, *, model: str, messages: list[dict], node_name: str, state: "TonyState") -> dict:
+    """Retry Groq JSON call for transient failures, then raise."""
+    last_exc = None
+    for attempt in range(1, _GROQ_MAX_ATTEMPTS + 1):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                response_format={"type": "json_object"},
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            last_exc = e
+            if attempt < _GROQ_MAX_ATTEMPTS:
+                _log_fallback(
+                    state,
+                    node_name,
+                    fallback="groq_retry",
+                    reason=f"attempt {attempt}/{_GROQ_MAX_ATTEMPTS} failed: {e}",
+                    error_class=type(e).__name__,
+                )
+                time.sleep(attempt)
+    raise RuntimeError(f"Groq call failed after {_GROQ_MAX_ATTEMPTS} attempts: {last_exc}")
 
 def get_job_dir(state: "TonyState") -> str:
     """Isolated sandbox for the current job."""
@@ -317,21 +368,25 @@ def supervisor_node(state: TonyState) -> TonyState:
 
     # ── 1. Render Manim (Industrial Hardening: Sandbox-Local Cache) ──
     print("   Rendering Manim animation with cache isolation...")
-    render_result = subprocess.run(
-        [_manim(), "-ql", script_path, "EaseToLearnScene", 
-         "--media_dir", os.path.join(job_dir, "manim_media")],
-        capture_output=True, text=True
-    )
+    try:
+        render_result = subprocess.run(
+            [_manim(), "-ql", script_path, "EaseToLearnScene",
+             "--media_dir", os.path.join(job_dir, "manim_media")],
+            capture_output=True, text=True, timeout=_MANIM_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired:
+        _record_error(state, "SUPERVISOR", f"Manim render timed out after {_MANIM_TIMEOUT_SECONDS}s")
+        return state
 
     if render_result.returncode != 0:
         print(f"   ❌ Manim render failed.")
-        state["rendering_errors"] = render_result.stderr[-2000:]
+        _record_error(state, "SUPERVISOR", render_result.stderr)
         return state
 
     # Find rendered video
     renders = glob.glob(f"{job_dir}/**/EaseToLearnScene.mp4", recursive=True)
     if not renders:
-        state["rendering_errors"] = "Manim output file not found after render"
+        _record_error(state, "SUPERVISOR", "Manim output file not found after render")
         return state
 
     manim_video = renders[0]
@@ -341,7 +396,10 @@ def supervisor_node(state: TonyState) -> TonyState:
     print("   Concatenating narration audio...")
     from moviepy.editor import AudioFileClip, concatenate_audioclips
 
-    audio_files = state["audio_files"]
+    audio_files = state.get("audio_files") or []
+    if not audio_files:
+        _record_error(state, "SUPERVISOR", "No narration audio files found for Manim stitching.")
+        return state
     combined_audio_path = os.path.join(job_dir, "narration_combined.mp3")
     clips = [AudioFileClip(f) for f in audio_files]
     combined = concatenate_audioclips(clips)
@@ -356,20 +414,24 @@ def supervisor_node(state: TonyState) -> TonyState:
     print("   Stitching video + audio...")
     final_output = os.path.join(job_dir, f"{topic_safe}_masterclass.mp4")
 
-    stitch_result = subprocess.run([
-        _ffmpeg(), "-y",
-        "-i", manim_video,
-        "-i", combined_audio_path,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k",
-        "-map", "0:v:0", "-map", "1:a:0",
-        "-movflags", "+faststart",
-        "-shortest",
-        final_output,
-    ], capture_output=True, text=True)
+    try:
+        stitch_result = subprocess.run([
+            _ffmpeg(), "-y",
+            "-i", manim_video,
+            "-i", combined_audio_path,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-movflags", "+faststart",
+            "-shortest",
+            final_output,
+        ], capture_output=True, text=True, timeout=_FFMPEG_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        _record_error(state, "SUPERVISOR", f"FFmpeg stitch timed out after {_FFMPEG_TIMEOUT_SECONDS}s")
+        return state
 
     if stitch_result.returncode != 0:
-        state["rendering_errors"] = stitch_result.stderr
+        _record_error(state, "SUPERVISOR", stitch_result.stderr)
         return state
 
     print(f"   ✅ Final video: {final_output}")
@@ -412,6 +474,13 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
     if not bucket:
         # Local dev: just return local path
         print("   ℹ️  S3_BUCKET not set — skipping upload, returning local path")
+        _log_fallback(
+            {"job_id": job_id, "rendering_errors": None},  # minimal state for structured telemetry
+            "DEPLOY",
+            fallback="local_file_url",
+            reason="S3_BUCKET not set",
+            error_class="MissingConfig",
+        )
         return f"file://{local_path}"
 
     import boto3
@@ -423,16 +492,24 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
 
     print(f"   ☁️  Uploading to s3://{bucket}/{s3_key} ...")
     s3 = boto3.client("s3", region_name=region)
-    try:
-        s3.upload_file(
-            local_path,
-            bucket,
-            s3_key,
-            ExtraArgs={"ContentType": "video/mp4"},
-        )
-    except botocore.exceptions.ClientError as e:
-        print(f"   ❌ S3 Upload Failed (IAM/Bucket issue): {e}")
-        return f"file://{local_path}"
+    for attempt in range(1, _S3_UPLOAD_MAX_ATTEMPTS + 1):
+        try:
+            s3.upload_file(
+                local_path,
+                bucket,
+                s3_key,
+                ExtraArgs={"ContentType": "video/mp4"},
+            )
+            break
+        except botocore.exceptions.ClientError as e:
+            print(f"   ❌ S3 Upload Failed (IAM/Bucket issue) on attempt {attempt}/{_S3_UPLOAD_MAX_ATTEMPTS}: {e}")
+            if attempt >= _S3_UPLOAD_MAX_ATTEMPTS:
+                return f"file://{local_path}"
+        except Exception as e:
+            print(f"   ❌ S3 Upload Failed (unexpected) on attempt {attempt}/{_S3_UPLOAD_MAX_ATTEMPTS}: {e}")
+            if attempt >= _S3_UPLOAD_MAX_ATTEMPTS:
+                return f"file://{local_path}"
+        time.sleep(_S3_RETRY_SLEEP_SECONDS * min(attempt, 3))
 
     url = f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
     print(f"   ✅ S3 URL: {url}")
@@ -558,7 +635,8 @@ def ppt_planner_node(state: TonyState) -> TonyState:
     from groq import Groq
     import json
 
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    client = Groq(api_key=groq_api_key) if groq_api_key else None
     text = " ".join(s["narration_text"] for s in state["scenes"])
 
     # Inject critic feedback on retry
@@ -569,21 +647,25 @@ def ppt_planner_node(state: TonyState) -> TonyState:
     prompt = _PPT_PLANNER_PROMPT.format(feedback_section=feedback_section)
 
     try:
-        response = client.chat.completions.create(
+        if client is None:
+            raise RuntimeError("GROQ_API_KEY missing")
+        data = _groq_json_with_retry(
+            client,
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user",   "content": f"TOPIC: {state['topic']}\n\nCONTENT:\n{text}"}
             ],
-            response_format={"type": "json_object"}
+            node_name="PPT_PLANNER",
+            state=state,
         )
-        data   = json.loads(response.choices[0].message.content)
         slides = data.get("slides", [])
         print(f"   Planned {len(slides)} slides:")
         for i, s in enumerate(slides):
             print(f"     {i+1}. [{s.get('layout','?')}] {s.get('data',{}).get('title') or s.get('data',{}).get('heading') or s.get('data',{}).get('statement','')[:40]}")
     except Exception as e:
         print(f"   ⚠️  Groq failed: {e} — using fallback")
+        _log_fallback(state, "PPT_PLANNER", "fallback_split", str(e), type(e).__name__)
         from ppt_engine.ppt_pipeline import _fallback_split
         slides = _fallback_split(state["topic"], text)
 
@@ -600,7 +682,8 @@ def ppt_critic_node(state: TonyState) -> TonyState:
     from groq import Groq
     import json
 
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    client = Groq(api_key=groq_api_key) if groq_api_key else None
 
     # Select the right "soul" based on video_type
     if video_type == "marketing":
@@ -614,15 +697,18 @@ def ppt_critic_node(state: TonyState) -> TonyState:
     ], indent=2)
 
     try:
-        response = client.chat.completions.create(
+        if client is None:
+            raise RuntimeError("GROQ_API_KEY missing")
+        result = _groq_json_with_retry(
+            client,
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system",  "content": critic_prompt},
                 {"role": "user",    "content": f"TOPIC: {state['topic']}\n\nSLIDE PLAN:\n{slides_summary}"}
             ],
-            response_format={"type": "json_object"}
+            node_name="PPT_CRITIC",
+            state=state,
         )
-        result   = json.loads(response.choices[0].message.content)
         approved = result.get("approved", True)
         feedback = result.get("feedback", "")
         score    = result.get("score", 7)
@@ -636,6 +722,7 @@ def ppt_critic_node(state: TonyState) -> TonyState:
 
     except Exception as e:
         print(f"   ⚠️  Critic failed: {e} — auto-approving")
+        _log_fallback(state, "PPT_CRITIC", "auto_approve", str(e), type(e).__name__)
         state["critic_feedback"] = None
 
     return state
@@ -667,7 +754,10 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
             layout=layout,
             layout_data=layout_data,
         )
-        slide_paths.append(path)
+        if path and os.path.exists(path):
+            slide_paths.append(path)
+        else:
+            print(f"   ⚠️ Slide render failed for index {i}")
 
     state["slide_paths"] = slide_paths
     return state
@@ -684,7 +774,10 @@ def ppt_tts_node(state: TonyState) -> TonyState:
     audio_files = []
 
     for i, slide in enumerate(state["slides"]):
-        narration = slide.get("narration", "")
+        narration = (slide.get("narration", "") or "").strip()
+        if not narration:
+            data = slide.get("data", {})
+            narration = data.get("heading") or data.get("title") or state["topic"]
         try:
             path = generate_audio(narration, i, output_dir=job_dir)
         except Exception as e:
@@ -707,7 +800,9 @@ def ppt_video_node(state: TonyState) -> TonyState:
     with_avatar = state.get("with_avatar", False)
     clip_paths  = []
 
-    for i, (slide_img, audio_path) in enumerate(zip(state["slide_paths"], state["audio_files"])):
+    slide_paths = state.get("slide_paths") or []
+    audio_files = state.get("audio_files") or []
+    for i, (slide_img, audio_path) in enumerate(zip(slide_paths, audio_files)):
         if audio_path is None:
             print(f"   ⚠️ Skipping clip {i} because audio is missing")
             continue
@@ -749,12 +844,12 @@ def ppt_video_node(state: TonyState) -> TonyState:
 
         if os.path.exists(clip_path):
             clip_paths.append(clip_path)
-            print(f"   ✅ Clip {i+1}/{len(state['slide_paths'])}")
+            print(f"   ✅ Clip {i+1}/{len(slide_paths)}")
 
     state["clip_paths"] = clip_paths
 
     if not clip_paths:
-        state["rendering_errors"] = "No slide clips were successfully rendered (likely TTS failures)."
+        _record_error(state, "PPT_VIDEO", "No slide clips were successfully rendered (likely TTS failures).")
         return state
 
     safe_topic  = state["topic"].lower().replace(" ", "_").replace("/", "_")
@@ -771,7 +866,10 @@ def ppt_video_node(state: TonyState) -> TonyState:
                 except: pass
                 
     if not concat_success:
-        state["rendering_errors"] = "PPT concat failed"
+        _record_error(state, "PPT_VIDEO", "PPT concat failed")
+        return state
+    if not os.path.exists(final_output):
+        _record_error(state, "PPT_VIDEO", "PPT output file missing after concat.")
         return state
 
     state["output_path"]      = os.path.abspath(final_output)
@@ -806,8 +904,6 @@ def explainer_node(state: TonyState) -> TonyState:
     _log_progress(state, "EXPLAINER", "Production: Starting kinetic layered composition...")
     print(f"🎬 [Explainer Node] Generating narrative explainer for: {state['topic']}")
     
-    from tts_generator import generate_audio
-    from moviepy.editor import AudioFileClip, VideoFileClip, concatenate_videoclips
     from explainer_generator import generate_explainer_video
 
     job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
@@ -826,7 +922,7 @@ def explainer_node(state: TonyState) -> TonyState:
         # Note: Handed off to deploy_node for S3 sync and Disk Hygiene
     except Exception as e:
         print(f"   ❌ Explainer failed: {e}")
-        state["rendering_errors"] = str(e)
+        _record_error(state, "EXPLAINER", str(e))
 
     return state
 
@@ -843,14 +939,18 @@ def heygen_node(state: TonyState) -> TonyState:
     os.makedirs(job_dir, exist_ok=True)
 
     # 1. Generate audio for HeyGen to lip-sync to
-    full_text = " ".join(s["narration_text"] for s in state["scenes"])
-    audio_path = generate_audio(full_text, 0, output_dir=job_dir)
-    state["audio_files"] = [audio_path]
+    try:
+        full_text = " ".join(s["narration_text"] for s in state["scenes"])
+        audio_path = generate_audio(full_text, 0, output_dir=job_dir)
+        state["audio_files"] = [audio_path]
 
-    # 2. Call HeyGen
-    output_path = os.path.join(job_dir, "heygen_avatar.mp4")
-    heygen_video = generate_heygen_avatar(full_text, audio_path, output_path)
-    state["heygen_video_path"] = heygen_video
+        # 2. Call HeyGen
+        output_path = os.path.join(job_dir, "heygen_avatar.mp4")
+        heygen_video = generate_heygen_avatar(full_text, audio_path, output_path)
+        state["heygen_video_path"] = heygen_video
+    except Exception as e:
+        _record_error(state, "HEYGEN", f"HeyGen path failed: {e}")
+        print(f"   ❌ {state['rendering_errors']}")
     
     return state
 
@@ -873,7 +973,7 @@ def subtitle_node(state: TonyState) -> TonyState:
     video_clip = VideoFileClip(video_path)
     try:
         audio_path = state["audio_files"][0]
-        
+
         tmp_aud = AudioFileClip(audio_path)
         try:
             audio_dur = tmp_aud.duration
@@ -889,19 +989,24 @@ def subtitle_node(state: TonyState) -> TonyState:
 
         # Apply kinetic styling (Insta Reels style)
         final_clip = generate_kinetic_subtitles(
-            video_clip, 
-            full_text, 
-            audio_dur, 
-            style="insta_reels", 
+            video_clip,
+            full_text,
+            audio_dur,
+            style="insta_reels",
             alignment_path=alignment_path
         )
-        
+
         try:
             output_path = video_path.replace(".mp4", "_subtitled.mp4")
             final_clip.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
             state["output_path"] = os.path.abspath(output_path)
         finally:
             final_clip.close()
+    except Exception as e:
+        print(f"   ⚠️  Subtitle overlay failed: {e}")
+        _log_fallback(state, "SUBTITLE", "use_original_video", str(e), type(e).__name__)
+        state["output_path"] = os.path.abspath(video_path)
+        state["rendering_errors"] = None
     finally:
         video_clip.close()
 
@@ -914,7 +1019,7 @@ def fusion_node(state: TonyState) -> TonyState:
     
     if not state.get("output_path") or not os.path.exists(state["output_path"]):
         print("   ⚠️ No output_path found. Final generation failed.")
-        state["rendering_errors"] = "Final production failed — check logs."
+        _record_error(state, "FUSION", "Final production failed — output artifact missing before deploy.")
         
     return state
 
@@ -926,8 +1031,13 @@ def deploy_node(state: TonyState) -> TonyState:
     output_path = state.get("output_path")
     topic = state.get("topic")
     
+    if state.get("rendering_errors"):
+        _log_progress(state, "DEPLOY", f"Skipped deploy due to upstream render error: {state['rendering_errors']}", "warning")
+        return state
+
     if not output_path or not os.path.exists(output_path):
         _log_progress(state, "DEPLOY", "Handover Failure: Final video asset not found.", "warning")
+        _record_error(state, "DEPLOY", state.get("rendering_errors") or "Deploy blocked: output asset not found.")
         return state
         
     video_url = _upload_to_s3(output_path, topic, job_id)
@@ -950,12 +1060,12 @@ def deploy_node(state: TonyState) -> TonyState:
 
 def route_by_mode(state: TonyState) -> str:
     """After vision — branch to one of the 4 paths."""
-    mode = state.get("render_mode")
+    mode = (state.get("render_mode") or "").strip().lower()
     if mode == "presentation":
         return "ppt_planner"
     elif mode == "explainer":
         return "explainer"
-    elif mode == "user_generated_video":
+    elif mode in {"user_generated_video", "user_generated", "human_face"}:
         return "heygen"
     return "architect"
 
@@ -1086,4 +1196,3 @@ if __name__ == "__main__":
     print(f"\n🏆 Curtain Call: {args.topic}")
     print(f"   Industrial Video URL: {final.get('video_url')}")
     print(f"   Local Cache Snapshot: {final.get('output_path')}")
-
