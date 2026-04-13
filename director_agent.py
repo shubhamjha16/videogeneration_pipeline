@@ -45,6 +45,7 @@ Visual types per mode:
 
 import os
 import json
+import copy
 import anthropic
 from groq import Groq
 from pydantic import BaseModel
@@ -101,7 +102,8 @@ class Scene(BaseModel):
         defaults = _REQUIRED_FIELDS.get(self.visual_type, {})
         for key, default in defaults.items():
             if key not in self.visual_data or self.visual_data[key] is None:
-                self.visual_data[key] = default
+                # Copy mutable defaults so scenes never share state.
+                self.visual_data[key] = copy.deepcopy(default)
             # empty string fields — keep as-is, tex() handles them
 
 
@@ -233,15 +235,20 @@ def run_director(parsed_facts: dict) -> DirectorOutput:
 
 def _build_prompt(facts: dict) -> str:
     """Build the user message from parsed facts."""
+    topic = facts.get("topic", "Untitled Lesson")
+    subject = facts.get("subject", "unknown")
+    content_type = facts.get("content_type", "concept")
+    concept = facts.get("concept") or ""
+
     lines = [
-        f"TOPIC: {facts['topic']}",
-        f"SUBJECT: {facts['subject']}",
-        f"CONTENT TYPE: {facts['content_type']}",
+        f"TOPIC: {topic}",
+        f"SUBJECT: {subject}",
+        f"CONTENT TYPE: {content_type}",
         "",
-        f"CONCEPT:\n{facts['concept']}",
+        f"CONCEPT:\n{concept}",
     ]
 
-    if facts["content_type"] == "mcq" and facts.get("options"):
+    if content_type == "mcq" and facts.get("options"):
         lines.append("\nOPTIONS:")
         for letter, data in sorted(facts["options"].items()):
             lines.append(f"  {letter}. {data['name']}: {data['explanation']}")
@@ -254,7 +261,7 @@ def _build_prompt(facts: dict) -> str:
             f"WRONG OPTIONS (cross_out these, NEVER cross_out {correct}): {', '.join(wrong_letters)}"
         )
 
-    elif facts["content_type"] == "numerical":
+    elif content_type == "numerical":
         if facts.get("formula"):
             lines.append(f"\nKEY FORMULA: {facts['formula']}")
         if facts.get("steps"):
@@ -264,7 +271,7 @@ def _build_prompt(facts: dict) -> str:
         if facts.get("final_answer"):
             lines.append(f"\nFINAL ANSWER: {facts['final_answer']}")
 
-    elif facts["content_type"] in ("concept", "case_study"):
+    elif content_type in ("concept", "case_study"):
         if facts.get("key_points"):
             lines.append("\nKEY POINTS:")
             for kp in facts["key_points"][:5]:
