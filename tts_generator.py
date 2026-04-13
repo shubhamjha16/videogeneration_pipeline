@@ -34,14 +34,23 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".") -> str:
     FORCE_LOCAL_TTS = os.environ.get("FORCE_LOCAL_TTS", "false").lower() == "true"
     
     if ELEVENLABS_API_KEY and not FORCE_LOCAL_TTS:
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/with-timestamps"
         headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
         data = {"text": text, "model_id": "eleven_multilingual_v2"}
         response = requests.post(url, json=data, headers=headers, timeout=30)
         if response.status_code == 200:
+            import base64, json
+            res_data = response.json()
+            audio_bytes = base64.b64decode(res_data["audio_base64"])
             with open(output_filename, "wb") as f:
-                f.write(response.content)
-            print(f"Generated ElevenLabs audio for scene {scene_idx} -> {output_filename}")
+                f.write(audio_bytes)
+            
+            # Save alignment data for kinetic subtitles
+            alignment_path = output_filename.replace(".m4a", ".json").replace(".mp3", ".json")
+            with open(alignment_path, "w") as f:
+                json.dump(res_data.get("alignment", {}), f)
+                
+            print(f"Generated ElevenLabs audio + timestamps for scene {scene_idx} -> {output_filename}")
             return output_filename
         else:
             print(f"⚠️ ElevenLabs Error {response.status_code}: {response.text}")

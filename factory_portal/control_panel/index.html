@@ -26,6 +26,9 @@
             <button class="nav-btn" data-tab="vault">
                 <i data-lucide="database"></i> Curriculum Vault
             </button>
+            <button class="nav-btn" data-tab="settings" id="settingsBtn">
+                <i data-lucide="settings"></i> System Settings
+            </button>
         </nav>
         
         <div class="control-group">
@@ -236,6 +239,27 @@
             </div>
         </footer>
     </main>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal glass">
+            <div class="modal-header">
+                <h3>System Settings</h3>
+                <button class="close-modal"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-item">
+                    <span>Factory API Key</span>
+                    <input type="password" id="factoryApiKeyInput" class="glass" style="width: 100%; margin-top: 8px; padding: 10px; color: white;" placeholder="Enter X-API-Key...">
+                    <span class="note" style="display: block; margin-top: 8px; font-size: 0.7rem; color: var(--text-muted);">Required for authentication with the generation backend.</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary close-modal">Cancel</button>
+                <button class="btn btn-primary" id="saveSettingsBtn">Save Changes</button>
+            </div>
+        </div>
+    </div>
 
     <!-- BULK INGEST MODAL -->
     <div id="bulkModal" class="modal-overlay">

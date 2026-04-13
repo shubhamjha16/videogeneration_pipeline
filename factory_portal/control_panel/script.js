@@ -196,6 +196,50 @@ function updateTelemetry(job) {
 setInterval(pollJobs, 2000);
 pollJobs();
 
+// Settings Modal Logic
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const factoryApiKeyInput = document.getElementById('factoryApiKeyInput');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const closeButtons = document.querySelectorAll('.close-modal');
+
+if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+        settingsModal.classList.add('active');
+        factoryApiKeyInput.value = localStorage.getItem('FACTORY_API_KEY') || '';
+    });
+}
+
+closeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        settingsModal.classList.remove('active');
+        const bulkModal = document.getElementById('bulkModal');
+        if (bulkModal) bulkModal.classList.remove('active');
+    });
+});
+
+if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener('click', () => {
+        const key = factoryApiKeyInput.value.trim();
+        if (key) {
+            localStorage.setItem('FACTORY_API_KEY', key);
+            settingsModal.classList.remove('active');
+            pollJobs(); // Re-trigger poll with new key
+        } else {
+            alert('Please enter a valid API key.');
+        }
+    });
+}
+
+// Bulk Ingest Modal Logic
+const bulkIngestBtn = document.getElementById('bulkIngestBtn');
+const bulkModal = document.getElementById('bulkModal');
+if (bulkIngestBtn) {
+    bulkIngestBtn.addEventListener('click', () => {
+        bulkModal.classList.add('active');
+    });
+}
+
 // System Halt Sequence
 const haltBtn = document.querySelector('.btn-danger');
 if (haltBtn) {

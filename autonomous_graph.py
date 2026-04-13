@@ -419,14 +419,20 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
     unique_prefix = job_id or os.environ.get("JOB_ID_FALLBACK", "factory")
     s3_key = f"videos/{unique_prefix}_{topic.lower().replace(' ', '_')}/{os.path.basename(local_path)}"
 
+    import botocore
+
     print(f"   ☁️  Uploading to s3://{bucket}/{s3_key} ...")
     s3 = boto3.client("s3", region_name=region)
-    s3.upload_file(
-        local_path,
-        bucket,
-        s3_key,
-        ExtraArgs={"ContentType": "video/mp4"},
-    )
+    try:
+        s3.upload_file(
+            local_path,
+            bucket,
+            s3_key,
+            ExtraArgs={"ContentType": "video/mp4"},
+        )
+    except botocore.exceptions.ClientError as e:
+        print(f"   ❌ S3 Upload Failed (IAM/Bucket issue): {e}")
+        return f"file://{local_path}"
 
     url = f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
     print(f"   ✅ S3 URL: {url}")
@@ -873,11 +879,22 @@ def subtitle_node(state: TonyState) -> TonyState:
             audio_dur = tmp_aud.duration
         finally:
             tmp_aud.close()
-            
+
+        # Determine alignment path (sidecar JSON)
+        alignment_path = audio_path.replace(".m4a", ".json").replace(".mp3", ".json")
+        if not os.path.exists(alignment_path):
+            alignment_path = None
+
         full_text  = " ".join(s["narration_text"] for s in state["scenes"])
 
         # Apply kinetic styling (Insta Reels style)
-        final_clip = generate_kinetic_subtitles(video_clip, full_text, audio_dur, style="insta_reels")
+        final_clip = generate_kinetic_subtitles(
+            video_clip, 
+            full_text, 
+            audio_dur, 
+            style="insta_reels", 
+            alignment_path=alignment_path
+        )
         
         try:
             output_path = video_path.replace(".mp4", "_subtitled.mp4")

@@ -12,6 +12,23 @@ if not hasattr(Image, 'ANTIALIAS'):
 # Load credentials from .env
 load_dotenv()
 
+import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+def get_robust_session():
+    session = requests.Session()
+    retry = Retry(
+        total=5,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET", "POST"]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
 def generate_higgsfield_video(prompt: str, output_path: str) -> str:
     """
     Industrialized Higgsfield/Muapi Integration.
@@ -81,10 +98,10 @@ def generate_higgsfield_video(prompt: str, output_path: str) -> str:
     return _generate_placeholder(prompt, output_path)
 
 def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base: str) -> str:
-    """Polls for completion and downloads the video file streamingly."""
     print(f"   ⏳ Task {task_id[:8]}... created. Polling for results...")
     
-    max_attempts = 30
+    session = get_robust_session()
+    max_attempts = 40 # Increased for stability
     for attempt in range(max_attempts):
         try:
             # Flexible polling URL logic
@@ -93,16 +110,26 @@ def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base:
             else:
                 poll_url = f"{poll_base}/{task_id}"
                 
-            res = requests.get(poll_url, headers=headers, timeout=10)
+            res = session.get(poll_url, headers=headers, timeout=15)
             try:
                 data = res.json()
             except (json.JSONDecodeError, ValueError):
                 print(f"   ⚠️ Received non-JSON response from API (Attempt {attempt}). Retrying...")
+                time.sleep(10)
                 continue
                 
             status = data.get("status", "").lower()
             if status in ["succeeded", "completed", "success"]:
-                video_url = data.get("output", {}).get("video") or data.get("output_url") or data.get("output")
+                # Muapi vs Direct Cloud response mapping
+                output_data = data.get("output", {})
+                video_url = None
+                if isinstance(output_data, dict):
+                    video_url = output_data.get("video")
+                elif isinstance(output_data, list) and len(output_data) > 0:
+                    video_url = output_data[0]
+                
+                video_url = video_url or data.get("output_url") or data.get("output")
+                
                 if video_url:
                     print(f"   ✅ Video ready! Downloading...")
                     return _download_file(video_url, output_path)
@@ -114,7 +141,7 @@ def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base:
         except Exception as e:
             print(f"   [Attempt {attempt}] Polling error: {e}")
             
-        time.sleep(10)
+        time.sleep(15)
     
     return _generate_placeholder("Polling timed out", output_path)
 
