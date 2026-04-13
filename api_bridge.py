@@ -21,6 +21,7 @@ import uuid
 import threading
 import requests
 import json
+import copy
 try:
     import fcntl
 except ImportError:
@@ -102,7 +103,7 @@ def _sanitize_stalled_jobs():
                 
                 found_stalled = True
     if found_stalled:
-        _save_jobs()
+        _safe_save_jobs("startup stalled-job sanitization")
 
 
 def _load_jobs():
@@ -118,7 +119,8 @@ def _load_jobs():
 
             
             global jobs
-            jobs = data
+            with _jobs_lock:
+                jobs = data
             _sanitize_stalled_jobs()
             return jobs
         except (json.JSONDecodeError, ValueError, Exception) as e:
@@ -128,7 +130,8 @@ def _load_jobs():
             print(f"❌ DATA CORRUPTION ALERT: {JOBS_FILE} is unreadable. Archiving to {corrupt_path}", file=sys.stderr)
             try:
                 os.rename(JOBS_FILE, corrupt_path)
-            except: pass # Absolute fallback if disk is read-only
+            except Exception as archive_error:
+                print(f"⚠️  Failed to archive corrupt jobs file: {archive_error}", file=sys.stderr)
             return {}
     return {}
 
@@ -191,6 +194,19 @@ def _save_jobs():
             print(f"❌ Error saving jobs state: {e}")
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
+            raise
+
+
+def _safe_save_jobs(context: str, fatal: bool = False) -> bool:
+    """Persist jobs with contextual logging and optional HTTP failure propagation."""
+    try:
+        _save_jobs()
+        return True
+    except Exception as e:
+        print(f"❌ Jobs persistence failure during {context}: {e}")
+        if fatal:
+            raise HTTPException(status_code=500, detail="Failed to persist job state")
+        return False
 
 
 # ── In-memory job store ───────────────────────────────────────────────────────
@@ -215,7 +231,7 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
                 return
             else:
                 print(f"⚠️  Webhook Status {resp.status_code} on attempt {attempt + 1}")
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"⚠️  Webhook Retry {attempt + 1} for job {job_id}: {e}")
         
         if attempt < max_retries - 1:
@@ -277,7 +293,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
         
         # PERSIST: Notify all workers of the 'processing' state
-        _save_jobs()
+        _safe_save_jobs(f"pipeline start ({job_id})")
 
 
 
@@ -324,14 +340,14 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 "heygen_video_path":  None,
                 "subtitle_style":     None,
             })
-        except BaseException as e:
+        except Exception as e:
             print(f"❌ Pipeline Error for job {job_id}: {e}")
             with _jobs_lock:
                 jobs[job_id]["status"] = "failed"
                 jobs[job_id]["error"]  = str(e)
                 final_status = "failed"
                 final_error = str(e)
-            _save_jobs()
+            _safe_save_jobs(f"pipeline failure ({job_id})")
             
             _notify_webhook_with_retry(
                 job_id=job_id,
@@ -367,7 +383,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             final_status = jobs[job_id]["status"]
             final_error  = jobs[job_id]["error"]
 
-        _save_jobs()
+        _safe_save_jobs(f"pipeline finalize ({job_id})")
 
     # Final Webhook Handover with 3-attempt exponential backoff
     with _jobs_lock:
@@ -442,18 +458,19 @@ def start_render(request: RenderRequest):
         daemon=True,
     )
     thread.start()
-    _save_jobs()
+    _safe_save_jobs(f"start_render enqueue ({job_id})", fatal=True)
 
     print(f"🚀 Job {job_id} queued for: {request.topic}")
     with _jobs_lock:
-        return dict(jobs[job_id])
+        return copy.deepcopy(jobs[job_id])
 
 
 @app.get("/jobs", dependencies=[SecurityDep])
 def get_all_jobs():
     """Returns all jobs for the Factory Portal dashboard."""
     _load_jobs()
-    return jobs
+    with _jobs_lock:
+        return copy.deepcopy(jobs)
 
 
 
@@ -466,7 +483,8 @@ def get_status(job_id: str):
     _load_jobs()
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-    return jobs[job_id]
+    with _jobs_lock:
+        return copy.deepcopy(jobs[job_id])
 
 
 
