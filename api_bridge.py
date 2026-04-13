@@ -180,13 +180,15 @@ def _run_pipeline(job_id: str, topic: str, html: str):
             jobs[job_id]["status"] = "processing"
             job = dict(jobs[job_id])   # snapshot to avoid lock re-entry
 
+        # Industrial Path Sanity: Use absolute MEDIA_DIR from environment
+        media_root = os.environ.get("MANIM_MEDIA_DIR", "output")
+        job_dir = os.path.join(media_root, f"job_{job_id}")
+        os.makedirs(job_dir, exist_ok=True)
+
         # If caller provided an image, copy it to the job folder as tony_diagram.png
-        # vision_node will detect it and skip Gemini Imagen automatically
         injected_image = job.get("image_path")
         if injected_image and os.path.exists(injected_image):
             import shutil
-            job_dir = os.path.join("output", f"job_{job_id}")
-            os.makedirs(job_dir, exist_ok=True)
             dest = os.path.join(job_dir, "tony_diagram.png")
             shutil.copy2(injected_image, dest)
             print(f"📸 Using injected image in isolated dir: {dest}")
@@ -267,6 +269,18 @@ def _run_pipeline(job_id: str, topic: str, html: str):
         video_url=video_url,
         error=final_error
     )
+
+    # RECURSIVE HYGIENE: Final check to ensure failed/successful job dirs are purged from EFS
+    if os.environ.get("AUTO_DELETE_JOB_DIR", "false").lower() == "true":
+        import shutil
+        media_root = os.environ.get("MANIM_MEDIA_DIR", "output")
+        job_dir = os.path.join(media_root, f"job_{job_id}")
+        if os.path.exists(job_dir):
+            try:
+                shutil.rmtree(job_dir)
+                print(f"🧹 [Auto-Cleanup] Absolute path purged: {job_dir}")
+            except Exception as e:
+                print(f"⚠️  Hygiene Alert for {job_id}: {e}")
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

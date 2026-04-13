@@ -26,7 +26,9 @@ def generate_kinetic_subtitles(video_clip, narration_text, audio_duration, style
         try:
             with open(alignment_path, "r") as f:
                 alignment_data = json.load(f)
-        except: pass
+        except Exception as e:
+            print(f"⚠️ [Subtitle Engine] Could not parse alignment JSON: {e}")
+            pass
 
     if alignment_data and "characters" in alignment_data:
         print("   ✅ Using frame-perfect ElevenLabs alignments.")

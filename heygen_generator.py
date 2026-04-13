@@ -110,11 +110,11 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
                     return output_path
             elif status in ["failed", "canceled"]:
                 print(f"❌ [HeyGen] Generation failed: {data.get('error', 'unknown error')}")
-                return audio_path
+                return None # Return None to trigger pipeline failure instead of corrupt output
         except Exception as e:
-            print(f"   [Attempt {attempt}] Polling warning: {e}")
+            print(f"   [Attempt {attempt}] [HeyGen] Polling warning: {e}")
             
         time.sleep(15)
 
-    print("⚠️ [HeyGen] Polling timed out. Returning fallback.")
-    return audio_path
+    print("⚠️ [HeyGen] Polling timed out after 10 mins.")
+    return None
