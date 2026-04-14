@@ -37,7 +37,7 @@ This document tracks the industrialization status, reliability, and verification
 *   **Code Completeness**: **100% (Visual)**.
     - **Render Depth**: ~900 lines in `slide_generator.py`.
     - **Visual Diversity**: 16 layouts, all implemented with PIL.
-    - **Known Gaps**: **Caveat font missing** (`assets/fonts/Caveat.zip` not found). Currently falls back to DejaVu—functional but visual branding varies.
+    - **Known Gaps**: **None**. Brand fonts (Caveat) are now correctly prioritized and served via API.
 *   **Dependencies & Network**:
     - **Required**: `PIL (Pillow)`, `ffmpeg`, `DejaVu fonts` (All included in `Dockerfile`).
     - **Connectivity**: **ElevenLabs TTS** only.

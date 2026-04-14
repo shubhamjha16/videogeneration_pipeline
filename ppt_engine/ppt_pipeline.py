@@ -204,14 +204,44 @@ def _build_slide_text(slide: dict) -> str:
     return ". ".join(parts) + "."
 
 
-def _ffmpeg() -> str:
-    import imageio_ffmpeg
-    return imageio_ffmpeg.get_ffmpeg_exe()
+def _run_command_with_group_cleanup(args: list, timeout: int) -> subprocess.CompletedProcess:
+    """Industrial Sentinel: Run a command in a process group and kill the entire group on timeout."""
+    import signal
+    import os
+    
+    # start_new_session=True makes this the leader of a new process group.
+    # This ensures that killing the group kills all descendants.
+    proc = subprocess.Popen(
+        args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+        text=True, env=os.environ, start_new_session=True
+    )
+    
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, args, output=stdout, stderr=stderr)
+        return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
+    except subprocess.TimeoutExpired:
+        # Kill the entire process group
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception as e:
+            print(f"   ⚠️ Cleanup failed for timed-out process group {proc.pid}: {e}")
+        
+        # Collect whatever output we had
+        proc.wait()
+        raise subprocess.TimeoutExpired(args, timeout, output=None, stderr=None)
+    except Exception as e:
+        # Ensure we don't leave lingering processes on other errors
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except: pass
+        raise e
 
 
 def _image_to_video(image_path: str, audio_path: str, output_path: str) -> bool:
     """Combine a PNG slide + MP3 audio into a video clip using ffmpeg."""
-    subprocess.run([
+    _run_command_with_group_cleanup([
         _ffmpeg(), "-y",
         "-loop", "1",
         "-i", image_path,
@@ -224,7 +254,7 @@ def _image_to_video(image_path: str, audio_path: str, output_path: str) -> bool:
         "-shortest",
         "-preset", "veryfast",
         output_path
-    ], capture_output=True, text=True, check=True, timeout=300, env=os.environ)
+    ], timeout=300)
     return True
 
 
@@ -240,14 +270,14 @@ def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
     tmp_output = output_path + ".tmp"
     success = True
     try:
-        subprocess.run([
+        _run_command_with_group_cleanup([
             _ffmpeg(), "-y",
             "-f", "concat",
             "-safe", "0",
             "-i", list_file,
             "-c", "copy",
             tmp_output
-        ], capture_output=True, text=True, check=True, timeout=600, env=os.environ)
+        ], timeout=600)
         os.replace(tmp_output, output_path)
 
 

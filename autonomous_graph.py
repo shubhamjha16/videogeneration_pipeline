@@ -57,11 +57,70 @@ _MANIM_TIMEOUT_SECONDS = 600
 _FFMPEG_TIMEOUT_SECONDS = 600
 _GROQ_MAX_ATTEMPTS = 2
 
-def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = "info"):
-    """Industrial Sentinel: Universal progress logger with circular memory capping."""
+def _run_command_with_group_cleanup(args: list, timeout: int, env: dict = None) -> subprocess.CompletedProcess:
+    """Industrial Sentinel: Run a command in a process group and kill the entire group on timeout."""
+    import signal
+    import os
+    
+    env = env or os.environ
+    # start_new_session=True makes this the leader of a new process group.
+    # This ensures that killing the group kills all descendants (LaTeX, etc.)
+    proc = subprocess.Popen(
+        args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+        text=True, env=env, start_new_session=True
+    )
+    
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
+    except subprocess.TimeoutExpired:
+        # Kill the entire process group
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception as e:
+            print(f"   ⚠️ Cleanup failed for timed-out process group {proc.pid}: {e}")
+        
+        # Collect whatever output we had
+        proc.wait()
+        raise subprocess.TimeoutExpired(args, timeout, output=None, stderr=None)
+    except Exception as e:
+        # Ensure we don't leave lingering processes on other errors
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except: pass
+        raise e
+
+def _kill_process_group(proc, timeout_occured=False):
+    """Industrial Sentinel: Force-kill an entire process group (including LaTeX/FFmpeg children)."""
+    import signal
+    try:
+        if proc.poll() is None:  # Still running
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            if timeout_occured:
+                print(f"   ⚠️ Process Group {proc.pid} killed due to timeout.")
+    except Exception as e:
+        print(f"   ⚠️ Failed to kill process group {proc.pid}: {e}")
+
+def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = "info", duration: float = None):
+    """Industrial Sentinel: Universal structured telemetry logger with circular memory capping."""
     job_id = state.get("job_id")
     if not job_id: return
     
+    from datetime import datetime
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    
+    log_entry = {
+        "timestamp": timestamp,
+        "node": node_name.upper(),
+        "type": log_type.upper(),
+        "msg": msg
+    }
+    if duration is not None:
+        log_entry["duration_sec"] = round(duration, 2)
+
+    # Print human-readable version to terminal
+    print(f"📡 [{timestamp}] [{node_name.upper()}] {msg}" + (f" ({duration:.1f}s)" if duration else ""))
+
     global _api_bridge_refs
     if _api_bridge_refs is None:
         try:
@@ -72,11 +131,15 @@ def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = 
     if _api_bridge_refs:
         with _api_bridge_refs._jobs_lock:
             if job_id in _api_bridge_refs.jobs:
-                logs = _api_bridge_refs.jobs[job_id]["logs"]
-                logs.append({"node": node_name, "msg": msg, "type": log_type})
-                if len(logs) > 50:
-                    _api_bridge_refs.jobs[job_id]["logs"] = logs[-50:]
-                print(f"📡 Telemetry [{node_name}]: {msg}")
+                job = _api_bridge_refs.jobs[job_id]
+                if "logs" not in job: job["logs"] = []
+                job["logs"].append(log_entry)
+                if len(job["logs"]) > 100:
+                    job["logs"] = job["logs"][-100:]
+                
+                # Metadata update
+                job["updated_at"] = timestamp
+        
         _api_bridge_refs._save_jobs()
 
 def _record_error(state: "TonyState", node_name: str, error: str) -> None:
@@ -199,6 +262,11 @@ class TonyState(TypedDict):
 
 def director_node(state: TonyState) -> TonyState:
     """Parse Tony AI HTML and run Claude director to produce scenes."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state) # Node Isolation: Prevent side-effects on original state object
+    
     _log_progress(state, "DIRECTOR", f"Analyzing curriculum and selecting render path for: {state['topic']}...")
     print(f"🎬 [Director] Parsing HTML and writing scene script for: {state['topic']}")
 
@@ -254,11 +322,17 @@ def director_node(state: TonyState) -> TonyState:
     state["scenes"] = scenes
     print(f"   Render mode: {state['render_mode'].upper()} | Scenes: {len(scenes)}")
     print(f"   💡 Reasoning: {director_output.decision_reasoning}")
+    
+    _log_progress(state, "DIRECTOR", f"Planned {len(scenes)} scenes for {state['render_mode']} path.", duration=time.time() - start_t)
     return state
 
 
 def vision_node(state: TonyState) -> TonyState:
     """Generate concept diagrams and multimodal metaphors using Gemini Imagen 3."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
     _log_progress(state, "VISION", "AI Vision Engine: Initializing high-fidelity asset generation...")
     print(f"🎨 [Vision] Generating assets for: {state['topic']}")
 
@@ -270,7 +344,7 @@ def vision_node(state: TonyState) -> TonyState:
 
     from image_generator import generate_concept_image
 
-    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     output_dir = os.path.join("output", job_prefix)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -329,6 +403,7 @@ def vision_node(state: TonyState) -> TonyState:
                     print(f"   ⚠️  Metaphor asset failed: {e}")
 
         state["image_paths"] = image_paths
+        _log_progress(state, "VISION", f"Generated {len(image_paths)} assets for {state.get('render_mode')}.", duration=time.time() - start_t)
 
     return state
 
@@ -337,10 +412,14 @@ def vision_node(state: TonyState) -> TonyState:
 
 def architect_node(state: TonyState) -> TonyState:
     """Convert scenes into a Manim script (deterministic templates). Manim path only."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
     _log_progress(state, "ARCHITECT", "Orchestration: Building mathematical animation blueprint...")
     print(f"📐 [Architect] Building Manim script for: {state['topic']}")
 
-    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
@@ -383,13 +462,18 @@ def architect_node(state: TonyState) -> TonyState:
     )
     state["manim_script_path"] = script_path
     print(f"   Script written with synced durations: {script_path}")
+    _log_progress(state, "ARCHITECT", "Manim script generated successfully.", duration=time.time() - start_t)
     return state
 
 
 # ── Node 4: Supervisor ────────────────────────────────────────────────────────
 
 def supervisor_node(state: TonyState) -> TonyState:
-    """Render Manim → stitch audio → S3 upload. Manim path only."""
+    """Global Render Sentinel — Coordinates Manim, Audio, and S3."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
     _log_progress(state, "SUPERVISOR", "Production: Rendering Manim mathematics animation...")
     print(f"🔍 [Supervisor] Rendering — attempt {state['attempt_count'] + 1}")
 
@@ -401,11 +485,11 @@ def supervisor_node(state: TonyState) -> TonyState:
     # ── 1. Render Manim (Industrial Hardening: Sandbox-Local Cache) ──
     print("   Rendering Manim animation with cache isolation...")
     try:
-        render_result = subprocess.run(
+        # Industrial Sentinel: Use group-aware runner to prevent zombie LaTeX sub-processes
+        render_result = _run_command_with_group_cleanup(
             [_manim(), "-ql", script_path, "EaseToLearnScene",
              "--media_dir", os.path.join(job_dir, "manim_media")],
-            capture_output=True, text=True, timeout=_MANIM_TIMEOUT_SECONDS,
-            env=os.environ
+            timeout=_MANIM_TIMEOUT_SECONDS
         )
 
     except subprocess.TimeoutExpired:
@@ -449,7 +533,7 @@ def supervisor_node(state: TonyState) -> TonyState:
     final_output = os.path.join(job_dir, f"{topic_safe}_masterclass.mp4")
 
     try:
-        stitch_result = subprocess.run([
+        stitch_result = _run_command_with_group_cleanup([
             _ffmpeg(), "-y",
             "-i", manim_video,
             "-i", combined_audio_path,
@@ -459,8 +543,7 @@ def supervisor_node(state: TonyState) -> TonyState:
             "-movflags", "+faststart",
             "-shortest",
             final_output,
-        ], capture_output=True, text=True, timeout=_FFMPEG_TIMEOUT_SECONDS,
-        env=os.environ)
+        ], timeout=_FFMPEG_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         _record_error(state, "SUPERVISOR", f"FFmpeg stitch timed out after {_FFMPEG_TIMEOUT_SECONDS}s")
         return state
@@ -477,11 +560,16 @@ def supervisor_node(state: TonyState) -> TonyState:
     # ── 4. Upload to S3 ───────────────────────────────
     state["video_url"] = _upload_to_s3(final_output, state["topic"], state.get("job_id"))
 
+    _log_progress(state, "SUPERVISOR", "Manim production lifecycle complete.", duration=time.time() - start_t)
     return state
 
 
 def healer_node(state: TonyState) -> TonyState:
-    """Ask Healer Agent to fix scripts based on errors."""
+    """Industrial Healer: Claude Opus fixes broken Manim code."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
     print(f"🩹 [Healer] Fixing render errors — attempt {state['attempt_count'] + 1}")
 
     with open(state["manim_script_path"], "r") as f:
@@ -494,6 +582,7 @@ def healer_node(state: TonyState) -> TonyState:
 
     state["attempt_count"] += 1
     state["rendering_errors"] = None  # Reset error state for the fresh attempt
+    _log_progress(state, "HEALER", f"Repair completed. Retrying render (attempt {state['attempt_count']}).", duration=time.time() - start_t)
     return state
 
 
@@ -771,11 +860,14 @@ def ppt_critic_node(state: TonyState) -> TonyState:
         state["critic_feedback"] = "Automatic critic unavailable. Replan with stronger narrative specificity and layout diversity."
         state["ppt_attempt_count"] = state.get("ppt_attempt_count", 0) + 1
 
+    _log_progress(state, "PPT_CRITIC", f"Critic review complete (Approved: {approved}).", duration=time.time() - start_t)
     return state
 
 
 def ppt_renderer_node(state: TonyState) -> TonyState:
     """Render each slide as a 1920x1080 PNG."""
+    import time
+    start_t = time.time()
     print(f"🖼️  [PPT Renderer] Rendering {len(state['slides'])} slides...")
 
     _root = os.path.dirname(os.path.abspath(__file__))
@@ -783,7 +875,7 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
         sys.path.insert(0, _root)
     from ppt_engine.slide_generator import generate_slide_image
 
-    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
@@ -806,16 +898,19 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
             print(f"   ⚠️ Slide render failed for index {i}")
 
     state["slide_paths"] = slide_paths
+    _log_progress(state, "PPT_RENDERER", "Visual presentation layer rendered.", duration=time.time() - start_t)
     return state
 
 
 def ppt_tts_node(state: TonyState) -> TonyState:
     """Generate TTS audio for each slide's narration."""
+    import time
+    start_t = time.time()
     print(f"🔊 [PPT TTS] Generating audio for {len(state['slides'])} slides...")
 
     from tts_generator import generate_audio
 
-    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir = os.path.join("output", job_prefix)
     audio_files = []
 
@@ -832,16 +927,19 @@ def ppt_tts_node(state: TonyState) -> TonyState:
         audio_files.append(path)
 
     state["audio_files"] = audio_files
+    _log_progress(state, "PPT_TTS", "Narration synthesis complete.", duration=time.time() - start_t)
     return state
 
 
 def ppt_video_node(state: TonyState) -> TonyState:
     """Combine slides + audio into clips, optionally add avatar, concat to MP4."""
+    import time
+    start_t = time.time()
     print(f"🎬 [PPT Video] Building video from {len(state['slide_paths'])} slides...")
 
     from ppt_engine.ppt_pipeline import _image_to_video, _concat_clips
 
-    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir    = os.path.join("output", job_prefix)
     with_avatar = state.get("with_avatar", False)
     clip_paths  = []
@@ -924,6 +1022,7 @@ def ppt_video_node(state: TonyState) -> TonyState:
     state["output_path"]      = os.path.abspath(final_output)
     state["rendering_errors"] = None
     print(f"   ✅ PPT video: {final_output}")
+    _log_progress(state, "PPT_VIDEO", "Presentation video production complete.", duration=time.time() - start_t)
     return state
 
 
@@ -971,13 +1070,16 @@ def _run_presentation_fallback(state: TonyState, source_node: str) -> TonyState:
 
 
 def explainer_node(state: TonyState) -> TonyState:
-    """Stitch narration with B-roll metaphors (Higgsfield style)."""
-    _log_progress(state, "EXPLAINER", "Production: Starting kinetic layered composition...")
+    """Explainer engine - B-roll and multimodal metaphors."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
     print(f"🎬 [Explainer Node] Generating narrative explainer for: {state['topic']}")
     
     from explainer_generator import generate_explainer_video
 
-    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
@@ -996,17 +1098,22 @@ def explainer_node(state: TonyState) -> TonyState:
         _record_error(state, "EXPLAINER", str(e))
         return _run_presentation_fallback(state, "EXPLAINER")
 
+    _log_progress(state, "EXPLAINER", "Narrative production lifecycle complete.", duration=time.time() - start_t)
     return state
 
 
 def heygen_node(state: TonyState) -> TonyState:
     """Render high-fidelity talking head via HeyGen."""
-    print(f"🚀 [HeyGen Node] Generating avatar for: {state['topic']}")
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
+    _log_progress(state, "HEYGEN", "Personalization: Orchestrating avatar generation...")
     
     from tts_generator import generate_audio
     from heygen_generator import generate_heygen_avatar
 
-    job_prefix = f"job_{state.get('job_id', state['topic'].lower().replace(' ', '_'))}"
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
@@ -1016,10 +1123,9 @@ def heygen_node(state: TonyState) -> TonyState:
         audio_path = generate_audio(full_text, 0, output_dir=job_dir)
         state["audio_files"] = [audio_path]
 
-        # 2. Call HeyGen
-        output_path = os.path.join(job_dir, "heygen_avatar.mp4")
-        heygen_video = generate_heygen_avatar(full_text, audio_path, output_path)
+        heygen_video = generate_heygen_avatar(full_text, audio_path, job_dir)
         state["heygen_video_path"] = heygen_video
+        _log_progress(state, "HEYGEN", "Avatar assets generated successfully.", duration=time.time() - start_t)
     except Exception as e:
         _record_error(state, "HEYGEN", f"HeyGen path failed: {e}")
         print(f"   ❌ {state['rendering_errors']}")
@@ -1030,7 +1136,11 @@ def heygen_node(state: TonyState) -> TonyState:
 
 def subtitle_node(state: TonyState) -> TonyState:
     """Generate kinetic Insta-style subtitles and overlay them."""
-    print(f"🎞️  [Subtitle Node] Adding kinetic subtitles...")
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
+    _log_progress(state, "SUBTITLE", "Post-Production: Adding kinetic kinetic subtitles...")
     
     from subtitle_generator import generate_kinetic_subtitles
     from moviepy.editor import VideoFileClip, AudioFileClip
@@ -1074,6 +1184,7 @@ def subtitle_node(state: TonyState) -> TonyState:
             output_path = video_path.replace(".mp4", "_subtitled.mp4")
             final_clip.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
             state["output_path"] = os.path.abspath(output_path)
+            _log_progress(state, "SUBTITLE", "Kinetic subtitle overlay complete.", duration=time.time() - start_t)
         finally:
             final_clip.close()
     except Exception as e:
@@ -1090,16 +1201,25 @@ def subtitle_node(state: TonyState) -> TonyState:
 
 def fusion_node(state: TonyState) -> TonyState:
     """Final assembly sentinel."""
-    print(f"🔗 [Fusion Node] Finalizing assembly...")
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
+    _log_progress(state, "FUSION", "Quality Guard: Finalizing assembly and deployment readiness...")
     
     if not state.get("output_path") or not os.path.exists(state["output_path"]):
-        print("   ⚠️ No output_path found. Final generation failed.")
+        # print("   ⚠️ No output_path found. Final generation failed.")
         _record_error(state, "FUSION", "Final production failed — output artifact missing before deploy.")
         
+    _log_progress(state, "FUSION", "Assembly finalized.", duration=time.time() - start_t)
     return state
 
 def deploy_node(state: TonyState) -> TonyState:
     """Industrial Deployment Sentinel: Unified S3 Sync + Post-Deploy Disk Hygiene."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
     _log_progress(state, "DEPLOY", "Synchronizing final assets with Production CDN...")
     
     job_id = state.get("job_id")
@@ -1107,17 +1227,22 @@ def deploy_node(state: TonyState) -> TonyState:
     topic = state.get("topic")
     
     if state.get("rendering_errors"):
-        _log_progress(state, "DEPLOY", f"Skipped deploy due to upstream render error: {state['rendering_errors']}", "warning")
+        _log_progress(state, "DEPLOY", f"Skipped deploy due to upstream render error: {state['rendering_errors']}", "warning", duration=time.time() - start_t)
         return state
 
     if not output_path or not os.path.exists(output_path):
-        _log_progress(state, "DEPLOY", "Handover Failure: Final video asset not found.", "warning")
+        _log_progress(state, "DEPLOY", "Handover Failure: Final video asset not found.", "warning", duration=time.time() - start_t)
         _record_error(state, "DEPLOY", state.get("rendering_errors") or "Deploy blocked: output asset not found.")
         return state
         
     video_url = _upload_to_s3(output_path, topic, job_id)
     state["video_url"] = video_url
     
+    if video_url:
+        _log_progress(state, "DEPLOY", f"Masterclass published successfully: {video_url}", duration=time.time() - start_t)
+    else:
+        _log_progress(state, "DEPLOY", "Deployment succeeded with local asset only.", duration=time.time() - start_t)
+
     # Industrial Disk Hygiene: Purge local job sandbox after successful cloud handover.
     if video_url and os.environ.get("AUTO_DELETE_JOB_DIR", "false").lower() == "true":
         job_dir = os.path.join("output", f"job_{job_id}")

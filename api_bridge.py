@@ -34,6 +34,7 @@ from datetime import datetime
 
 _jobs_lock = threading.RLock()
 from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
@@ -59,6 +60,10 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+# ── Static Assets ─────────────────────────────────────────────────────────────
+# Mount assets directory for font/logo downloads by external components
+# (Moved down to ensure BASE_DIR exists)
+
 # ── Security Sentinel ──────────────────────────────────────────────────────────
 
 def verify_api_key(api_key: str = Header(None, alias="X-API-Key")):
@@ -73,6 +78,10 @@ SecurityDep = Depends(verify_api_key)
 
 # ── Persistence Helper ────────────────────────────────────────────────────────# Persistence
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+assets_dir = os.path.join(BASE_DIR, "assets")
+if os.path.exists(assets_dir):
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
 JOBS_FILE = os.environ.get("JOBS_FILE_PATH", "/tmp/jobs.json")
 jobs = {}
 
@@ -158,20 +167,25 @@ def _save_jobs():
 
                 
                 # 3. MERGE the in-memory changes into the disk state
-                # Industrial Sentinel: Perform a DEEP MERGE on 'logs' to prevent telemetry loss
+                # Industrial Sentinel: Use chronological precedence for all fields
+                # Plus additive merge for 'logs' to prevent telemetry loss.
                 for job_id, local_job in jobs.items():
                     if job_id in disk_state:
-                        # Only update fields, but APPEND to logs instead of overwriting
+                        # Only update if local state is newer or disk state is in a 'lesser' status
+                        local_ts = local_job.get("updated_at", "0")
+                        disk_ts  = disk_state[job_id].get("updated_at", "0")
+                        
+                        is_newer = local_ts > disk_ts
+                        
                         for k, v in local_job.items():
                             if k == "logs":
                                 existing_logs = disk_state[job_id].get("logs", [])
-                                # Only add new logs (avoid duplicates)
                                 existing_stamps = [str(l) for l in existing_logs]
                                 for l in v:
                                     if str(l) not in existing_stamps:
                                         existing_logs.append(l)
                                 disk_state[job_id]["logs"] = existing_logs[-100:]
-                            else:
+                            elif is_newer or k not in disk_state[job_id]:
                                 disk_state[job_id][k] = v
                     else:
                         disk_state[job_id] = local_job
@@ -184,7 +198,7 @@ def _save_jobs():
                 # 5. Atomic swap
                 os.replace(tmp_file, JOBS_FILE)
                 
-                # 6. Synchronize our global memory 'jobs' with the merger
+                # 6. Synchronize our global memory 'jobs' with the merger result
                 jobs.update(disk_state)
                 
                 if fcntl: fcntl.flock(lf, fcntl.LOCK_UN)
@@ -265,6 +279,7 @@ class JobStatus(BaseModel):
     created_at:   str  = ""   # ISO timestamp
     updated_at:   str  = ""   # ISO timestamp
     logs:         list = Field(default_factory=list)   # Telemetry for "Tony AI" Mission Control dashboard
+    metrics:      dict = Field(default_factory=dict)   # Performance stats (ttc, api_costs)
 
 
 
@@ -281,6 +296,8 @@ def _run_pipeline(job_id: str, topic: str, html: str):
         _load_jobs()
         
         with _jobs_lock:
+            import time
+            start_pipeline_t = time.time()
             from datetime import datetime
             now_iso = datetime.utcnow().isoformat() + "Z"
             if job_id not in jobs:
@@ -347,7 +364,15 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 jobs[job_id]["error"]  = str(e)
                 final_status = "failed"
                 final_error = str(e)
-            _safe_save_jobs(f"pipeline failure ({job_id})")
+            
+            # ── METRICS LOGGING ───────────────────────────────────
+            duration = time.time() - start_pipeline_t
+            with _jobs_lock:
+                jobs[job_id]["metrics"]["total_duration_sec"] = round(duration, 2)
+                jobs[job_id]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            
+            # Final state persistence
+            _safe_save_jobs(f"pipeline complete ({job_id})")
             
             _notify_webhook_with_retry(
                 job_id=job_id,
