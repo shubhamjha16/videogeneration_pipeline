@@ -50,8 +50,22 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                 asset_id = f"counting_{i}_{item_name}"
                 item_path = image_paths.get(asset_id)
                 
+                # Smart Detection: If exact path not in state, look for matching file on disk
+                if not item_path or not os.path.exists(item_path):
+                    import glob
+                    matches = glob.glob(os.path.join(output_dir, f"counting_{i}_*.png"))
+                    if matches:
+                        item_path = matches[0]
+                
                 bg_id = f"counting_bg_{i}"
                 bg_path = image_paths.get(bg_id)
+                if not bg_path or not os.path.exists(bg_path):
+                    import glob
+                    bg_matches = glob.glob(os.path.join(output_dir, f"counting_bg_{i}_*.png"))
+                    if not bg_matches:
+                         bg_matches = glob.glob(os.path.join(output_dir, f"counting_bg_{i}.png"))
+                    if bg_matches:
+                        bg_path = bg_matches[0]
                 
                 if item_path and os.path.exists(item_path):
                     scene_clip, sub_to_close = _create_counting_clip(item_path, count, dur, bg_path=bg_path)
@@ -114,7 +128,7 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
         # 4. Final Stitching with atomic export protection
         final_video = concatenate_videoclips(clips, method="compose")
         output_path = os.path.join(output_dir, f"{topic.lower().replace(' ', '_')}_explainer.mp4")
-        tmp_output  = output_path + ".tmp"
+        tmp_output  = output_path.replace(".mp4", "_temp.mp4")
         
         try:
             final_video.write_videofile(tmp_output, fps=24, codec="libx264", audio_codec="aac", threads=4)

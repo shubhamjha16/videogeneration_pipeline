@@ -207,10 +207,24 @@ def get_topic_safe(state: "TonyState") -> str:
 
 def _manim() -> str:
     """Resolve manim binary — works in venv, Docker, and system installs."""
+    import os
+    import sys
     import shutil
+
+    # Industrial Path Injection: Ensure Homebrew and MacTeX are visible to the engine
+    extra_paths = ["/usr/local/bin", "/opt/homebrew/bin", "/Library/TeX/texbin"]
+    os.environ["PATH"] = ":".join(extra_paths) + ":" + os.environ.get("PATH", "")
+
+    # 1. Check local venv first (highest priority)
+    _root = os.path.dirname(os.path.abspath(__file__))
+    venv_manim = os.path.join(_root, "venv", "bin", "manim")
+    if os.path.exists(venv_manim): return venv_manim
+
+    # 2. Check system PATH (now includes industrial injections)
     system_manim = shutil.which("manim")
     if system_manim: return system_manim
-    raise RuntimeError("manim binary not found")
+
+    raise RuntimeError("manim binary not found. Please ensure it is installed in the venv.")
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -280,7 +294,12 @@ def director_node(state: TonyState) -> TonyState:
 
     director_output = run_director(parsed)
     # Respect user-specified render_mode — only use Claude's decision as fallback
-    state["render_mode"] = state.get("render_mode") or director_output.render_mode
+    # Industrial Sentinel: Treat "auto" as unset to allow Director to drive the path
+    user_mode = (state.get("render_mode") or "auto").lower().strip()
+    if user_mode in ["auto", ""]:
+        state["render_mode"] = director_output.render_mode
+    else:
+        state["render_mode"] = user_mode
 
     # Industrial Hardening: Pydantic v1/v2 compatibility
     scenes = [
@@ -351,7 +370,7 @@ def vision_node(state: TonyState) -> TonyState:
     subject = state.get("parsed_facts", {}).get("subject", "default")
 
     # ── PATH 1: Manim (Single Diagram) ────────────────
-    if state.get("render_mode") == "manim":
+    if state.get("render_mode") in ["manim", "auto"]:
         pre_path = os.path.join(output_dir, "tony_diagram.png")
         if os.path.exists(pre_path):
             state["image_path"] = pre_path
@@ -374,33 +393,47 @@ def vision_node(state: TonyState) -> TonyState:
             if v_type == "counting_metaphor":
                 item = v_data.get("item_name", "item")
                 asset_id = f"counting_{i}_{item}"
-                print(f"   Generating counting item: {item}...")
-                try:
-                    path = generate_concept_image(item, subject="counting_item", output_dir=output_dir, filename=f"{asset_id}.png")
-                    image_paths[asset_id] = path
-                except Exception as e:
-                    print(f"   ⚠️  Counting asset failed: {e}")
+                pre_path = os.path.join(output_dir, f"{asset_id}.png")
+                
+                if os.path.exists(pre_path):
+                    image_paths[asset_id] = pre_path
+                else:
+                    print(f"   Generating counting item: {item}...")
+                    try:
+                        path = generate_concept_image(item, subject="counting_item", output_dir=output_dir, filename=f"{asset_id}.png")
+                        image_paths[asset_id] = path
+                    except Exception as e:
+                        print(f"   ⚠️  Counting asset failed: {e}")
                 
                 # BACKGROUND for counting scene
                 bg_prompt = v_data.get("background_prompt")
                 if bg_prompt:
                     bg_id = f"counting_bg_{i}"
-                    print(f"   Generating thematic background for counting scene {i}: {bg_prompt}...")
-                    try:
-                        bg_path = generate_concept_image(bg_prompt, subject="explainer_background", output_dir=output_dir, filename=f"{bg_id}.png")
-                        image_paths[bg_id] = bg_path
-                    except Exception as e:
-                        print(f"   ⚠️  Counting background failed: {e}")
+                    bg_pre_path = os.path.join(output_dir, f"{bg_id}.png")
+                    if os.path.exists(bg_pre_path):
+                        image_paths[bg_id] = bg_pre_path
+                    else:
+                        print(f"   Generating thematic background for counting scene {i}: {bg_prompt}...")
+                        try:
+                            bg_path = generate_concept_image(bg_prompt, subject="explainer_background", output_dir=output_dir, filename=f"{bg_id}.png")
+                            image_paths[bg_id] = bg_path
+                        except Exception as e:
+                            print(f"   ⚠️  Counting background failed: {e}")
 
             elif v_type == "b_roll_clip" or v_type == "generative_video":
                 prompt = v_data.get("prompt", "Educational visual")
                 asset_id = f"metaphor_{i}"
-                print(f"   Generating cinematic metaphor for scene {i}...")
-                try:
-                    path = generate_concept_image(prompt, subject="explainer_metaphor", output_dir=output_dir, filename=f"{asset_id}.png")
-                    image_paths[asset_id] = path
-                except Exception as e:
-                    print(f"   ⚠️  Metaphor asset failed: {e}")
+                pre_path = os.path.join(output_dir, f"{asset_id}.png")
+                
+                if os.path.exists(pre_path):
+                    image_paths[asset_id] = pre_path
+                else:
+                    print(f"   Generating cinematic metaphor for scene {i}...")
+                    try:
+                        path = generate_concept_image(prompt, subject="explainer_metaphor", output_dir=output_dir, filename=f"{asset_id}.png")
+                        image_paths[asset_id] = path
+                    except Exception as e:
+                        print(f"   ⚠️  Metaphor asset failed: {e}")
 
         state["image_paths"] = image_paths
         _log_progress(state, "VISION", f"Generated {len(image_paths)} assets for {state.get('render_mode')}.", duration=time.time() - start_t)
@@ -758,6 +791,8 @@ Return JSON only:
 
 def ppt_planner_node(state: TonyState) -> TonyState:
     """Groq: plan slides with deep content analysis. Accepts critic feedback on retry."""
+    import time
+    start_t = time.time()
     attempt = state.get("ppt_attempt_count", 0)
     feedback = state.get("critic_feedback", "")
 
@@ -805,11 +840,14 @@ def ppt_planner_node(state: TonyState) -> TonyState:
 
     state["slides"]          = slides
     state["critic_feedback"] = None   # clear feedback after use
+    _log_progress(state, "PPT_PLANNER", f"Planned {len(slides)} slides.", duration=time.time() - start_t)
     return state
 
 
 def ppt_critic_node(state: TonyState) -> TonyState:
     """Groq: review slide plan quality. Reject if generic, repetitive, or wrong tone."""
+    import time
+    start_t = time.time()
     video_type = state.get("video_type") or "educational"
     print(f"🔍 [PPT Critic] Reviewing slide plan (mode: {video_type})...")
 

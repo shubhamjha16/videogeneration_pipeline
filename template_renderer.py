@@ -49,7 +49,7 @@ def tex(text: str) -> str:
         .replace("~", r"\textasciitilde{}")
         .replace("^", r"\textasciicircum{}")
     )
-    return f'Tex(r"\text{{{escaped}}}", tex_template=my_template)'
+    return f'Tex(r"\\text{{{escaped}}}", tex_template=my_template)'
 
 
 def math(formula: str) -> str:
@@ -97,9 +97,9 @@ def _wait(duration: float, anim_time: float) -> str:
     return f"self.wait({remaining})"
 
 
-def _scene_title_card(scene: dict, idx: int) -> str:
+def _scene_title_card(scene: dict, idx: int, topic: str = "EaseToLearn") -> str:
     d        = scene["visual_data"]
-    title    = d.get("title", "EaseToLearn")
+    title    = d.get("title") or d.get("name") or topic
     subtitle = d.get("subtitle", "").strip()
     duration = d.get("duration", 3.0)
 
@@ -181,7 +181,7 @@ def _scene_mcq_layout(scene: dict, idx: int) -> str:
     duration = d.get("duration", 2.0)
 
     lines = [f"\n        # Scene {idx}: mcq_layout — draw 4 option boxes"]
-    lines.append(f"        self._clear_keep_image()")
+    lines.append(f"        self._clear()")
 
     for letter, name in options.items():
         pos   = _option_position(letter)
@@ -283,7 +283,7 @@ def _scene_answer_reveal(scene: dict, idx: int) -> str:
         # Scene {idx}: answer_reveal — correct: {letter}
         ans_box_{idx} = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15).move_to({pos})
         highlight_{idx} = SurroundingRectangle(ans_box_{idx}, color=GREEN, buff=0.08, stroke_width=5)
-        tick_{idx} = Tex(r"$\checkmark$", tex_template=my_template).scale(1.4).set_color(GREEN)
+        tick_{idx} = Tex(r"$\\checkmark$", tex_template=my_template).scale(1.4).set_color(GREEN)
         tick_{idx}.move_to({pos} + np.array([2.2, 0, 0]))
         self.play(GrowFromCenter(highlight_{idx}), run_time=0.8)
         self.play(Write(tick_{idx})){exp_code}
@@ -550,7 +550,12 @@ def build_manim_script(
             continue
 
         try:
-            block = gen(scene, i, image_path) if vtype in ["concept_image", "image_arrow"] else gen(scene, i)
+            if vtype == "title_card":
+                block = gen(scene, i, topic)
+            elif vtype in ["concept_image", "image_arrow"]:
+                block = gen(scene, i, image_path)
+            else:
+                block = gen(scene, i)
             scene_blocks.append(block)
         except Exception as e:
             print(f"   ⚠️  Scene {i} ({vtype}) generation failed: {e} — skipping")

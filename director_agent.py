@@ -150,14 +150,16 @@ ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" t
 ━━━ SCENE RULES BY RENDER MODE ━━━
 
 MANIM SCENES (8–12 scenes):
-  - For MCQ:
-      1. title_card
+  - HYBRID RULE: If the lesson includes a "Concept Explanation" section, you MUST start with 2–4 scenes explaining the background material (using concept_bullets, formula_display, or key_point) before starting the MCQ phase.
+  - For MCQ Phase:
+      1. title_card (Topic)
       2. concept_image (anatomical overview)
       3. image_arrow (if anatomical lesion mentioned)
-      4. mcq_layout (draws all 4 boxes)
-      5. option_highlight (wrong options, color "#FF6B6B")
-      6. cross_out (all wrong options, NEVER the correct answer)
-      7. answer_reveal (explanation + tick)
+      4. CONCEPT TEACHING (bullets/key points explaining the topic from the text)
+      5. mcq_layout (draws all 4 boxes)
+      6. option_highlight (wrong options, color "#FF6B6B")
+      7. cross_out (all wrong options, NEVER the correct answer)
+      8. answer_reveal (explanation + tick)
   - cross_out rule: if correct answer is A, cross_out B, C, D — never A. Always cross out all wrong options.
   - For numerical: formula_display → graph_hint (if applicable) → step_by_step (max 4 steps) → summary
   - For concept: concept_bullets → graph_hint (if applicable) → key supporting facts → summary
@@ -188,6 +190,7 @@ USER_GENERATED_VIDEO (1–4 long scenes):
   - Build tension before the answer/reveal
   - Use "we", "let's", "notice that" — conversational and engaging
   - For MCQ: make students think before revealing the answer
+  - MCQ ALIGNMENT RULE: During "option_highlight" or "cross_out" scenes, the narration MUST ONLY discuss the specific options being visually focused on. Do NOT mention the final correct answer until the "answer_reveal" scene.
 
 ━━━ VISUAL DATA RULES ━━━
   - mcq_layout: {"options": {"A": "string", "B": "string", "C": "string", "D": "string"}}
@@ -206,7 +209,7 @@ OUTPUT: Return valid JSON only. No extra text."""
 
 def run_director(parsed_facts: dict) -> DirectorOutput:
     """
-    Call Claude Opus to decide render mode and generate teaching scenes.
+    Call Groq (Llama 3.3) to decide render mode and generate teaching scenes.
 
     Args:
         parsed_facts: output from html_parser.parse_tony_html()
@@ -214,23 +217,31 @@ def run_director(parsed_facts: dict) -> DirectorOutput:
     Returns:
         DirectorOutput with render_mode and scenes list
     """
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY missing from environment")
+        
+    client = Groq(api_key=api_key)
     user_message = _build_prompt(parsed_facts)
-    # Claude Opus parses JSON schema natively.
+    # Groq handles JSON mode via response_format={"type": "json_object"}
     system_prompt_with_schema = SYSTEM_PROMPT + "\n\nCRITICAL: Output valid JSON exactly matching this schema:\n" + json.dumps(DirectorOutput.model_json_schema(),)
     
-    response = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=4000,
-        system=system_prompt_with_schema,
-        messages=[{"role": "user", "content": user_message}],
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_prompt_with_schema},
+            {"role": "user", "content": user_message}
+        ],
+        response_format={"type": "json_object"},
     )
     
-    # Simple struct parse
     try:
-        data = json.loads(response.content[0].text)
+        data = json.loads(response.choices[0].message.content)
         return DirectorOutput(**data)
     except Exception as e:
+        # Log the raw content for debugging if it fails
+        raw_content = response.choices[0].message.content
+        print(f"❌ Director Parse Error. Raw content: {raw_content[:500]}...")
         raise ValueError(f"Director Agent failed to yield structured JSON: {e}")
 
 

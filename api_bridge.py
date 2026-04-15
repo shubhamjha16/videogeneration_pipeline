@@ -291,10 +291,10 @@ def _run_pipeline(job_id: str, topic: str, html: str):
 
     # Wait for a slot in the compute queue (Max 3 concurrent renders)
     with RENDER_SEMAPHORE:
-        # Industrial Sentinel: Refresh local memory from disk before processing starts
-        # This prevents Worker A from ignoring Worker B's recent job starts.
-        _load_jobs()
-        
+        # Don't reload from disk here — the job was just created in memory by start_render.
+        # _load_jobs() was wiping the new job before the thread could pick it up because
+        # /tmp/jobs.json hadn't been written yet at the moment the thread acquired the semaphore.
+
         with _jobs_lock:
             import time
             start_pipeline_t = time.time()
@@ -483,11 +483,15 @@ def start_render(request: RenderRequest):
         daemon=True,
     )
     thread.start()
-    _safe_save_jobs(f"start_render enqueue ({job_id})", fatal=True)
+
+    # Snapshot BEFORE save (save may reload+merge and temporarily displace new job)
+    with _jobs_lock:
+        job_snapshot = copy.deepcopy(jobs[job_id])
+
+    _safe_save_jobs(f"start_render enqueue ({job_id})", fatal=False)  # non-fatal
 
     print(f"🚀 Job {job_id} queued for: {request.topic}")
-    with _jobs_lock:
-        return copy.deepcopy(jobs[job_id])
+    return job_snapshot
 
 
 @app.get("/jobs", dependencies=[SecurityDep])

@@ -193,15 +193,9 @@ def _fallback_split(topic: str, text: str) -> list[dict]:
 
 # ── Video builder ─────────────────────────────────────────────────────────────
 
-def _build_slide_text(slide: dict) -> str:
-    """
-    Convert slide dict to the text format slide_generator expects:
-    'Heading. Bullet 1. Bullet 2. Bullet 3.'
-    """
-    parts = [slide["heading"].rstrip('.')]
-    for b in slide.get("bullets", []):
-        parts.append(b.rstrip('.'))
-    return ". ".join(parts) + "."
+def _ffmpeg() -> str:
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
 
 
 def _run_command_with_group_cleanup(args: list, timeout: int) -> subprocess.CompletedProcess:
@@ -276,6 +270,7 @@ def _concat_clips(clip_paths: list[str], output_path: str) -> bool:
             "-safe", "0",
             "-i", list_file,
             "-c", "copy",
+            "-f", "mp4",
             tmp_output
         ], timeout=600)
         os.replace(tmp_output, output_path)
