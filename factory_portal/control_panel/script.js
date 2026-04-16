@@ -23,9 +23,7 @@ navBtns.forEach(btn => {
 const masterclassHero = document.getElementById('masterclassHero');
 
 // Industrial URL Detection: Priority 1: Current Origin, Priority 2: localhost fallback
-const API_BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") 
-    ? "http://localhost:8000" 
-    : window.location.origin;
+const API_BASE = window.location.origin;
 
 let lastRenderedStatus = null;
 let activeJobId = null;

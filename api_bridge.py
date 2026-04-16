@@ -82,6 +82,11 @@ assets_dir = os.path.join(BASE_DIR, "assets")
 if os.path.exists(assets_dir):
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
+# Factory Portal — served at /portal (must be mounted AFTER API routes to avoid conflict)
+portal_dir = os.path.join(BASE_DIR, "factory_portal", "control_panel")
+if os.path.exists(portal_dir):
+    app.mount("/portal", StaticFiles(directory=portal_dir, html=True), name="portal")
+
 JOBS_FILE = os.environ.get("JOBS_FILE_PATH", "/tmp/jobs.json")
 jobs = {}
 
@@ -260,7 +265,7 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
 class RenderRequest(BaseModel):
     topic:       str
     html:        str
-    render_mode: Optional[Literal["manim", "presentation", "explainer", "user_generated_video"]] = None
+    render_mode: Optional[Literal["manim", "presentation", "explainer", "user_generated_video", "user_generated"]] = None
     with_avatar: bool = False
     video_type:  Optional[Literal["marketing", "educational"]] = None
     image_path:  Optional[str] = None
