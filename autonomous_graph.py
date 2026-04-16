@@ -1161,7 +1161,12 @@ def heygen_node(state: TonyState) -> TonyState:
         audio_path = generate_audio(full_text, 0, output_dir=job_dir)
         state["audio_files"] = [audio_path]
 
-        heygen_video = generate_heygen_avatar(full_text, audio_path, job_dir)
+        heygen_video_output = os.path.join(job_dir, "heygen_avatar.mp4")
+        heygen_video = generate_heygen_avatar(full_text, audio_path, heygen_video_output)
+        
+        if not heygen_video or not os.path.exists(heygen_video):
+             raise RuntimeError("HeyGen API produced no video output.")
+
         state["heygen_video_path"] = heygen_video
         _log_progress(state, "HEYGEN", "Avatar assets generated successfully.", duration=time.time() - start_t)
     except Exception as e:
@@ -1184,10 +1189,11 @@ def subtitle_node(state: TonyState) -> TonyState:
     from moviepy.editor import VideoFileClip, AudioFileClip
 
     video_path = state["heygen_video_path"]
-    if not video_path or not os.path.exists(video_path):
-        print("   ⚠️  HeyGen video not found — skipping subtitles.")
-        # FALLBACK: ensure output_path is set to avoid fusion_node crash
-        if video_path:
+    
+    # INDUSTRIAL GUARD: Ensure we have a valid MP4 before attempting MoviePy operations
+    if not video_path or not os.path.exists(video_path) or not str(video_path).lower().endswith(".mp4"):
+        print(f"   ⚠️  HeyGen video not found or invalid ({video_path}) — skipping subtitles.")
+        if video_path and os.path.exists(video_path):
             state["output_path"] = os.path.abspath(video_path)
         return state
 
@@ -1238,16 +1244,28 @@ def subtitle_node(state: TonyState) -> TonyState:
 
 
 def fusion_node(state: TonyState) -> TonyState:
-    """Final assembly sentinel."""
+    """Final assembly sentinel — validates output is a real video, not raw audio."""
     import copy
     import time
     start_t = time.time()
     state = copy.deepcopy(state)
     _log_progress(state, "FUSION", "Quality Guard: Finalizing assembly and deployment readiness...")
     
-    if not state.get("output_path") or not os.path.exists(state["output_path"]):
-        # print("   ⚠️ No output_path found. Final generation failed.")
+    output = state.get("output_path")
+    
+    if not output or not os.path.exists(output):
         _record_error(state, "FUSION", "Final production failed — output artifact missing before deploy.")
+        _log_progress(state, "FUSION", "Assembly failed — no output.", duration=time.time() - start_t)
+        return state
+    
+    # Guard: Ensure the output is a video, not a raw audio file delivered by a failed pipeline
+    ext = os.path.splitext(output)[1].lower()
+    if ext in (".mp3", ".m4a", ".wav", ".aac", ".aiff"):
+        print(f"   ⚠️ [FUSION] Output is raw audio ({ext}), not a video. Pipeline produced no video.")
+        _record_error(state, "FUSION", f"Output is raw audio ({os.path.basename(output)}), not a video — upstream pipeline failed.")
+        state["output_path"] = None  # Prevent deploy from shipping raw audio
+        _log_progress(state, "FUSION", "Assembly rejected — output was audio, not video.", duration=time.time() - start_t)
+        return state
         
     _log_progress(state, "FUSION", "Assembly finalized.", duration=time.time() - start_t)
     return state
@@ -1321,6 +1339,14 @@ def should_continue(state: TonyState) -> str:
         return "healer"
     return "deploy"
 
+def after_heygen(state: TonyState) -> str:
+    """Route to subtitles for normal heygen, or deploy for presentation fallback."""
+    # If render_mode was swapped to presentation by _run_presentation_fallback,
+    # skip subtitles/fusion and go straight to deploy (the fallback node already produced the video).
+    if state.get("render_mode") == "presentation":
+        return "deploy"
+    return "subtitles"
+
 
 # ── Graph Configuration ───────────────────────────────────────────────────────
 
@@ -1378,7 +1404,10 @@ workflow.add_edge("ppt_video",     "deploy")
 workflow.add_edge("explainer",     "deploy")
 
 # Path 4: Personalized Human Avatars (Deep-Fake)
-workflow.add_edge("heygen",        "subtitles")
+workflow.add_conditional_edges("heygen", after_heygen, {
+    "subtitles": "subtitles",
+    "deploy":    "deploy"
+})
 workflow.add_edge("subtitles",     "fusion")
 workflow.add_edge("fusion",        "deploy")
 

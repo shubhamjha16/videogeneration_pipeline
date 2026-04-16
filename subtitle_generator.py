@@ -102,4 +102,7 @@ def generate_kinetic_subtitles(video_clip, narration_text, audio_duration, style
         
         subtitle_clips.append(word_clip)
 
-    return CompositeVideoClip([video_clip] + subtitle_clips)
+    composite = CompositeVideoClip([video_clip] + subtitle_clips)
+    # Inherit fps from source video to prevent 'video_fps' KeyError in write_videofile
+    composite.fps = getattr(video_clip, 'fps', None) or 24
+    return composite

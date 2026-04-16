@@ -1,5 +1,6 @@
 import os
 import time
+import subprocess
 import requests
 import config
 
@@ -15,7 +16,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
     api_key = os.environ.get("HEYGEN_API_KEY")
 
     # Industrial Hardening: avatar_id from environment variable (set in ECS)
-    avatar_id = avatar_id or os.environ.get("HEYGEN_AVATAR_ID") or os.environ.get("DEFAULT_HEYGEN_AVATAR") or "josh_video_20230607"
+    avatar_id = avatar_id or os.environ.get("HEYGEN_AVATAR_ID") or os.environ.get("DEFAULT_HEYGEN_AVATAR") or "Abigail_expressive_2024112501"
 
 
 
@@ -51,19 +52,51 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
 
     # 1. Upload Audio Asset
     print(f"   [HeyGen] Uploading audio asset...")
-    upload_url = "https://api.heygen.com/v1/asset"
+    upload_url = "https://upload.heygen.com/v1/asset"
+
+    # HeyGen only supports audio/mpeg (MP3). Convert m4a/wav to mp3 first.
+    actual_audio_path = audio_path
+    ext = os.path.splitext(audio_path)[1].lower()
+    if ext in (".m4a", ".aac", ".wav", ".aiff"):
+        mp3_path = audio_path.rsplit(".", 1)[0] + "_heygen.mp3"
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            subprocess.run(
+                [ffmpeg_exe, "-y", "-i", audio_path, "-ar", "44100", "-ab", "128k", mp3_path],
+                capture_output=True, check=True, timeout=60
+            )
+            actual_audio_path = mp3_path
+            print(f"   [HeyGen] Converted {ext} → MP3 for upload: {os.path.basename(mp3_path)}")
+        except Exception as conv_err:
+            print(f"   ⚠️ [HeyGen] Audio conversion to MP3 failed ({conv_err}), uploading original {ext}")
+
+    # Detect MIME type based on file extension
+    upload_ext = os.path.splitext(actual_audio_path)[1].lower()
+    mime_map = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".aac": "audio/aac"}
+    content_type = mime_map.get(upload_ext, "audio/mpeg")
+
     try:
-        with open(audio_path, 'rb') as f:
-            files = {'file': (os.path.basename(audio_path), f, 'audio/mpeg')}
-            # Content-Type must not be application/json for multipart
-            res = requests.post(upload_url, headers={"x-api-key": api_key}, files=files, timeout=60)
+        with open(actual_audio_path, 'rb') as f:
+            audio_binary = f.read()
+            # Raw binary upload: data-binary instead of multipart
+            res = requests.post(
+                upload_url, 
+                headers={
+                    "x-api-key": api_key,
+                    "Content-Type": content_type
+                }, 
+                data=audio_binary, 
+                timeout=60
+            )
+        print(f"   [HeyGen] Upload response: {res.status_code} {res.reason}")
         res.raise_for_status()
         audio_asset_id = res.json().get("data", {}).get("id")
         if not audio_asset_id:
             raise ValueError(f"Failed to get audio asset ID. Response: {res.text}")
     except Exception as e:
         print(f"❌ [HeyGen] Audio upload failed: {e}")
-        return audio_path # Graceful degrade
+        return None # Critical failure, return None to trigger fallback
 
     # 2. Add Video Task
     print(f"   [HeyGen] Triggering Video Generation (Avatar: {avatar_id})...")
@@ -82,7 +115,8 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
                 }
             }
         ],
-        "dimension": {"width": 1280, "height": 720}
+        "dimension": {"width": 1280, "height": 720},
+        "caption": True
     }
     header_json = {**headers, "Content-Type": "application/json"}
     
@@ -94,11 +128,11 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
             raise ValueError(f"No video_id returned: {res.text}")
     except Exception as e:
         print(f"❌ [HeyGen] Generation request failed: {e}")
-        return audio_path
+        return None
 
     # 3. Poll for Status (v2 Protocol)
     print(f"   ⏳ [HeyGen] Task {video_id[:8]}... created. Polling for results...")
-    poll_url = f"https://api.heygen.com/v2/video/get_status?video_id={video_id}"
+    poll_url = f"https://api.heygen.com/v1/video_status.get?video_id={video_id}"
     
     import urllib3
     session = requests.Session()
@@ -109,8 +143,20 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
     for attempt in range(40): # Poll for up to 10 minutes
         try:
             res = session.get(poll_url, headers=header_json, timeout=10)
-            data = res.json().get("data", {})
+            if not res.text:
+                print(f"   [Attempt {attempt}] [HeyGen] Warning: Empty API response (Status: {res.status_code}). Retrying...")
+                time.sleep(15)
+                continue
+
+            try:
+                data = res.json().get("data", {})
+            except Exception as j:
+                print(f"   [Attempt {attempt}] [HeyGen] JSON Error (Status: {res.status_code}): {j}. Body: {res.text[:100]}")
+                time.sleep(15)
+                continue
+
             status = data.get("status")
+            print(f"   [Attempt {attempt}] [HeyGen] Task Status: {status}")
             
             if status in ["completed", "success"]:
                 # v2 status response has video_url at top level of data
@@ -128,7 +174,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
                 print(f"❌ [HeyGen] Generation failed: {data.get('error', 'unknown error')}")
                 return None # Return None to trigger pipeline failure instead of corrupt output
         except Exception as e:
-            print(f"   [Attempt {attempt}] [HeyGen] Polling warning: {e}")
+            print(f"   [Attempt {attempt}] [HeyGen] Polling warning (Status: {getattr(res, 'status_code', 'N/A')}): {e}")
             
         time.sleep(15)
 

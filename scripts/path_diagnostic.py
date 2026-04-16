@@ -46,14 +46,14 @@ def check_apis():
     except Exception as e:
         print(f"   - Groq API Connectivity    : ❌ FAILED ({str(e)[:50]})")
 
-    # 2. HeyGen (New Key check)
+    # 2. HeyGen (Connectivity check via avatars endpoint)
     try:
         api_key = os.environ.get("HEYGEN_API_KEY")
-        res = requests.get("https://api.heygen.com/v1/asset", headers={"x-api-key": api_key}, timeout=5)
+        res = requests.get("https://api.heygen.com/v2/avatars", headers={"x-api-key": api_key}, timeout=5)
         if res.status_code == 200 or res.status_code == 401: # 401 means key is checked but maybe wrong, 200 is success
-            print(f"   - HeyGen API (v1 Asset)    : ✅ Response {res.status_code}")
+            print(f"   - HeyGen API (v2 Avatars) : ✅ Response {res.status_code}")
         else:
-            print(f"   - HeyGen API (v1 Asset)    : ⚠️  Response {res.status_code}")
+            print(f"   - HeyGen API (v2 Avatars) : ⚠️  Response {res.status_code}")
     except Exception as e:
         print(f"   - HeyGen API               : ❌ FAILED ({str(e)[:50]})")
 
