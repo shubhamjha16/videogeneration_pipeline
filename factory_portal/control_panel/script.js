@@ -28,6 +28,20 @@ const API_BASE = window.location.origin;
 let lastRenderedStatus = null;
 let activeJobId = null;
 
+async function deleteJob(jobId) {
+    if (!confirm('Delete this masterclass?')) return;
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        const apiKey = localStorage.getItem('FACTORY_API_KEY');
+        if (apiKey) headers['X-API-Key'] = apiKey;
+        
+        await fetch(`${API_BASE}/jobs/${jobId}`, { method: 'DELETE', headers });
+        pollJobs(); // Refresh vault
+    } catch (err) {
+        console.error('Delete failed:', err);
+    }
+}
+
 async function pollJobs() {
     try {
         const headers = {};
@@ -35,30 +49,36 @@ async function pollJobs() {
         if (apiKey) headers['X-API-Key'] = apiKey;
         
         const response = await fetch(`${API_BASE}/jobs`, { headers });
-        if (response.status === 403) {
-            console.error("Dashboard Polling Error: 403 Forbidden. Set localStorage.setItem('FACTORY_API_KEY', 'your_key') in console.");
-            return;
-        }
-        if (!response.ok) {
-            throw new Error(`API Error: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`API Error: ${response.status}`);
         const jobs = await response.json();
         
-        // Find the most interesting job (either building or just finished)
-        const jobIds = Object.keys(jobs).sort((a,b) => b - a);
-        if (jobIds.length === 0) return renderEmpty();
+        const jobList = Object.values(jobs);
+        if (jobList.length === 0) return renderEmpty();
 
-        const latestJob = jobs[jobIds[0]];
-        activeJobId = jobIds[0];
+        // Always pick the most recently updated job
+        const latestJob = jobList.sort((a, b) => 
+            new Date(b.updated_at) - new Date(a.updated_at)
+        )[0];
+
+        // Re-render if job ID changed OR status changed
+        const jobChanged = activeJobId !== latestJob.job_id;
+        const statusChanged = lastRenderedStatus !== latestJob.status;
+
+        activeJobId = latestJob.job_id;
 
         if (latestJob.status === "completed") {
-            renderPlayer(latestJob);
+            if (jobChanged || statusChanged) {
+                lastRenderedStatus = "completed";
+                renderPlayer(latestJob);
+            }
         } else {
+            // Always update building state
+            lastRenderedStatus = "building";
             renderBuilding(latestJob);
         }
 
-        // Also update the telemetry console
         updateTelemetry(latestJob);
+        updateVault(jobs);
         
     } catch (err) {
         console.error("Dashboard Polling Error:", err);
@@ -86,17 +106,10 @@ function renderEmpty() {
 }
 
 function renderBuilding(job) {
-    if (lastRenderedStatus === "building" && activeJobId === job.job_id) {
-        // Just update reasoning text to avoid flicker
-        const rBox = document.querySelector('.building-reasoning');
-        if (rBox && job.logs && job.logs.length > 0) {
-            rBox.innerText = job.logs[job.logs.length - 1].msg;
-        }
-        return;
-    }
-    lastRenderedStatus = "building";
-
-    const lastLog = job.logs && job.logs.length > 0 ? job.logs[job.logs.length - 1] : {node: "INGESTION", msg: "Initialized."};
+    // Always re-render
+    const lastLog = job.logs && job.logs.length > 0 
+        ? job.logs[job.logs.length - 1] 
+        : {node: "INITIALIZING", msg: "Job queued."};
     
     masterclassHero.innerHTML = `
         <div class="hero-header">
@@ -108,21 +121,19 @@ function renderBuilding(job) {
                 </div>
             </div>
             <div style="background: rgba(59, 130, 246, 0.1); color: var(--primary); padding: 4px 12px; border-radius: 8px; font-weight: 800; font-size: 0.7rem;">
-                ${job.topic.toUpperCase()}
+                ${(job.topic || 'Unknown').toUpperCase()}
             </div>
         </div>
         <div class="hero-body">
-            <h2 class="building-title">Building: ${job.topic}</h2>
-            <div class="building-reasoning">
-                ${lastLog.msg}
-            </div>
+            <h2 class="building-title">Building: ${job.topic || 'Unknown'}</h2>
+            <div class="building-reasoning">${lastLog.msg}</div>
             <div class="progress-belt">
                 <div class="progress-stats">
-                    <span>${lastLog.node}</span>
+                    <span>${lastLog.node || 'PROCESSING'}</span>
                     <span>Processing...</span>
                 </div>
                 <div class="progress-container" style="margin-bottom: 0;">
-                    <div class="progress-bar" style="width: 70%; animation: pulse 2s infinite;"></div>
+                    <div class="progress-bar" style="width: ${job.progress || 10}%; transition: width 0.5s ease;"></div>
                 </div>
             </div>
         </div>
@@ -131,7 +142,6 @@ function renderBuilding(job) {
 }
 
 function renderPlayer(job) {
-    if (lastRenderedStatus === "completed") return; 
     lastRenderedStatus = "completed";
 
     masterclassHero.innerHTML = `
@@ -140,7 +150,7 @@ function renderPlayer(job) {
                 <img src="https://ui-avatars.com/api/?name=Tony+AI&background=3B82F6&color=fff" alt="Tony AI">
                 <div>
                     <span style="display: block; font-weight: 700; font-size: 0.9rem;">Tony AI Teacher</span>
-                    <span style="font-size: 0.7rem; color: var(--text-muted);">${job.topic} | MC Done</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted);">${job.topic || 'Unknown'} | MC Done</span>
                 </div>
             </div>
             <div style="background: rgba(16, 185, 129, 0.1); color: var(--success); padding: 4px 12px; border-radius: 8px; font-weight: 800; font-size: 0.7rem;">
@@ -156,7 +166,7 @@ function renderPlayer(job) {
             </div>
             <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h3 style="font-size: 1.1rem; font-weight: 700;">${job.topic}</h3>
+                    <h3 style="font-size: 1.1rem; font-weight: 700;">${job.topic || 'Unknown'}</h3>
                     <p style="font-size: 0.8rem; color: var(--text-muted);">Video Masterclass generated successfully.</p>
                 </div>
                 <div style="display: flex; gap: 10px;">
@@ -192,6 +202,69 @@ function updateTelemetry(job) {
         consoleOutput.appendChild(line);
     });
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
+}
+
+function updateVault(jobs) {
+    const vaultGrid = document.querySelector('.vault-grid');
+    if (!vaultGrid) return;
+
+    // Get only completed jobs, sorted newest first
+    const completed = Object.values(jobs)
+        .filter(j => j.status === 'completed')
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    // Build cards HTML
+    const colors = [
+        'linear-gradient(135deg, #3B82F6, #1E40AF)',
+        'linear-gradient(135deg, #EF4444, #991B1B)',
+        'linear-gradient(135deg, #10B981, #065F46)',
+        'linear-gradient(135deg, #8B5CF6, #5B21B6)',
+        'linear-gradient(135deg, #F59E0B, #92400E)',
+    ];
+
+    const cards = completed.map((job, i) => {
+        const color = colors[i % colors.length];
+        const mode = (job.render_mode || 'auto').toUpperCase();
+        const date = new Date(job.created_at).toLocaleDateString();
+        const videoUrl = job.video_url || '';
+
+        return `
+        <div class="vault-card glass">
+            <div class="thumbnail" style="background: ${color};">
+                <div class="overlay"><i data-lucide="play-circle"></i></div>
+                <span class="duration">${mode}</span>
+            </div>
+            <div class="card-body">
+                <h4>${job.topic || 'Unknown'}</h4>
+                <span class="meta">${date}</span>
+                <div class="card-actions">
+                    ${videoUrl ? `<button class="btn btn-primary" onclick="window.open('${videoUrl}', '_blank')">
+                        <i data-lucide="download"></i> Download
+                    </button>` : ''}
+                    <button class="btn btn-secondary" onclick="deleteJob('${job.job_id}')" style="background: rgba(239,68,68,0.1); color: #EF4444; border: 1px solid #EF4444;">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Add the "add new" card at the end
+    const addCard = `
+        <div class="vault-card glass empty" id="vaultBulkLink">
+            <div class="add-prompt">
+                <i data-lucide="plus-circle"></i>
+                <p>Ingest New Curriculum Chapter</p>
+            </div>
+        </div>`;
+
+    vaultGrid.innerHTML = cards + addCard;
+    lucide.createIcons();
+
+    // Update stats
+    const statVideos = document.querySelector('.vault-stats .stat:first-child');
+    if (statVideos) statVideos.innerHTML = `<i data-lucide="video"></i> ${completed.length} Masterclasses`;
+    lucide.createIcons();
 }
 
 // Start Polling

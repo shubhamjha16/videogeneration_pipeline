@@ -137,8 +137,27 @@ def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = 
                 if len(job["logs"]) > 100:
                     job["logs"] = job["logs"][-100:]
                 
-                # Metadata update
                 job["updated_at"] = timestamp
+
+                # Progress mapping: nodes to completion percentage
+                progress_map = {
+                    "DIRECTOR":     15,
+                    "VISION":       25,
+                    "ARCHITECT":    35,
+                    "PPT_PLANNER":  35,
+                    "PPT_CRITIC":   45,
+                    "PPT_RENDERER": 55,
+                    "PPT_TTS":      65,
+                    "PPT_VIDEO":    80,
+                    "SUPERVISOR":   75,
+                    "HEALER":       60,
+                    "EXPLAINER":    75,
+                    "HEYGEN":       65,
+                    "SUBTITLE":     80,
+                    "FUSION":       88,
+                    "DEPLOY":       95,
+                }
+                job["progress"] = progress_map.get(node_name.upper(), job.get("progress", 10))
         
         _api_bridge_refs._save_jobs()
 
@@ -639,7 +658,9 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
             reason="S3_BUCKET not set",
             error_class="MissingConfig",
         )
-        return f"file://{local_path}"
+        job_id = job_id or "unknown"
+        filename = os.path.basename(local_path)
+        return f"/stream/{job_id}/{filename}"
 
     import boto3
     # Inclusion of job_id in S3 key prevents URL collision for identical topics
@@ -667,11 +688,14 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
         except botocore.exceptions.ClientError as e:
             print(f"   ❌ S3 Upload Failed (IAM/Bucket issue) on attempt {attempt}/{_S3_UPLOAD_MAX_ATTEMPTS}: {e}")
             if attempt >= _S3_UPLOAD_MAX_ATTEMPTS:
-                return f"file://{local_path}"
+                job_id = job_id or "unknown"
+                filename = os.path.basename(local_path)
+                return f"/stream/{job_id}/{filename}"
         except Exception as e:
             print(f"   ❌ S3 Upload Failed (unexpected) on attempt {attempt}/{_S3_UPLOAD_MAX_ATTEMPTS}: {e}")
             if attempt >= _S3_UPLOAD_MAX_ATTEMPTS:
-                return f"file://{local_path}"
+                filename = os.path.basename(local_path)
+                return f"/stream/{job_id}/{filename}"
         time.sleep(_S3_RETRY_SLEEP_SECONDS * min(attempt, 3))
 
     url = f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
