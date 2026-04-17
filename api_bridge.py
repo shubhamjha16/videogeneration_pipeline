@@ -85,9 +85,8 @@ if os.path.exists(assets_dir):
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 app.mount("/portal", StaticFiles(directory="factory_portal/control_panel", html=True), name="portal")
 
-@app.get("/stream/{job_id}/{filename}")
+@app.get("/stream/{job_id}/{filename}", tags=["Core"], summary="Stream local video", description="Dynamic streaming endpoint for browser-based video playback. Supports range requests for efficient seeking.")
 async def stream_video(job_id: str, filename: str):
-    """Industrial Sentinel: Dynamic streaming endpoint for local video playback."""
     import mimetypes
     path = os.path.join("output", f"job_{job_id}", filename)
     if not os.path.exists(path):
@@ -279,6 +278,17 @@ class RenderRequest(BaseModel):
     video_type:  Optional[Literal["marketing", "educational"]] = None
     image_path:  Optional[str] = None
 
+    class Config:
+        schema_extra = {
+            "example": {
+                "topic": "Newton's Laws of Motion",
+                "html": "<html><body><h1>Lesson 1</h1>...</body></html>",
+                "render_mode": "manim",
+                "with_avatar": False,
+                "video_type": "educational"
+            }
+        }
+
 
 class JobStatus(BaseModel):
     job_id:       str
@@ -294,6 +304,204 @@ class JobStatus(BaseModel):
     updated_at:   str  = ""   # ISO timestamp
     logs:         list = Field(default_factory=list)   # Telemetry for "Tony AI" Mission Control dashboard
     metrics:      dict = Field(default_factory=dict)   # Performance stats (ttc, api_costs)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_id": "4a8d5928-cae",
+                "status": "completed",
+                "video_url": "/stream/4a8d5928-cae/lesson_video.mp4",
+                "progress": 100,
+                "current_step": "DEPLOY",
+                "render_mode": "manim",
+                "created_at": "2026-04-17T10:00:00Z",
+                "updated_at": "2026-04-17T10:05:00Z",
+                "logs": [{"node": "SYSTEM", "msg": "Job initialized", "type": "info"}],
+                "metrics": {"total_duration_sec": 300.5}
+            }
+        }
+
+
+class BulkRenderResponse(BaseModel):
+    job_ids: list[str]
+    total: int
+    status: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_ids": ["job1", "job2"],
+                "total": 2,
+                "status": "queued"
+            }
+        }
+
+
+class DeleteResponse(BaseModel):
+    deleted: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "deleted": "job_id_123"
+            }
+        }
+
+
+class MessageResponse(BaseModel):
+    status: str
+    service: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "ok",
+                "service": "easetolearn-video-generation"
+            }
+        }
+
+
+class AnalyticsResponse(BaseModel):
+    total_jobs: int
+    completed: int
+    failed: int
+    success_rate: str
+    avg_render_time_sec: float
+    render_modes_breakdown: dict[str, int]
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_jobs": 100,
+                "completed": 85,
+                "failed": 15,
+                "success_rate": "85.0%",
+                "avg_render_time_sec": 45.2,
+                "render_modes_breakdown": {"manim": 50, "presentation": 35}
+            }
+        }
+
+
+class TimelineResponse(BaseModel):
+    hourly: dict[str, dict[str, int]]
+    daily: dict[str, dict[str, int]]
+    total_jobs: int
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "hourly": {"2026-04-17 10:00": {"completed": 5, "failed": 1, "queued": 0}},
+                "daily": {"2026-04-17": {"completed": 20, "failed": 3, "queued": 0}},
+                "total_jobs": 23
+            }
+        }
+
+
+class QueueItem(BaseModel):
+    position: int
+    job_id: str
+    topic: str
+    status: str
+    progress: int
+    render_mode: str
+    created_at: str
+    eta_seconds: float
+
+
+class QueueResponse(BaseModel):
+    queue_length: int
+    avg_render_time_sec: float
+    jobs: list[QueueItem]
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "queue_length": 2,
+                "avg_render_time_sec": 120.0,
+                "jobs": [
+                    {
+                        "position": 1,
+                        "job_id": "job1",
+                        "topic": "Newton's Laws",
+                        "status": "processing",
+                        "progress": 45,
+                        "render_mode": "manim",
+                        "created_at": "2026-04-17T11:00:00Z",
+                        "eta_seconds": 66.0
+                    }
+                ]
+            }
+        }
+
+
+class CostItem(BaseModel):
+    job_id: str
+    topic: str
+    render_mode: str
+    estimated_cost_usd: float
+
+
+class CostsResponse(BaseModel):
+    total_estimated_cost_usd: float
+    completed_jobs: int
+    avg_cost_per_video_usd: float
+    breakdown: list[CostItem]
+    note: str
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "total_estimated_cost_usd": 12.50,
+                "completed_jobs": 100,
+                "avg_cost_per_video_usd": 0.125,
+                "breakdown": [
+                    {"job_id": "job1", "topic": "Physics", "render_mode": "manim", "estimated_cost_usd": 0.15}
+                ],
+                "note": "Estimates based on average API pricing."
+            }
+        }
+
+
+class WebhookTestResponse(BaseModel):
+    status: str
+    webhook_url: Optional[str] = None
+    response_code: Optional[int] = None
+    response_body: Optional[str] = None
+    reason: Optional[str] = None
+    hint: Optional[str] = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "status": "sent",
+                "webhook_url": "https://callback.com/hook",
+                "response_code": 200,
+                "response_body": "OK"
+            }
+        }
+
+
+class VersionResponse(BaseModel):
+    service: str
+    version: str
+    git_commit: str
+    started_at: str
+    uptime: str
+    uptime_seconds: int
+    python_version: str
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "service": "EaseToLearn Video Generation Factory",
+                "version": "2.0.0",
+                "git_commit": "46a04ea",
+                "started_at": "2026-04-17T10:00:00Z",
+                "uptime": "2h 30m",
+                "uptime_seconds": 9000,
+                "python_version": "3.9.6"
+            }
+        }
 
 
 
@@ -451,13 +659,8 @@ def _run_pipeline(job_id: str, topic: str, html: str):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@app.post("/render", response_model=JobStatus, dependencies=[SecurityDep])
+@app.post("/render", response_model=JobStatus, tags=["Core"], summary="Submit single job", description="Accepts lesson HTML and metadata to queue a single video production job. Returns a job_id immediately while rendering proceeds in a background thread.")
 def start_render(request: RenderRequest):
-    """
-    Start a video generation job.
-    Spring Boot calls this with the Tony AI lesson HTML.
-    Returns job_id immediately — video is generated in background.
-    """
     if not request.topic or not request.html:
         raise HTTPException(status_code=400, detail="topic and html are required")
 
@@ -511,7 +714,7 @@ def start_render(request: RenderRequest):
     return job_snapshot
 
 
-@app.post("/bulk_render", dependencies=[SecurityDep])
+@app.post("/bulk_render", response_model=BulkRenderResponse, dependencies=[SecurityDep], tags=["Core"], summary="Submit batch jobs", description="Accepts a JSON array of lessons. Jobs are processed sequentially in a single background worker to prevent resource exhaustion.")
 async def bulk_render(file: UploadFile = File(...)):
     """Accept a JSON file and queue all lessons as separate jobs."""
     content = await file.read()
@@ -582,7 +785,7 @@ async def bulk_render(file: UploadFile = File(...)):
     return {"job_ids": job_ids, "total": len(job_ids), "status": "queued"}
 
 
-@app.get("/jobs", dependencies=[SecurityDep])
+@app.get("/jobs", response_model=dict[str, JobStatus], dependencies=[SecurityDep], tags=["Core"], summary="List all jobs", description="Retrieves the full registry of all current and historical jobs from the persistence layer.")
 def get_all_jobs():
     """Returns all jobs for the Factory Portal dashboard."""
     _load_jobs()
@@ -591,7 +794,7 @@ def get_all_jobs():
 
 
 
-@app.get("/status/{job_id}", response_model=JobStatus, dependencies=[SecurityDep])
+@app.get("/status/{job_id}", response_model=JobStatus, dependencies=[SecurityDep], tags=["Core"], summary="Get job status", description="Polls the current status, progress, and telemetry for a specific job ID.")
 def get_status(job_id: str):
     """
     Poll job status.
@@ -605,13 +808,13 @@ def get_status(job_id: str):
 
 
 
-@app.get("/health")
+@app.get("/health", response_model=MessageResponse, tags=["Core"], summary="Simple health check", description="Basic probe to verify if the API service and server process are reachable.")
 def health():
     """ECS / ALB health check endpoint."""
     return {"status": "ok", "service": "easetolearn-video-generation"}
 
 
-@app.delete("/jobs/purge", dependencies=[SecurityDep])
+@app.delete("/jobs/purge", response_model=dict, dependencies=[SecurityDep], tags=["Operational"], summary="Purge all failed jobs", description="Removes all jobs with a 'failed' status from the factory registry. Useful for cleaning up the dashboard after resolving pipeline issues.")
 def purge_failed_jobs():
     """Nuclear option: Clear all failed jobs from the persistence layer in one click."""
     with _jobs_lock:
@@ -623,7 +826,7 @@ def purge_failed_jobs():
     return {"purged": len(failed_ids), "job_ids": failed_ids}
 
 
-@app.delete("/jobs/{job_id}", dependencies=[SecurityDep])
+@app.delete("/jobs/{job_id}", response_model=DeleteResponse, dependencies=[SecurityDep], tags=["Core"], summary="Delete single job", description="Permanently removes a specific job record from both memory and disk persistence.")
 def delete_job(job_id: str):
     """Industrial Sentinel: Securely remove a job from the factory persistence layer."""
     _load_jobs()
@@ -635,7 +838,7 @@ def delete_job(job_id: str):
     return {"deleted": job_id}
 
 
-@app.get("/analytics")
+@app.get("/analytics", response_model=AnalyticsResponse, tags=["Analytics"], summary="Global production stats", description="Aggregated production metrics including total volume, success rates, and average render times across all historical jobs.")
 def get_analytics():
     """Factory analytics dashboard — production stats at a glance."""
     with _jobs_lock:
@@ -662,7 +865,7 @@ def get_analytics():
     }
 
 
-@app.post("/retry/{job_id}", dependencies=[SecurityDep])
+@app.post("/retry/{job_id}", response_model=dict, dependencies=[SecurityDep], tags=["Operational"], summary="Retry failed job", description="Re-queues a failed job into the processing pipeline using its original HTML and topic. Resets progress and error state.")
 def retry_job(job_id: str):
     """Retry a failed job by re-queuing it through the pipeline."""
     with _jobs_lock:
@@ -695,7 +898,7 @@ def retry_job(job_id: str):
     return {"job_id": job_id, "status": "retrying"}
 
 
-@app.get("/health/detailed")
+@app.get("/health/detailed", response_model=dict, tags=["Enterprise"], summary="System dependency health", description="Performs a deep check of all third-party dependencies (Groq, S3, ElevenLabs) to ensure the factory is fully operational.")
 def health_detailed():
     """Deep health check — verifies all external service dependencies."""
     import groq as groq_lib
@@ -732,7 +935,7 @@ def health_detailed():
 
 # ── Tier 1: Demo Showstoppers ─────────────────────────────────────────────────
 
-@app.get("/analytics/timeline")
+@app.get("/analytics/timeline", response_model=TimelineResponse, tags=["Analytics"], summary="Production throughput timeline", description="Time-series data showing hourly and daily job throughput. Ideal for rendering throughput charts and identifying peak factory hours.")
 def analytics_timeline():
     """Hourly production throughput — perfect for manager dashboards and charts."""
     with _jobs_lock:
@@ -812,7 +1015,7 @@ def export_csv():
     )
 
 
-@app.post("/priority/{job_id}", dependencies=[SecurityDep])
+@app.post("/priority/{job_id}", response_model=dict, dependencies=[SecurityDep], tags=["Operational"], summary="Prioritize queued job", description="Bumps a queued job to the front of the line by manipulating its internal sort timestamp.")
 def prioritize_job(job_id: str):
     """Bump a queued job to highest priority by backdating its updated_at timestamp."""
     with _jobs_lock:
@@ -827,7 +1030,7 @@ def prioritize_job(job_id: str):
     return {"job_id": job_id, "status": "prioritized"}
 
 
-@app.get("/logs/{job_id}", dependencies=[SecurityDep])
+@app.get("/logs/{job_id}", response_model=JobStatus, dependencies=[SecurityDep], tags=["Operational"], summary="Detailed job telemetry", description="Returns the full record for a specific job, including detailed internal logs and performance metrics.")
 def get_job_logs(job_id: str):
     """Full telemetry log for a specific job — deep observability."""
     with _jobs_lock:
@@ -854,7 +1057,7 @@ def get_job_logs(job_id: str):
 
 
 
-@app.get("/queue", dependencies=[SecurityDep])
+@app.get("/queue", response_model=QueueResponse, dependencies=[SecurityDep], tags=["Operational"], summary="Active queue status", description="Shows currently queued and processing jobs with their relative positions and estimated time to completion.")
 def get_queue():
     """Show only queued and processing jobs with position and ETA."""
     with _jobs_lock:
@@ -888,7 +1091,7 @@ def get_queue():
     }
 
 
-@app.post("/cancel/{job_id}", dependencies=[SecurityDep])
+@app.post("/cancel/{job_id}", response_model=dict, dependencies=[SecurityDep], tags=["Operational"], summary="Cancel active job", description="Interrupts a queued or processing job, marking it as failed with a 'Cancelled' error state.")
 def cancel_job(job_id: str):
     """Cancel a running or queued job by marking it as failed."""
     with _jobs_lock:
@@ -905,7 +1108,7 @@ def cancel_job(job_id: str):
     return {"job_id": job_id, "status": "cancelled"}
 
 
-@app.get("/version")
+@app.get("/version", response_model=VersionResponse, tags=["Enterprise"], summary="Service version info", description="Retrieves the current API version, server uptime, git commit hash, and environment details.")
 def get_version():
     """API version, uptime, and build info — enterprise compliance."""
     uptime_seconds = (datetime.utcnow() - _APP_START_TIME).total_seconds()
@@ -936,7 +1139,7 @@ def get_version():
 
 # ── Tier 3: Enterprise Feel ───────────────────────────────────────────────────
 
-@app.get("/costs")
+@app.get("/costs", response_model=CostsResponse, tags=["Analytics"], summary="API cost estimation", description="Calculates estimated third-party API costs (Groq, ElevenLabs, HeyGen) for all completed videos to provide financial visibility.")
 def estimate_costs():
     """Estimated API costs per job and total — financial visibility for management."""
     # Cost estimates per API call (approximate)
@@ -985,7 +1188,7 @@ def estimate_costs():
     }
 
 
-@app.post("/webhook/test", dependencies=[SecurityDep])
+@app.post("/webhook/test", response_model=WebhookTestResponse, dependencies=[SecurityDep], tags=["Enterprise"], summary="Webhook connectivity test", description="Triggers a dummy payload to the configured WEBHOOK_URL to verify integration with the Spring Boot backend.")
 def test_webhook():
     """Fire a test webhook to verify integration with Spring Boot backend."""
     webhook_url = os.environ.get("WEBHOOK_URL")
