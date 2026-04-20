@@ -28,7 +28,7 @@ Visual types handled:
 import os
 import re
 import textwrap
-from groq import Groq
+from llm_factory import LLMFactory
 
 
 # ── LaTeX helpers ─────────────────────────────────────────────────────────────
@@ -397,24 +397,27 @@ _GRAPH_SYSTEM_PROMPT = """You are a Manim animation code writer for educational 
 Write ONLY the indented body code (8-space indent) that goes inside a Manim construct() method.
 The scene index is provided — suffix ALL variable names with _{idx} to avoid conflicts.
 
-RULES:
-- Use `from manim import *` is already imported — do not re-import
-- config.background_color is already "#0d0d1a" (dark)
-- Start with: self._clear()  (already defined in the class)
-- End with: self._clear()
-- Use Axes for line/curve graphs, VGroup of Rectangle for bar charts, NumberLine for number lines
-- CRITICAL: Use `self.play(Create(axes_idx))` and `self.play(Create(curve_idx))` to animate the drawing process.
-- FORBIDDEN: Do not use `self.add()` for main elements. They MUST be animated with `Create`, `Write`, or `FadeIn`.
-- For definite integrals, use `axes.get_area(curve, x_range=[a, b])` and animate it with `self.play(FadeIn(area_idx))`.
-- Ensure Axes `x_range` and `y_range` cover the specific intervals mentioned in the description.
-- Use MathTex for all labels and math expressions
-- Suffix every variable with _{idx} (e.g. axes_3, curve_3, bar_3)
-- Max 40 lines of code
-- No imports, no class definition, no def construct — just the body lines
-- Use 8-space indentation throughout
-- self.wait({duration}) before the final self._clear()
+━━━ GOLDEN EXAMPLES (Follow these patterns EXACTLY) ━━━
 
-Output ONLY the Python code lines. No explanation, no markdown fences."""
+EXAMPLE 1 (Function Plot):
+        axes_{idx} = Axes(x_range=[-3, 3, 1], y_range=[0, 9, 1], x_length=7, y_length=5)
+        curve_{idx} = axes_{idx}.get_graph(lambda x: x**2, color=BLUE)
+        self.play(Create(axes_{idx}))
+        self.play(Create(curve_{idx}))
+        self.wait({duration})
+
+EXAMPLE 2 (Bar Chart):
+        bar_{idx} = BarChart(values=[10, 20, 30], bar_names=["A", "B", "C"], y_range=[0, 40, 10], x_length=6, y_length=4)
+        self.play(Create(bar_{idx}))
+        self.wait({duration})
+
+━━━ CRITICAL SECURITY RULES ━━━
+- NEVER use `self.set_background()` or `self.set_text()`. They do not exist.
+- ALWAYS use `Tex(r"\\text{{...}}")` or `MathTex(r"...")` for text/math.
+- ALWAYS suffix every variable with _{idx}.
+- Output ONLY the Python code. No explanation, no markdown.
+- Max 40 lines of code. No imports. No class definitions.
+"""
 
 def _scene_graph_hint(scene: dict, idx: int) -> str:
     d           = scene["visual_data"]
@@ -436,19 +439,13 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
     )
 
     try:
-        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": _GRAPH_SYSTEM_PROMPT.format(idx=idx, duration=duration)},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-            max_tokens=600,
+        code = LLMFactory.get_completion(
+            messages=[{"role": "user", "content": prompt}],
+            system_prompt=_GRAPH_SYSTEM_PROMPT.format(idx=idx, duration=duration),
+            json_mode=False
         )
-        code = resp.choices[0].message.content.strip()
-        # Strip any markdown fences Groq might add
-        code = re.sub(r"```(?:python)?", "", code).replace("```", "").strip()
+        # Strip any markdown fences if the extraction in LLMFactory was too loose
+        code = re.sub(r"```(?:python)?", "", code, flags=re.IGNORECASE).replace("```", "").strip()
         
         # Return exactly what Groq wrote so that list comprehensions down the chain are accurate.
         print(f"   🔢 graph_hint scene {idx}: LLM generated {len(code.splitlines())} lines")

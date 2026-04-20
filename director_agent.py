@@ -1,5 +1,5 @@
 """
-Step 2: Director Agent (LLM — Claude Opus)
+Step 2: Director Agent (LLM — Gemma 4)
 
 Responsibilities:
   1. Decides the render mode  : manim | presentation | user_generated_video
@@ -111,6 +111,7 @@ class Scene(BaseModel):
 class DirectorOutput(BaseModel):
     render_mode: Literal["manim", "presentation", "explainer", "user_generated_video"]
     decision_reasoning: str  # Explain why this mode was chosen based on the hierarchy
+    search_queries: list[str] = [] # If content is sparse, list 1-3 queries to run via SearXNG
     scenes: list[Scene]
 
 
@@ -146,6 +147,11 @@ LEVEL 4 (Efficiency / Default) → Use "presentation":
   - Any factual or purely text-based content where static slides are sufficient.
 
 ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" to Manim/Explainer if the content strictly warrants it.
+
+━━━ SEARCH / RESEARCH RULE ━━━
+- If the input lesson is thin or lacks specific facts (names, dates, stats), you MUST populate `search_queries` with 1-3 specific search terms. 
+- Example: Topic "History of AI" but no dates. Query: ["first artificial intelligence conference date", "early AI pioneers timeline"].
+- If you request search, your `scenes` can be a preliminary "stub" — the system will re-run you with the search results.
 
 ━━━ SCENE RULES BY RENDER MODE ━━━
 
@@ -207,17 +213,19 @@ OUTPUT: Return valid JSON only. No extra text."""
 
 # ── Director ──────────────────────────────────────────────────────────────────
 
-def run_director(parsed_facts: dict) -> DirectorOutput:
+def run_director(parsed_facts: dict, search_results: list[dict] = None, knowledge_base: dict = None) -> DirectorOutput:
     """
     Call Groq (Llama 3.3) to decide render mode and generate teaching scenes.
 
     Args:
-        parsed_facts: output from html_parser.parse_tony_html()
+        parsed_facts   : output from html_parser.parse_tony_html()
+        search_results : (optional) list of relevant snippets from SearXNG
+        knowledge_base : (optional) distilled verified facts from persistent storage
 
     Returns:
         DirectorOutput with render_mode and scenes list
     """
-    user_message = _build_prompt(parsed_facts)
+    user_message = _build_prompt(parsed_facts, search_results, knowledge_base)
     system_prompt_with_schema = SYSTEM_PROMPT + "\n\nCRITICAL: Output valid JSON exactly matching this schema:\n" + json.dumps(DirectorOutput.model_json_schema(),)
     
     content = LLMFactory.get_completion(
@@ -236,8 +244,8 @@ def run_director(parsed_facts: dict) -> DirectorOutput:
         raise ValueError(f"Director Agent failed to yield structured JSON: {e}")
 
 
-def _build_prompt(facts: dict) -> str:
-    """Build the user message from parsed facts."""
+def _build_prompt(facts: dict, search_results: list[dict] = None, knowledge_base: dict = None) -> str:
+    """Build the user message from parsed facts, research context, and knowledge base."""
     topic = facts.get("topic", "Untitled Lesson")
     subject = facts.get("subject", "unknown")
     content_type = facts.get("content_type", "concept")
@@ -248,8 +256,25 @@ def _build_prompt(facts: dict) -> str:
         f"SUBJECT: {subject}",
         f"CONTENT TYPE: {content_type}",
         "",
-        f"CONCEPT:\n{concept}",
     ]
+
+    if knowledge_base:
+        lines.append("━━━ PERSISTENT KNOWLEDGE BASE (GROUND TRUTH) ━━━")
+        lines.append("Use these verified facts as your primary source of truth to prevent hallucination.")
+        lines.append(json.dumps(knowledge_base, indent=2))
+        lines.append("")
+
+    lines.append("━━━ CORE CURRICULUM (INPUT) ━━━")
+    lines.append(concept)
+    lines.append("")
+    
+    if search_results:
+        lines.append("━━━ ENRICHED SEARCH CONTEXT (WEB RESEARCH) ━━━")
+        lines.append("Use these facts to improve the depth and accuracy of the lesson.")
+        for res in search_results[:5]:
+            lines.append(f"- {res['title']} ({res['url']}):")
+            lines.append(f"  {res['content']}")
+        lines.append("")
 
     if content_type == "mcq" and facts.get("options"):
         lines.append("\nOPTIONS:")

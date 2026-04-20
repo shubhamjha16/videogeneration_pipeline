@@ -1,23 +1,29 @@
-import os
 import sys
-import json
-from dotenv import load_dotenv
+import os
 
-# Add root to sys.path
+# Add project root to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
+from llm_factory import LLMFactory
 
-def test_connection():
-    provider = os.environ.get("LLM_PROVIDER", "groq")
-    print(f"Testing connection for provider: {provider}")
+def test_local_completion():
+    print(f"📡 Testing Local LLM Integration...")
+    print(f"   Provider: {config.LLM_PROVIDER}")
+    print(f"   URL:      {config.LOCAL_LLM_URL}")
+    print(f"   Model:    {config.LOCAL_LLM_MODEL}")
     
-    # This is a placeholder for the actual test logic we'll implement
-    # once llm_factory is created.
-    print("Pre-flight check: Environment variables loaded.")
-    print(f"GROQ_API_KEY set: {bool(config.GROQ_API_KEY)}")
-    print(f"GEMINI_API_KEY set: {bool(config.GEMINI_API_KEY)}")
+    messages = [
+        {"role": "user", "content": "You are the Director of an AI Video Factory. Say 'System online and ready for production' if you can hear me."}
+    ]
     
+    try:
+        response = LLMFactory.get_completion(messages)
+        print("\n✅ CONNECTION SUCCESS!")
+        print(f"🤖 Local Gemma Response: \"{response.strip()}\"")
+    except Exception as e:
+        print(f"\n❌ CONNECTION FAILED: {e}")
+        sys.exit(1)
+
 if __name__ == "__main__":
-    load_dotenv()
-    test_connection()
+    test_local_completion()

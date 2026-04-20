@@ -182,7 +182,7 @@ def _log_fallback(state: "TonyState", node_name: str, fallback: str, reason: str
     }
     _log_progress(state, node_name, json.dumps(payload, ensure_ascii=False), "warning")
 
-def _llm_json_with_retry(*, messages: list[dict], node_name: str, state: TonyState, system_prompt: Optional[str] = None) -> dict:
+def _llm_json_with_retry(*, messages: list[dict], node_name: str, state: "TonyState", system_prompt: Optional[str] = None) -> dict:
     """Retry LLM JSON call for transient failures, then raise."""
     from llm_factory import LLMFactory, clean_llm_json
     last_exc = None
@@ -281,6 +281,9 @@ class TonyState(TypedDict):
     clip_paths:       Optional[list]   # clip MP4 paths per slide
     critic_feedback:  Optional[str]    # feedback from ppt_critic → fed back to planner
     ppt_attempt_count: int             # how many times planner has been retried by critic
+    search_queries:   Optional[list[str]] # queries requested by Director
+    search_results:   Optional[list[dict]] # snippets returned by SearXNG
+    knowledge_base:   Optional[dict]      # verified facts from factory_knowledge/
 
     # ── Explainer/HeyGen-specific ─────────────────────
     heygen_video_path: Optional[str]   # Path to downloaded HeyGen video
@@ -309,13 +312,26 @@ def director_node(state: TonyState) -> TonyState:
 
     from html_parser import parse_tony_html
     from director_agent import run_director
+    from knowledge_manager import get_knowledge
 
+    # ━━━ 1. Knowledge Retrieval ━━━
+    # If we have existing knowledge, use it to anchor the LLM and prevent hallucinations.
+    kb_facts = get_knowledge(state["topic"])
+    if kb_facts:
+        print(f"   📚 Knowledge Cache Hit: Using verified facts for {state['topic']}")
+        state["knowledge_base"] = kb_facts
+        _log_progress(state, "KNOWLEDGE", f"📚 KB Hit: Using verified facts for {state['topic']}")
+    
     parsed = parse_tony_html(state["raw_input"], topic_hint=state["topic"])
     state["parsed_facts"] = parsed
 
     print(f"   Subject: {parsed['subject']} | Type: {parsed['content_type']}")
 
-    director_output = run_director(parsed)
+    director_output = run_director(
+        parsed, 
+        search_results=state.get("search_results"),
+        knowledge_base=state.get("knowledge_base")
+    )
     # Respect user-specified render_mode — only use Claude's decision as fallback
     # Industrial Sentinel: Treat "auto" as unset to allow Director to drive the path
     user_mode = (state.get("render_mode") or "auto").lower().strip()
@@ -362,10 +378,61 @@ def director_node(state: TonyState) -> TonyState:
         print(f"   Correct answer locked: {correct_letter}. {correct_name}")
 
     state["scenes"] = scenes
+    state["search_queries"] = director_output.search_queries
+    
     print(f"   Render mode: {state['render_mode'].upper()} | Scenes: {len(scenes)}")
+    if state["search_queries"]:
+        print(f"   🔎 Research Requested: {len(state['search_queries'])} queries")
     print(f"   💡 Reasoning: {director_output.decision_reasoning}")
     
     _log_progress(state, "DIRECTOR", f"Planned {len(scenes)} scenes for {state['render_mode']} path.", duration=time.time() - start_t)
+    return state
+
+
+def research_node(state: TonyState) -> TonyState:
+    """Execute SearXNG queries requested by the Director."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
+    
+    queries = state.get("search_queries") or []
+    if not queries:
+        return state
+
+    _log_progress(state, "RESEARCH", f"Performing metasearch for {len(queries)} terms...")
+    
+    from searxng_tool import search_searxng
+    all_results = state.get("search_results") or []
+    
+    for query in queries:
+        print(f"   🔎 Searching: {query}")
+        _log_progress(state, "RESEARCH", f"🔎 Metasearch: '{query}'")
+        results = search_searxng(query)
+        all_results.extend(results)
+    
+    # Store unique results by URL to avoid bloat
+    seen_urls = set()
+    unique_results = []
+    for r in all_results:
+        if r["url"] not in seen_urls:
+            unique_results.append(r)
+            seen_urls.add(r["url"])
+    
+    state["search_results"] = unique_results
+    state["search_queries"] = [] # Clear queries to prevent infinite loops
+
+    # ━━━ 2. Knowledge Distillation & Memorization ━━━
+    # Convert raw search results into a clean, reusable fact sheet.
+    from knowledge_manager import distill_search_results, save_knowledge
+    if unique_results:
+        print(f"   🧠 Distilling search results into verified knowledge...")
+        _log_progress(state, "KNOWLEDGE", f"🧠 Distilling {len(unique_results)} search results into verified knowledge...")
+        distilled = distill_search_results(state["topic"], unique_results)
+        save_knowledge(state["topic"], distilled)
+        state["knowledge_base"] = distilled
+    
+    _log_progress(state, "RESEARCH", f"Gathered {len(unique_results)} unique reference points and updated KB.", duration=time.time() - start_t)
     return state
 
 
@@ -1352,6 +1419,12 @@ def deploy_node(state: TonyState) -> TonyState:
 
 # ── Router ────────────────────────────────────────────────────────────────────
 
+def should_research(state: TonyState) -> str:
+    """Route to research node if director requested queries, otherwise proceed to vision."""
+    if state.get("search_queries"):
+        return "research"
+    return "vision"
+
 def route_by_mode(state: TonyState) -> str:
     """After vision — branch to one of the 4 paths."""
     mode = (state.get("render_mode") or "").strip().lower()
@@ -1411,7 +1484,14 @@ workflow.add_node("deploy",        deploy_node)  # ← Unified Deployment Sentin
 # Execution Flow
 workflow.set_entry_point("director")
 
-workflow.add_edge("director", "vision")
+workflow.add_node("research", research_node)
+
+workflow.add_conditional_edges("director", should_research, {
+    "research": "research",
+    "vision": "vision"
+})
+
+workflow.add_edge("research", "director") # Loop back to director with new context
 
 workflow.add_conditional_edges("vision", route_by_mode, {
     "architect":   "architect",
@@ -1497,6 +1577,10 @@ if __name__ == "__main__":
 
         "heygen_video_path":  None,
         "subtitle_style":     None,
+
+        "search_queries":     None,
+        "search_results":     None,
+        "knowledge_base":     None,
     })
 
     print(f"\n🏆 Curtain Call: {args.topic}")

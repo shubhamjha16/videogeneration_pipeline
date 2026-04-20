@@ -478,6 +478,31 @@ input:checked + .slider:before { transform: translateX(20px); background-color: 
 .info { color: var(--primary); }
 .success { color: var(--success); }
 .warning { color: var(--warning); }
+
+/* --- Industrial Research & KB Styles --- */
+.log-line.research {
+    color: #FBBF24; /* Golden Research color */
+    background: rgba(251, 191, 36, 0.05);
+    border-left: 2px solid #FBBF24;
+    padding-left: 8px;
+    margin-left: -10px;
+}
+
+.log-line.knowledge {
+    color: #10B981; /* Emerald Knowledge color */
+    background: rgba(16, 185, 129, 0.05);
+    border-left: 2px solid #10B981;
+    padding-left: 8px;
+    margin-left: -10px;
+}
+
+.node-label {
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    margin-right: 4px;
+}
+
 .cursor { animation: blink 1s infinite; color: var(--primary); font-weight: 700; }
 
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }

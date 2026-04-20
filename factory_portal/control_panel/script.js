@@ -196,8 +196,15 @@ function updateTelemetry(job) {
 
         const line = document.createElement('div');
         line.id = logId;
-        line.className = 'log-line';
-        line.innerHTML = `<span class="timestamp">[${time}]</span> <span class="${log.type}">${log.node}:</span> ${log.msg}`;
+        
+        // Dynamic class assignment for "Industrial Observability"
+        let nodeClass = log.type;
+        const nodeName = (log.node || '').toUpperCase();
+        if (nodeName.includes('RESEARCH')) nodeClass += ' research';
+        if (nodeName.includes('KNOWLEDGE')) nodeClass += ' knowledge';
+
+        line.className = `log-line ${nodeClass}`;
+        line.innerHTML = `<span class="timestamp">[${time}]</span> <span class="node-label">${log.node}:</span> ${log.msg}`;
         
         consoleOutput.appendChild(line);
     });

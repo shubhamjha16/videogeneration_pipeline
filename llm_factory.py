@@ -18,7 +18,7 @@ except ImportError:
 class LLMFactory:
     """
     Industrial Hub for LLM operations.
-    Supports Groq (Llama 3), Google (Gemini), and Local (Gemma/WireGuard).
+    Supports Local (Gemma 4 / WireGuard), Groq (Llama 3), and Google (Gemini).
     """
     
     @staticmethod

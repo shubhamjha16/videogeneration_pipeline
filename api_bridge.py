@@ -24,6 +24,7 @@ import json
 import copy
 import time
 import config
+from datetime import datetime
 from typing import List, Dict, Any
 try:
     import fcntl
@@ -128,7 +129,6 @@ def _sanitize_stalled_jobs():
                     except Exception as e:
                         print(f"⚠️ Hygiene Failure: {e}")
                 
-                from datetime import datetime
                 details["updated_at"] = datetime.utcnow().isoformat() + "Z"
                 found_stalled = True
     if found_stalled:

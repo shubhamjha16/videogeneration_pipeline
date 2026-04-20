@@ -15,6 +15,8 @@ HEYGEN_API_KEY = os.environ.get("HEYGEN_API_KEY", "")
 HIGGSFIELD_API_ID = os.environ.get("HIGGSFIELD_API_ID", "")
 HIGGSFIELD_API_KEY = os.environ.get("HIGGSFIELD_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
+SEARXNG_RESULTS_LIMIT = int(os.environ.get("SEARXNG_RESULTS_LIMIT", "5"))
 
 # LLM Providers (groq | google | local)
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "groq")
