@@ -48,9 +48,9 @@ import os
 import json
 import copy
 import anthropic
-from groq import Groq
 from pydantic import BaseModel
 from typing import Literal, Any
+from llm_factory import LLMFactory, clean_llm_json
 
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -217,26 +217,17 @@ def run_director(parsed_facts: dict) -> DirectorOutput:
     Returns:
         DirectorOutput with render_mode and scenes list
     """
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY missing from environment")
-        
-    client = Groq(api_key=api_key)
     user_message = _build_prompt(parsed_facts)
-    # Groq handles JSON mode via response_format={"type": "json_object"}
     system_prompt_with_schema = SYSTEM_PROMPT + "\n\nCRITICAL: Output valid JSON exactly matching this schema:\n" + json.dumps(DirectorOutput.model_json_schema(),)
     
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt_with_schema},
-            {"role": "user", "content": user_message}
-        ],
-        response_format={"type": "json_object"},
+    content = LLMFactory.get_completion(
+        messages=[{"role": "user", "content": user_message}],
+        system_prompt=system_prompt_with_schema,
+        json_mode=True
     )
     
     try:
-        data = json.loads(response.choices[0].message.content)
+        data = clean_llm_json(content)
         return DirectorOutput(**data)
     except Exception as e:
         # Log the raw content for debugging if it fails

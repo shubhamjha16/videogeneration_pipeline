@@ -292,8 +292,10 @@ class RenderRequest(BaseModel):
 
 class JobStatus(BaseModel):
     job_id:       str
+    topic:        str  = ""
     status:       str         # queued | processing | completed | failed
     video_url:    str  = ""
+    thumbnail_url: str = ""
     error:        str  = ""
     progress:     int  = 0    # 0 to 100
     current_step: str  = ""
@@ -309,8 +311,10 @@ class JobStatus(BaseModel):
         json_schema_extra = {
             "example": {
                 "job_id": "4a8d5928-cae",
+                "topic": "Newton's Laws of Motion",
                 "status": "completed",
                 "video_url": "/stream/4a8d5928-cae/lesson_video.mp4",
+                "thumbnail_url": "/stream/4a8d5928-cae/thumbnail.png",
                 "progress": 100,
                 "current_step": "DEPLOY",
                 "render_mode": "manim",

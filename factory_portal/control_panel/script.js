@@ -214,23 +214,19 @@ function updateVault(jobs) {
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     // Build cards HTML
-    const colors = [
-        'linear-gradient(135deg, #3B82F6, #1E40AF)',
-        'linear-gradient(135deg, #EF4444, #991B1B)',
-        'linear-gradient(135deg, #10B981, #065F46)',
-        'linear-gradient(135deg, #8B5CF6, #5B21B6)',
-        'linear-gradient(135deg, #F59E0B, #92400E)',
-    ];
-
     const cards = completed.map((job, i) => {
-        const color = colors[i % colors.length];
+        const thumbUrl = job.thumbnail_url || '';
+        const thumbStyle = thumbUrl 
+            ? `background: url('${thumbUrl}') center/cover no-repeat`
+            : `background: linear-gradient(135deg, #3B82F6, #1E40AF)`;
+
         const mode = (job.render_mode || 'auto').toUpperCase();
         const date = new Date(job.created_at).toLocaleDateString();
         const videoUrl = job.video_url || '';
 
         return `
         <div class="vault-card glass">
-            <div class="thumbnail" style="background: ${color};">
+            <div class="thumbnail" style="${thumbStyle};">
                 <div class="overlay"><i data-lucide="play-circle"></i></div>
                 <span class="duration">${mode}</span>
             </div>

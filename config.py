@@ -16,6 +16,11 @@ HIGGSFIELD_API_ID = os.environ.get("HIGGSFIELD_API_ID", "")
 HIGGSFIELD_API_KEY = os.environ.get("HIGGSFIELD_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
+# LLM Providers (groq | google | local)
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "groq")
+LOCAL_LLM_URL = os.environ.get("LOCAL_LLM_URL", "http://localhost:11434/v1")
+LOCAL_LLM_MODEL = os.environ.get("LOCAL_LLM_MODEL", "gemma:4b")
+
 
 # Pipeline Settings
 DEFAULT_AVATAR = "logo"

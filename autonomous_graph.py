@@ -128,6 +128,8 @@ def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = 
             _api_bridge_refs = api_bridge
         except ImportError: pass
         
+    from llm_factory import LLMFactory, clean_llm_json
+
     if _api_bridge_refs:
         with _api_bridge_refs._jobs_lock:
             if job_id in _api_bridge_refs.jobs:
@@ -180,31 +182,32 @@ def _log_fallback(state: "TonyState", node_name: str, fallback: str, reason: str
     }
     _log_progress(state, node_name, json.dumps(payload, ensure_ascii=False), "warning")
 
-def _groq_json_with_retry(client: Any, *, model: str, messages: list[dict], node_name: str, state: "TonyState") -> dict:
-    """Retry Groq JSON call for transient failures, then raise."""
+def _llm_json_with_retry(*, messages: list[dict], node_name: str, state: TonyState, system_prompt: Optional[str] = None) -> dict:
+    """Retry LLM JSON call for transient failures, then raise."""
+    from llm_factory import LLMFactory, clean_llm_json
     last_exc = None
     for attempt in range(1, _GROQ_MAX_ATTEMPTS + 1):
         try:
-            response = client.chat.completions.create(
-                model=model,
+            content = LLMFactory.get_completion(
                 messages=messages,
-                response_format={"type": "json_object"},
+                system_prompt=system_prompt,
+                json_mode=True
             )
-            return json.loads(response.choices[0].message.content)
+            return clean_llm_json(content)
         except Exception as e:
             if isinstance(e, (json.JSONDecodeError, KeyError, TypeError, ValueError)):
-                raise RuntimeError(f"Groq response was non-retryable for {node_name}: {e}") from e
+                raise RuntimeError(f"LLM response was non-retryable for {node_name}: {e}") from e
             last_exc = e
             if attempt < _GROQ_MAX_ATTEMPTS:
                 _log_fallback(
                     state,
                     node_name,
-                    fallback="groq_retry",
+                    fallback="llm_retry",
                     reason=f"attempt {attempt}/{_GROQ_MAX_ATTEMPTS} failed: {e}",
                     error_class=type(e).__name__,
                 )
                 time.sleep(attempt)
-    raise RuntimeError(f"Groq call failed after {_GROQ_MAX_ATTEMPTS} attempts: {last_exc}")
+    raise RuntimeError(f"LLM call failed after {_GROQ_MAX_ATTEMPTS} attempts: {last_exc}")
 
 def get_job_dir(state: "TonyState") -> str:
     """Isolated sandbox for the current job."""
@@ -270,6 +273,7 @@ class TonyState(TypedDict):
     # ── After supervisor_node ─────────────────────────
     output_path:  Optional[str]
     video_url:    Optional[str]
+    thumbnail_url: Optional[str]
 
     # ── PPT-specific (presentation path) ──────────────
     slides:           Optional[list]   # [{layout, data, narration}] from Groq
@@ -822,11 +826,7 @@ def ppt_planner_node(state: TonyState) -> TonyState:
 
     print(f"📋 [PPT Planner] Planning slides for: {state['topic']} (attempt {attempt + 1})")
 
-    from groq import Groq
     import json
-
-    groq_api_key = os.environ.get("GROQ_API_KEY")
-    client = Groq(api_key=groq_api_key) if groq_api_key else None
     text = " ".join(s["narration_text"] for s in state["scenes"])
 
     # Inject critic feedback on retry
@@ -837,15 +837,11 @@ def ppt_planner_node(state: TonyState) -> TonyState:
     prompt = _PPT_PLANNER_PROMPT.format(feedback_section=feedback_section)
 
     try:
-        if client is None:
-            raise RuntimeError("GROQ_API_KEY missing")
-        data = _groq_json_with_retry(
-            client,
-            model="llama-3.3-70b-versatile",
+        data = _llm_json_with_retry(
             messages=[
-                {"role": "system", "content": prompt},
                 {"role": "user",   "content": f"TOPIC: {state['topic']}\n\nCONTENT:\n{text}"}
             ],
+            system_prompt=prompt,
             node_name="PPT_PLANNER",
             state=state,
         )
@@ -893,15 +889,11 @@ def ppt_critic_node(state: TonyState) -> TonyState:
     ], indent=2)
 
     try:
-        if client is None:
-            raise RuntimeError("GROQ_API_KEY missing")
-        result = _groq_json_with_retry(
-            client,
-            model="llama-3.3-70b-versatile",
+        result = _llm_json_with_retry(
             messages=[
-                {"role": "system",  "content": critic_prompt},
                 {"role": "user",    "content": f"TOPIC: {state['topic']}\n\nSLIDE PLAN:\n{slides_summary}"}
             ],
+            system_prompt=critic_prompt,
             node_name="PPT_CRITIC",
             state=state,
         )
@@ -1322,6 +1314,28 @@ def deploy_node(state: TonyState) -> TonyState:
         _log_progress(state, "DEPLOY", f"Masterclass published successfully: {video_url}", duration=time.time() - start_t)
     else:
         _log_progress(state, "DEPLOY", "Deployment succeeded with local asset only.", duration=time.time() - start_t)
+
+    # Thumbnail generation
+    job_dir = get_job_dir(state)
+    try:
+        from thumbnail_generator import generate_thumbnail
+        thumbnail_path = generate_thumbnail(
+            topic=state.get("topic", ""),
+            subject=state.get("parsed_facts", {}).get("subject", "unknown"),
+            key_points=state.get("parsed_facts", {}).get("key_points", []),
+            job_dir=job_dir,
+            filename="thumbnail.png"
+        )
+        thumbnail_url = _upload_to_s3(
+            thumbnail_path, 
+            state["topic"], 
+            job_id
+        )
+        state["thumbnail_url"] = thumbnail_url
+        _log_progress(state, "DEPLOY", f"Thumbnail generated: {thumbnail_url}")
+    except Exception as e:
+        print(f"⚠️ Thumbnail generation failed: {e}")
+        state["thumbnail_url"] = ""
 
     # Industrial Disk Hygiene: Purge local job sandbox after successful cloud handover.
     if video_url and os.environ.get("AUTO_DELETE_JOB_DIR", "false").lower() == "true":

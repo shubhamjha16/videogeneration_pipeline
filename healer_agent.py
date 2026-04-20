@@ -8,7 +8,7 @@ Called by autonomous_graph.py healer_node on render failure.
 
 import os
 import re
-from groq import Groq
+from llm_factory import LLMFactory
 
 SYSTEM_PROMPT = """You are a Manim expert fixing broken Python animation scripts.
 
@@ -40,27 +40,18 @@ def run_healer(broken_script: str, error_message: str) -> str:
     Returns:
         Fixed Python script as a string
     """
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        print("⚠️ [Healer] GROQ_API_KEY missing. Skipping autonomous repair.")
-        # Return the original script so the pipeline has some code to attempt, 
-        # but the failure will persist until manually fixed.
-        return broken_script
-
-    client = Groq(api_key=api_key)
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+    content = LLMFactory.get_completion(
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": (
                 f"ERROR MESSAGE:\n{error_message}\n\n"
                 f"BROKEN SCRIPT:\n```python\n{broken_script}\n```\n\n"
                 f"Return the complete fixed script."
             )}
-        ]
+        ],
+        system_prompt=SYSTEM_PROMPT,
+        json_mode=False
     )
-    fixed = response.choices[0].message.content
+    fixed = content
     # Robust extraction: Only take what is inside ```python ... ```
     # If LLM includes chatter outside the blocks, this prevents a SyntaxError in Manim.
     match = re.search(r'```python\s*(.*?)```', fixed, re.DOTALL)

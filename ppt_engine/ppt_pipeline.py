@@ -143,21 +143,18 @@ Return valid JSON only — no explanation, no markdown:
 
 
 def _split_into_slides(topic: str, text: str) -> list[dict]:
-    """Use Groq to intelligently split text into presentation slides."""
-    from groq import Groq
+    """Use configured LLM to intelligently split text into presentation slides."""
+    from llm_factory import LLMFactory, clean_llm_json
 
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+    content = LLMFactory.get_completion(
         messages=[
-            {"role": "system", "content": _SPLIT_PROMPT},
             {"role": "user", "content": f"TOPIC: {topic}\n\nCONTENT:\n{text}"}
         ],
-        response_format={"type": "json_object"}
+        system_prompt=_SPLIT_PROMPT,
+        json_mode=True
     )
 
-    data = json.loads(response.choices[0].message.content)
+    data = clean_llm_json(content)
     slides = data.get("slides", [])
     print(f"   Groq planned {len(slides)} slides:")
     for i, s in enumerate(slides):
