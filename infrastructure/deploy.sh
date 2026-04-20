@@ -2,13 +2,14 @@
 # ----------------------------------------------------------------------------
 # AWS ECS & ALB Deployment Commands for EaseToLearn Factory
 # ----------------------------------------------------------------------------
-# Note: Replace variables (ACCOUNT_ID, etc.) before running this directly.
+# ----------------------------------------------------------------------------
+# Note: Variables can be overridden by environment vars (useful for Jenkins/CI).
 # ----------------------------------------------------------------------------
 
-export AWS_REGION="ap-south-1"
-export PROJECT_NAME="easetolearn-factory"
-export CLUSTER_NAME="${PROJECT_NAME}-cluster"
-export STACK_NAME="${PROJECT_NAME}-production-stack"
+export AWS_REGION="${AWS_REGION:-ap-south-1}"
+export PROJECT_NAME="${PROJECT_NAME:-easetolearn-factory}"
+export CLUSTER_NAME="${CLUSTER_NAME:-${PROJECT_NAME}-cluster}"
+export STACK_NAME="${STACK_NAME:-${PROJECT_NAME}-production-stack}"
 
 echo "1. Deploying/Updating AWS Infrastructure Stack (CloudFormation)..."
 aws cloudformation deploy \
