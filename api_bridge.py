@@ -22,6 +22,9 @@ import threading
 import requests
 import json
 import copy
+import time
+import config
+from typing import List, Dict, Any
 try:
     import fcntl
 except ImportError:
@@ -130,6 +133,84 @@ def _sanitize_stalled_jobs():
                 found_stalled = True
     if found_stalled:
         _safe_save_jobs("startup stalled-job sanitization")
+    
+    # ── [NEW] Disk Hygiene Janitor ───────────────────────────────────────────
+    # This runs periodically to purge old staging files from output/
+    
+    def _perform_disk_hygiene():
+        """Industrial Janitor: Scan output/ and purge old or orphaned folders."""
+        print("🧼 [Hygiene Janitor] Starting scheduled cleanup pass...")
+        media_root = os.environ.get("MANIM_MEDIA_DIR", "output")
+        if not os.path.exists(media_root):
+            return
+            
+        now = datetime.utcnow()
+        retention_hours = config.HYGIENE_RETENTION_HOURS
+        purged_count = 0
+        
+        # Reload jobs to get latest timestamps
+        all_jobs = _load_jobs()
+        
+        for item in os.listdir(media_root):
+            item_path = os.path.join(media_root, item)
+            if not os.path.isdir(item_path) or not item.startswith("job_"):
+                continue
+                
+            job_id = item.replace("job_", "")
+            
+            # 1. Determine if it's an orphan or stale
+            should_purge = False
+            reason = ""
+            
+            if job_id not in all_jobs:
+                should_purge = True
+                reason = "orphan (no job record)"
+            else:
+                job_data = all_jobs[job_id]
+                created_at_str = job_data.get("created_at")
+                if created_at_str:
+                    try:
+                        # Handle potential Z suffix
+                        clean_stamp = created_at_str.replace("Z", "")
+                        created_at = datetime.fromisoformat(clean_stamp)
+                        age = now - created_at
+                        if (age.total_seconds() / 3600) > retention_hours:
+                            should_purge = True
+                            reason = f"stale (age: {round(age.total_seconds()/3600, 1)}h > {retention_hours}h)"
+                    except Exception as e:
+                        print(f"⚠️ Hygiene Warning: Could not parse timestamp for job {job_id}: {e}")
+            
+            # 2. Execute Purge
+            if should_purge:
+                try:
+                    shutil.rmtree(item_path)
+                    print(f"🧹 [Hygiene Janitor] Purged {reason}: {item}")
+                    purged_count += 1
+                except Exception as e:
+                    print(f"⚠️ Hygiene Failure on {item_path}: {e}")
+
+        if purged_count > 0:
+            print(f"✅ [Hygiene Janitor] Cleanup complete. Purged {purged_count} directories.")
+        else:
+            print("✨ [Hygiene Janitor] Cleanup complete. Disk is tidy.")
+
+    def _run_hygiene_daemon():
+        """Internal background loop for the Janitor daemon."""
+        # Initial sleep to let the server warm up
+        time.sleep(30)
+        while True:
+            try:
+                _perform_disk_hygiene()
+            except Exception as e:
+                print(f"⚠️  Hygiene Daemon Error: {e}")
+            
+            # Wait for next interval
+            check_interval = config.HYGIENE_CHECK_INTERVAL_SECONDS
+            time.sleep(check_interval)
+
+    # Launch Janitor as a background daemon
+    hygiene_thread = threading.Thread(target=_run_hygiene_daemon, daemon=True, name="HygieneJanitor")
+    hygiene_thread.start()
 
 
 def _load_jobs():

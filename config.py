@@ -21,6 +21,10 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "groq")
 LOCAL_LLM_URL = os.environ.get("LOCAL_LLM_URL", "http://localhost:11434/v1")
 LOCAL_LLM_MODEL = os.environ.get("LOCAL_LLM_MODEL", "gemma:4b")
 
+# Disk Hygiene (Staging Area Cleanup)
+HYGIENE_RETENTION_HOURS = int(os.environ.get("HYGIENE_RETENTION_HOURS", "24"))
+HYGIENE_CHECK_INTERVAL_SECONDS = int(os.environ.get("HYGIENE_CHECK_INTERVAL_SECONDS", "3600")) # Default: 1 hour
+
 
 # Pipeline Settings
 DEFAULT_AVATAR = "logo"
