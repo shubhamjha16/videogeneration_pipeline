@@ -28,11 +28,12 @@ media/
 # MacOS
 .DS_Store
 
-# Temporary / Scratch Files
+# Temporary / Scratch Files (Allow professional tests/)
+!tests/
 temp_*.py
 *masterclass.py
 merge_*.py
-test_*.py
+# test_*.py (formerly ignored, now un-ignored for Jenkins)
 bpf_*.txt
 bpf_*.html
 narration*

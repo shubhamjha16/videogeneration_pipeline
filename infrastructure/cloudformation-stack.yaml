@@ -244,6 +244,23 @@ Resources:
     Properties:
       ClusterName: !Sub '${ProjectName}-cluster'
 
+  # ── ECS Bootstrap (Needed for initial Stack creation) ──
+  BootstrapTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-bootstrap'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: factory-fastapi
+          Image: public.ecr.aws/amazonlinux/amazonlinux:latest
+          Command: ["/bin/sh", "-c", "echo 'Bootstrap complete. Waiting for real deploy...'; sleep 3600"]
+          PortMappings:
+            - ContainerPort: 8000
+
   # ── ECS Service ──
   ECSService:
     Type: AWS::ECS::Service
@@ -252,6 +269,7 @@ Resources:
       ServiceName: factory-service
       Cluster: !Ref ECSCluster
       LaunchType: FARGATE
+      TaskDefinition: !Ref BootstrapTaskDefinition
       DesiredCount: 1
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -265,10 +283,6 @@ Resources:
         - ContainerName: factory-fastapi
           ContainerPort: 8000
           TargetGroupArn: !Ref TargetGroup
-      # TaskDefinition is omitted here because it's managed by the deploy.sh script
-      # via dynamic registration. The first deployment will need a manual task creation
-      # or we can point it to a dummy one. For industrial standard, we'll keep the Service
-      # definition but deploy.sh will handle the TaskDef updates.
 
 
 Outputs:

@@ -18,8 +18,12 @@ pipeline {
             steps {
                 echo '🚀 Running Automated Tests...'
                 sh '''
-                    pip install -r requirements.txt
-                    pytest tests/ --maxfail=1 --disable-warnings
+                    if [ ! -d "tests" ]; then
+                        echo "❌ ERROR: 'tests/' directory not found. Check gitignore settings."
+                        exit 1
+                    fi
+                    python3 -m pip install -r requirements.txt
+                    python3 -m pytest tests/ --maxfail=1 --disable-warnings
                 '''
             }
         }
