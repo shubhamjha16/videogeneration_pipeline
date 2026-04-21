@@ -405,11 +405,17 @@ def research_node(state: TonyState) -> TonyState:
     from searxng_tool import search_searxng
     all_results = state.get("search_results") or []
     
-    for query in queries:
-        print(f"   🔎 Searching: {query}")
-        _log_progress(state, "RESEARCH", f"🔎 Metasearch: '{query}'")
-        results = search_searxng(query)
-        all_results.extend(results)
+    try:
+        for query in queries:
+            print(f"   🔎 Searching: {query}")
+            _log_progress(state, "RESEARCH", f"🔎 Metasearch: '{query}'")
+            results = search_searxng(query)
+            all_results.extend(results)
+    except Exception as e:
+        # CIRCUIT BREAKER: If search fails technically, log warning and proceed with internal knowledge
+        warn_msg = f"⚠️ SearXNG Connection Failed: {e}. Falling back to internal knowledge."
+        print(f"   {warn_msg}")
+        _log_progress(state, "RESEARCH", warn_msg, "warning")
     
     # Store unique results by URL to avoid bloat
     seen_urls = set()
@@ -790,6 +796,7 @@ STEP 2 — Design a presentation that could ONLY be about this topic:
 
 - The narration must sound like a teacher who genuinely finds this fascinating
 - Use contrast, surprise, and specific numbers/names/dates — not vague generalities
+- PRIORITIZE GROUND TRUTH: If a "Verified Ground Truth" section is provided below, treat it as your absolute primary source for facts.
 
 STEP 3 — Layout rules:
 - 6 to 9 slides total
@@ -800,6 +807,8 @@ STEP 3 — Layout rules:
 - bullets must list SPECIFIC items (names, dates, numbers) — not vague categories
 - key_highlight must show ONE specific number/date/name that defines this topic
 - Narration must be 1-3 sentences, conversational, adds insight beyond the slide text
+
+{knowledge_section}
 
 {feedback_section}
 
@@ -896,12 +905,21 @@ def ppt_planner_node(state: TonyState) -> TonyState:
     import json
     text = " ".join(s["narration_text"] for s in state["scenes"])
 
+    # Inject Knowledge Base if available
+    knowledge_section = ""
+    kb = state.get("knowledge_base")
+    if kb:
+        knowledge_section = f"\n━━━ VERIFIED GROUND TRUTH (KNOWLEDGE BASE) ━━━\n{json.dumps(kb, indent=2)}\n"
+
     # Inject critic feedback on retry
     feedback_section = ""
     if feedback:
         feedback_section = f"\n⚠️ PREVIOUS ATTEMPT WAS REJECTED. Fix these specific issues:\n{feedback}\nDo NOT repeat the same mistakes.\n"
 
-    prompt = _PPT_PLANNER_PROMPT.format(feedback_section=feedback_section)
+    prompt = _PPT_PLANNER_PROMPT.format(
+        knowledge_section=knowledge_section,
+        feedback_section=feedback_section
+    )
 
     try:
         data = _llm_json_with_retry(

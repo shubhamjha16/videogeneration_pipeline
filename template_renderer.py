@@ -119,6 +119,8 @@ def _scene_title_card(scene: dict, idx: int, topic: str = "EaseToLearn") -> str:
         # Scene {idx}: title_card
         title_{idx} = {tex(title)}
         title_{idx}.scale(1.4).move_to(UP * 0.5)
+        if title_{idx}.width > 12: title_{idx}.set_width(12)  # Industrial Fit
+
         self.play(Write(title_{idx}), run_time=1.2){subtitle_code}
         {_wait(duration, anim_time)}
         self.play(FadeOut(title_{idx}){fadeout_sub})
@@ -302,8 +304,12 @@ def _scene_formula_display(scene: dict, idx: int) -> str:
         self._clear()
         formula_{idx} = {math(formula)}
         formula_{idx}.scale(1.6).move_to(UP * 0.5)
+        if formula_{idx}.width > 12: formula_{idx}.set_width(12)  # Industrial Fit
+
         label_{idx} = {tex(label)}
         label_{idx}.scale(0.75).set_color(BLUE_C).next_to(formula_{idx}, DOWN, buff=0.5)
+        if label_{idx}.width > 10: label_{idx}.set_width(10)      # Label Fit
+
         self.play(Write(formula_{idx}), run_time=1.5)
         self.play(FadeIn(label_{idx}))
         self.wait({duration})
@@ -329,10 +335,11 @@ def _scene_step_by_step(scene: dict, idx: int) -> str:
         is_math = any(c in step for c in ['=', '∫', '∑', 'd/dx', '\\']) or \
                   bool(re.search(r'\^|_|\d+\s*[\+\-\*\/]|\bfrac\b|\bsqrt\b|\bint\b', step))
         if is_math:
-            lines.append(f"        {vname} = {math(step[:60])}")
+            lines.append(f"        {vname} = {math(step[:80])}")
         else:
-            lines.append(f"        {vname} = {tex(step[:70])}")
+            lines.append(f"        {vname} = {tex(step[:100])}")
         lines.append(f"        {vname}.scale(0.75).move_to(np.array([0, {1.2 - si * 1.0}, 0]))")
+        lines.append(f"        if {vname}.width > 12: {vname}.set_width(12)")  # Adaptive Fitting
         lines.append(f"        self.play(Write({vname}), run_time=0.9)")
 
     lines.append(f"        {_wait(duration, anim_time)}")
@@ -359,6 +366,7 @@ def _scene_concept_bullets(scene: dict, idx: int) -> str:
         lines.append(f"            {tex(bullet[:65])}.scale(0.75),")
         lines.append(f"        ).arrange(RIGHT, buff=0.15)")
         lines.append(f"        {vname}.move_to(np.array([0, {1.2 - bi * 1.1}, 0]))")
+        lines.append(f"        if {vname}.width > 12: {vname}.set_width(12)")  # Adaptive Fitting
         lines.append(f"        self.play(FadeIn({vname}), run_time=0.7)")
 
     lines.append(f"        {_wait(duration, anim_time)}")
@@ -386,6 +394,7 @@ def _scene_summary(scene: dict, idx: int) -> str:
         lines.append(f"            {tex(point[:65])}.scale(0.75),")
         lines.append(f"        ).arrange(RIGHT, buff=0.2)")
         lines.append(f"        {vname}.move_to(np.array([0, {1.4 - pi * 1.1}, 0]))")
+        lines.append(f"        if {vname}.width > 12: {vname}.set_width(12)")  # Adaptive Fitting
         lines.append(f"        self.play(FadeIn({vname}), run_time=0.7)")
 
     lines.append(f"        {_wait(duration, anim_time)}")
@@ -400,16 +409,24 @@ The scene index is provided — suffix ALL variable names with _{idx} to avoid c
 ━━━ GOLDEN EXAMPLES (Follow these patterns EXACTLY) ━━━
 
 EXAMPLE 1 (Function Plot):
-        axes_{idx} = Axes(x_range=[-3, 3, 1], y_range=[0, 9, 1], x_length=7, y_length=5)
+        axes_{idx} = Axes(x_range=[-3, 3, 1], y_range=[0, 9, 1], axis_config={"include_tip": True})
+        axes_{idx}.add_coordinates()
         curve_{idx} = axes_{idx}.get_graph(lambda x: x**2, color=BLUE)
         self.play(Create(axes_{idx}))
         self.play(Create(curve_{idx}))
         self.wait({duration})
 
 EXAMPLE 2 (Bar Chart):
-        bar_{idx} = BarChart(values=[10, 20, 30], bar_names=["A", "B", "C"], y_range=[0, 40, 10], x_length=6, y_length=4)
+        # Use BarChart with explicit length for 16:9 frame safety
+        bar_{idx} = BarChart(values=[10, 20, 30], bar_names=["A", "B", "C"], y_range=[0, 40, 10], x_length=7, y_length=5)
         self.play(Create(bar_{idx}))
         self.wait({duration})
+
+━━━ INDUSTRIAL LAYOUT RULES ━━━
+- ALWAYS use `axes.add_coordinates()` for clarity.
+- ALWAYS set `x_length` and `y_length` to prevent the graph from touching screen edges.
+- Use `x_length=8, y_length=5` as a safe default for a 16:9 horizontal frame.
+- For geometry, avoid `self.set_background()`.
 
 ━━━ CRITICAL SECURITY RULES ━━━
 - NEVER use `self.set_background()` or `self.set_text()`. They do not exist.

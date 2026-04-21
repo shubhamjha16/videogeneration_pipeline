@@ -59,8 +59,12 @@ def search_searxng(query: str, categories: str = "general", limit: int = None) -
             
         return formatted
         
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        # Re-raise technical errors so the caller (orchestrator) can handle fallback
+        print(f"❌ SearXNG Technical Failure: {e}")
+        raise RuntimeError(f"SearXNG connection failed: {e}") from e
     except Exception as e:
-        print(f"❌ SearXNG Search Failed: {e}")
+        print(f"❌ Unexpected Search Error: {e}")
         return []
 
 if __name__ == "__main__":

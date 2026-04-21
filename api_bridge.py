@@ -323,7 +323,9 @@ _sanitize_stalled_jobs()
 
 def _notify_webhook_with_retry(job_id: str, status_data: dict):
     """Industrial Sentinel: Robust notification with exponential backoff and full payload parity."""
-    webhook_url = os.environ.get("WEBHOOK_URL")
+    # Priority: 1. Request-specific URL | 2. Registry value | 3. Global Env
+    webhook_url = status_data.get("webhook_url") or os.environ.get("WEBHOOK_URL")
+    
     if not webhook_url:
         return
 
@@ -358,6 +360,7 @@ class RenderRequest(BaseModel):
     with_avatar: bool = False
     video_type:  Optional[Literal["marketing", "educational"]] = None
     image_path:  Optional[str] = None
+    webhook_url: Optional[str] = None
 
     class Config:
         schema_extra = {
@@ -453,6 +456,9 @@ class AnalyticsResponse(BaseModel):
     success_rate: str
     avg_render_time_sec: float
     render_modes_breakdown: dict[str, int]
+    knowledge_base: dict[str, Any]  # {total_fact_sheets, storage_usage_kb}
+    finance: dict[str, Any]         # {total_est_cost_usd, avg_cost_per_video}
+    health: dict[str, str]          # {gemma_status, searxng_status}
 
     class Config:
         json_schema_extra = {
@@ -462,7 +468,10 @@ class AnalyticsResponse(BaseModel):
                 "failed": 15,
                 "success_rate": "85.0%",
                 "avg_render_time_sec": 45.2,
-                "render_modes_breakdown": {"manim": 50, "presentation": 35}
+                "render_modes_breakdown": {"manim": 50, "presentation": 35},
+                "knowledge_base": {"total_fact_sheets": 42, "storage_usage_kb": 125.5},
+                "finance": {"total_est_cost_usd": 12.45, "avg_cost_per_video": 0.14},
+                "health": {"gemma_status": "online", "searxng_status": "online"}
             }
         }
 
@@ -691,6 +700,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                     "error": str(e),
                     "video_url": "",
                     "progress": 0,
+                    "webhook_url": jobs[job_id].get("webhook_url"),
                     "updated_at": datetime.utcnow().isoformat() + "Z"
                 }
             )
@@ -749,6 +759,10 @@ def start_render(request: RenderRequest):
     if not request.topic or not request.html:
         raise HTTPException(status_code=400, detail="topic and html are required")
 
+    # 🛡️ MEDIA HARDENING: Validate image assets before enqueuing
+    if request.image_path:
+        _validate_image_asset(request.image_path)
+
     # INDUSTRIAL SENTINEL: Refresh memory state before collision check
     _load_jobs()
     
@@ -764,6 +778,7 @@ def start_render(request: RenderRequest):
     now_iso = datetime.utcnow().isoformat() + "Z"
 
     with _jobs_lock:
+        init_msg = f"🚀 Job initialized for topic: {request.topic} | Mode: {request.render_mode or 'auto'} | Avatar: {request.with_avatar}"
         jobs[job_id] = {
             "job_id":       job_id,
             "status":       "queued",
@@ -775,10 +790,11 @@ def start_render(request: RenderRequest):
             "with_avatar":  request.with_avatar,
             "video_type":   request.video_type,
             "image_path":   request.image_path,
+            "webhook_url":  request.webhook_url,
             "created_at":   now_iso,
             "updated_at":   now_iso,
             "topic":        request.topic,
-            "logs":         [{"node": "SYSTEM", "msg": f"Job initialized for topic: {request.topic}", "type": "info"}]
+            "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}]
         }
 
 
@@ -824,8 +840,18 @@ async def bulk_render(file: UploadFile = File(...)):
     for lesson in lessons:
         topic = lesson.get("topic", "Untitled")
         html = lesson.get("html", "")
+        img_path = lesson.get("image_path")
+
         if not html:
             continue
+            
+        # 🛡️ MEDIA HARDENING: Bulk Validation
+        if img_path:
+            try:
+                _validate_image_asset(img_path)
+            except HTTPException as e:
+                print(f"⚠️ Skipping bulk lesson '{topic}' due to invalid media: {e.detail}")
+                continue
             
         while True:
             job_id = str(uuid.uuid4())[:12]
@@ -836,6 +862,7 @@ async def bulk_render(file: UploadFile = File(...)):
         now_iso = datetime.utcnow().isoformat() + "Z"
         
         with _jobs_lock:
+            init_msg = f"🚀 Bulk job initialized for topic: {topic} | Mode: {lesson.get('render_mode', 'auto')}"
             jobs[job_id] = {
                 "job_id":       job_id,
                 "topic":        topic,
@@ -850,7 +877,7 @@ async def bulk_render(file: UploadFile = File(...)):
                 "image_path":   None,
                 "created_at":   now_iso,
                 "updated_at":   now_iso,
-                "logs":         [],
+                "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}],
                 "metrics":      {}
             }
         job_ids.append(job_id)
@@ -933,12 +960,36 @@ def get_analytics():
     failed = [j for j in all_jobs if j["status"] == "failed"]
     
     render_modes = {}
+    total_cost = 0.0
+    
+    # Cost constants (sync with estimate_costs)
+    COST_PER_GROQ_CALL = 0.002
+    COST_PER_ELEVENLABS_CHAR = 0.00003
+    COST_PER_HEYGEN_MIN = 0.50
+    COST_PER_HIGGSFIELD_CALL = 0.10
+
     for j in completed:
         mode = j.get("render_mode") or "auto"
         render_modes[mode] = render_modes.get(mode, 0) + 1
-    
+        
+        # Financial Aggregation
+        has_avatar = j.get("with_avatar", False)
+        est = COST_PER_GROQ_CALL * 3 
+        est += COST_PER_ELEVENLABS_CHAR * 2000
+        if mode == "explainer":
+            est += COST_PER_HIGGSFIELD_CALL * 3
+        if has_avatar:
+            est += COST_PER_HEYGEN_MIN * 2
+        total_cost += est
+        
     durations = [j.get("metrics", {}).get("total_duration_sec", 0) for j in completed]
     avg_duration = round(sum(durations) / len(durations), 1) if durations else 0
+    
+    # KB Stats
+    kb_stats = _get_kb_stats()
+    
+    # System Health (Probes)
+    health_status = _get_system_health()
     
     return {
         "total_jobs": len(all_jobs),
@@ -947,7 +998,85 @@ def get_analytics():
         "success_rate": f"{round(len(completed)/len(all_jobs)*100, 1)}%" if all_jobs else "0%",
         "avg_render_time_sec": avg_duration,
         "render_modes_breakdown": render_modes,
+        "knowledge_base": kb_stats,
+        "finance": {
+            "total_est_cost_usd": round(total_cost, 2),
+            "avg_cost_per_video": round(total_cost / len(completed), 4) if completed else 0
+        },
+        "health": health_status
     }
+
+def _get_kb_stats() -> dict:
+    """Helper to audit the Knowledge Base persistence layer."""
+    from knowledge_manager import KNOWLEDGE_DIR
+    import os
+    if not os.path.exists(KNOWLEDGE_DIR):
+        return {"total_fact_sheets": 0, "storage_usage_kb": 0.0}
+    
+    files = [f for f in os.listdir(KNOWLEDGE_DIR) if f.endswith(".json")]
+    total_size = sum(os.path.getsize(os.path.join(KNOWLEDGE_DIR, f)) for f in files)
+    
+    return {
+        "total_fact_sheets": len(files),
+        "storage_usage_kb": round(total_size / 1024, 2)
+    }
+
+def _get_system_health() -> dict:
+    """Lightweight connectivity probes for critical factory dependencies."""
+    import requests
+    import config
+    
+    health = {"gemma_status": "unknown", "searxng_status": "unknown"}
+    
+    # Probe Gemma 4 (Local LLM)
+    try:
+        # We check the /v1/models endpoint as it's a standard probe
+        resp = requests.get(config.LOCAL_LLM_URL.replace("/v1", "/v1/models"), timeout=2)
+        health["gemma_status"] = "online" if resp.status_code == 200 else "error"
+    except:
+        health["gemma_status"] = "offline"
+        
+    # Probe SearXNG (Metasearch)
+    try:
+        resp = requests.get(config.SEARXNG_URL, timeout=2)
+        health["searxng_status"] = "online" if resp.status_code == 200 else "error"
+    except:
+        health["searxng_status"] = "offline"
+        
+    return health
+
+def _validate_image_asset(path: str):
+    """
+    Industrial Sentinel: Defensive guard against dangerous or invalid media.
+    Prevents pipeline crashes by checking assets before compute allocation.
+    """
+    import os
+    
+    # 1. Extension Validation
+    ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp'}
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported media type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+    
+    # 2. Existence & Size Validation (if local path)
+    # Note: For S3 or Remote URLs, we would pre-sign or check headers here.
+    if not path.startswith(("http://", "https://")):
+        if not os.path.exists(path):
+            raise HTTPException(status_code=400, detail=f"Media asset not found: {path}")
+            
+        # Limit to 10MB to protect memory in Manim/HeyGen
+        max_size_mb = 10 
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+        if file_size_mb > max_size_mb:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Media asset too large ({file_size_mb:.1f}MB). Max limit is {max_size_mb}MB."
+            )
+    
+    return True
 
 
 @app.post("/retry/{job_id}", response_model=dict, dependencies=[SecurityDep], tags=["Operational"], summary="Retry failed job", description="Re-queues a failed job into the processing pipeline using its original HTML and topic. Resets progress and error state.")
