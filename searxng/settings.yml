@@ -1,0 +1,49 @@
+# EaseToLearn SearXNG Industrial Configuration
+# Optimised for LLM Research Agents
+
+use_default_settings: true
+
+server:
+  # Base URL for the instance
+  base_url: http://localhost:8080/
+  port: 8080
+  bind_address: "0.0.0.0" # Listen on all interfaces for Docker sidecar usage
+  secret_key: "industrial_factory_secret_key" # Change this in production
+  limiter: false # Disable rate limiter for local/internal sidecar reliability
+  image_proxy: true
+
+search:
+  safe_search: 1
+  autocomplete: ""
+  formats:
+    - html
+    - json # REQUIRED for the Factory API research node
+
+# Engines configuration
+# We prioritize general search and science for curricula
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    timeout: 3.0
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: w
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+  - name: wolframalpha
+    engine: wolframalpha
+    shortcut: wa
+    weight: 2.0 # Higher weight for science/math queries
+
+# UI tweaks to reduce payload size
+ui:
+  static_use_hash: true
+  infinite_scroll: false
+
+# Outgoing proxy (optional, if you have a VPN/Proxy)
+# outgoing:
+#   proxies:
+#     http: http://proxy:8080
+#     https: http://proxy:8080

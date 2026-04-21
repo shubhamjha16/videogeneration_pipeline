@@ -31,12 +31,37 @@ import textwrap
 from llm_factory import LLMFactory
 
 
+# ── Design System (3Blue1Brown High-Fidelity) ──────────────────────────────────
+
+# ── Design System (3Blue1Brown High-Fidelity) ──────────────────────────────────
+
+class DesignTokens:
+    BLUE   = "#58ADFF"
+    GREEN  = "#77DD77"
+    YELLOW = "#FFFF66"
+    RED    = "#FF6666"
+    PURPLE = "#C57AFF"
+    WHITE  = "#FFFFFF"
+    GRAY   = "#888888"
+    BLACK  = "#000000"
+    
+    # 3b1b 16:9 safe bounds
+    MAX_WIDTH = 12.0
+    TITLE_SIZE = 1.4
+    BODY_SIZE = 0.8
+    SUBTITLE_SIZE = 0.7
+
 # ── LaTeX helpers ─────────────────────────────────────────────────────────────
 
-def tex(text: str) -> str:
-    """Wrap plain text in LaTeX text mode for Tex()."""
+def tex(text: str, width: int = 45) -> str:
+    """
+    Industrial Sentinel: Smart multi-line LaTeX wrapping.
+    Prevents screen overflow by splitting long text into balanced 'VGroups'.
+    """
     if not text or not text.strip():
-        text = "-"  # empty/space Tex() crashes Manim
+        return f'Tex(r"\\text{{-}}", tex_template=my_template)'
+    
+    # 1. Sanitize for LaTeX
     escaped = (text
         .replace("\\", r"\textbackslash{}")
         .replace("&", r"\&")
@@ -49,12 +74,20 @@ def tex(text: str) -> str:
         .replace("~", r"\textasciitilde{}")
         .replace("^", r"\textasciicircum{}")
     )
-    return f'Tex(r"\\text{{{escaped}}}", tex_template=my_template)'
+
+    # 2. Wrap if too long
+    lines = textwrap.wrap(escaped, width=width)
+    if len(lines) > 1:
+        # Build a VGroup of individual Tex lines for perfect alignment
+        line_objs = [f'Tex(r"\\\\text{{{l}}}", tex_template=my_template)' for l in lines]
+        return f'VGroup({", ".join(line_objs)}).arrange(DOWN, aligned_edge=LEFT, buff=0.15)'
+    
+    return f'Tex(r"\\\\text{{{escaped}}}", tex_template=my_template)'
 
 
 def math(formula: str) -> str:
-    """Wrap a formula in MathTex."""
-    return f'MathTex(r"{formula}", tex_template=my_template)'
+    """Wrap a formula in MathTex with high-contrast 3b1b coloring."""
+    return f'MathTex(r"{formula}", tex_template=my_template).scale(1.2)'
 
 
 def _region_to_coords(region: str) -> str:
@@ -103,13 +136,15 @@ def _scene_title_card(scene: dict, idx: int, topic: str = "EaseToLearn") -> str:
     subtitle = d.get("subtitle", "").strip()
     duration = d.get("duration", 3.0)
 
-    anim_time = 1.2 + (0.8 if subtitle else 0)
+    # 3b1b Proportional Sync: 30% entrance, 70% hold/read
+    entrance_t = round(duration * 0.3, 2)
+    hold_t     = round(duration * 0.7, 2)
 
     if subtitle:
         subtitle_code = f"""
         subtitle_{idx} = {tex(subtitle)}
-        subtitle_{idx}.scale(0.8).set_color(BLUE_C).next_to(title_{idx}, DOWN, buff=0.4)
-        self.play(FadeIn(subtitle_{idx}), run_time=0.8)"""
+        subtitle_{idx}.scale(DesignTokens.SUBTITLE_SIZE).set_color(DesignTokens.BLUE).next_to(title_{idx}, DOWN, buff=0.4)
+        self.play(FadeIn(subtitle_{idx}), run_time={entrance_t})"""
         fadeout_sub = f", FadeOut(subtitle_{idx})"
     else:
         subtitle_code = ""
@@ -118,11 +153,11 @@ def _scene_title_card(scene: dict, idx: int, topic: str = "EaseToLearn") -> str:
     return f"""
         # Scene {idx}: title_card
         title_{idx} = {tex(title)}
-        title_{idx}.scale(1.4).move_to(UP * 0.5)
-        if title_{idx}.width > 12: title_{idx}.set_width(12)  # Industrial Fit
+        title_{idx}.scale(DesignTokens.TITLE_SIZE).set_color(DesignTokens.YELLOW).move_to(UP * 0.5)
+        if title_{idx}.width > DesignTokens.MAX_WIDTH: title_{idx}.set_width(DesignTokens.MAX_WIDTH)
 
-        self.play(Write(title_{idx}), run_time=1.2){subtitle_code}
-        {_wait(duration, anim_time)}
+        self.play(Write(title_{idx}), run_time={entrance_t if not subtitle else entrance_t/2}){subtitle_code}
+        self.wait({hold_t})
         self.play(FadeOut(title_{idx}){fadeout_sub})
 """
 
@@ -182,6 +217,11 @@ def _scene_mcq_layout(scene: dict, idx: int) -> str:
     options = d.get("options", {})
     duration = d.get("duration", 2.0)
 
+    # 3b1b Sync: 60% anim, 40% wait
+    entrance_t = round(duration * 0.6, 2)
+    hold_t     = round(duration * 0.4, 2)
+    per_opt_t  = round(entrance_t / len(options), 2) if options else 0.5
+
     lines = [f"\n        # Scene {idx}: mcq_layout — draw 4 option boxes"]
     lines.append(f"        self._clear()")
 
@@ -190,29 +230,42 @@ def _scene_mcq_layout(scene: dict, idx: int) -> str:
         vname = f"opt_{letter}_{idx}"
         lines.append(f"""
         {vname}_box = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15,
-            color=WHITE, stroke_width=2).move_to({pos})
+            color=DesignTokens.WHITE, stroke_width=2).move_to({pos})
         {vname}_letter = {tex(letter + ".")}
-        {vname}_letter.scale(0.85).set_color(BLUE_C).move_to({pos} + np.array([-2.4, 0, 0]))
-        {vname}_text = {tex(name[:45])}
+        {vname}_letter.scale(0.85).set_color(DesignTokens.BLUE).move_to({pos} + np.array([-2.4, 0, 0]))
+        {vname}_text = {tex(name, width=35)}
         {vname}_text.scale(0.65).move_to({pos} + np.array([0.3, 0, 0]))
-        self.play(
-            FadeIn({vname}_box),
-            Write({vname}_letter),
-            Write({vname}_text),
-            run_time=0.5,
-        )""")
+        {vname}_grp = VGroup({vname}_box, {vname}_letter, {vname}_text)
+        self.play(FadeIn({vname}_grp), run_time={per_opt_t})""")
 
-    lines.append(f"        self.wait({duration})")
+    lines.append(f"        self.wait({hold_t})")
     return "\n".join(lines)
 
 
 def _scene_option_arrow(scene: dict, idx: int) -> str:
     d       = scene["visual_data"]
     letter  = d.get("letter", "A")
-    # support both field naming conventions from different LLMs
     verdict  = d.get("verdict") or d.get("color", "neutral")
-    reason   = d.get("reason") or d.get("body") or d.get("name", "")
-    duration = d.get("duration", 3.5)
+    duration = d.get("duration", 3.0)
+
+    # 3b1b Color Logic
+    color = "DesignTokens.GREEN" if verdict in ["correct", "likely"] else ("DesignTokens.RED" if verdict == "wrong" else "DesignTokens.YELLOW")
+    vname = f"opt_{letter.upper()}_{idx}"
+    
+    # 3b1b Sync: 50% highlight, 50% hold
+    anim_t = round(duration * 0.5, 2)
+    hold_t = round(duration * 0.5, 2)
+
+    return f"""
+        # Scene {idx}: option_arrow — highlight {letter}
+        # Find the box from a previous MCQ scene if possible
+        # For robustness in multi-scene files, we re-declare the box location if missing
+        box_pos_{idx} = {_option_position(letter)}
+        
+        focus_ring_{idx} = RoundedRectangle(width=6.0, height=1.7, color={color}, stroke_width=4).move_to(box_pos_{idx})
+        self.play(Indicate(focus_ring_{idx}, color={color}, scale_factor=1.1), run_time={anim_t})
+        self.wait({hold_t})
+"""
 
     color_map = {"correct": "GREEN", "likely": "GREEN",
                  "wrong": "RED", "incorrect": "RED", "unlikely": "RED",
@@ -299,20 +352,24 @@ def _scene_formula_display(scene: dict, idx: int) -> str:
     label    = d.get("label", "")
     duration = d.get("duration", 4.0)
 
+    # 3b1b Proportional Sync: 40% anim, 60% wait
+    entrance_t = round(duration * 0.4, 2)
+    hold_t     = round(duration * 0.6, 2)
+
     return f"""
         # Scene {idx}: formula_display
         self._clear()
         formula_{idx} = {math(formula)}
-        formula_{idx}.scale(1.6).move_to(UP * 0.5)
-        if formula_{idx}.width > 12: formula_{idx}.set_width(12)  # Industrial Fit
+        formula_{idx}.move_to(UP * 0.5)
+        if formula_{idx}.width > DesignTokens.MAX_WIDTH: formula_{idx}.set_width(DesignTokens.MAX_WIDTH)
 
         label_{idx} = {tex(label)}
-        label_{idx}.scale(0.75).set_color(BLUE_C).next_to(formula_{idx}, DOWN, buff=0.5)
-        if label_{idx}.width > 10: label_{idx}.set_width(10)      # Label Fit
+        label_{idx}.scale(DesignTokens.SUBTITLE_SIZE).set_color(DesignTokens.BLUE).next_to(formula_{idx}, DOWN, buff=0.5)
+        if label_{idx}.width > 10: label_{idx}.set_width(10)
 
-        self.play(Write(formula_{idx}), run_time=1.5)
-        self.play(FadeIn(label_{idx}))
-        self.wait({duration})
+        self.play(Write(formula_{idx}), run_time={entrance_t})
+        self.play(FadeIn(label_{idx}), run_time=0.5)
+        self.wait({max(hold_t - 0.5, 0.1)})
         self.play(FadeOut(formula_{idx}), FadeOut(label_{idx}))
 """
 
@@ -380,24 +437,25 @@ def _scene_summary(scene: dict, idx: int) -> str:
     points   = d.get("points", [])[:3]
     duration = d.get("duration", 4.0)
 
+    # 3b1b Proportional Sync
+    per_point_t = round(duration / (len(points) + 1), 2)
+
     lines = [f"\n        # Scene {idx}: summary"]
     lines.append(f"        self._clear()")
     lines.append(f"        heading_{idx} = {tex(heading)}")
-    lines.append(f"        heading_{idx}.scale(1.1).set_color(GREEN).move_to(UP * 2.8)")
-    lines.append(f"        self.play(Write(heading_{idx}))")
+    lines.append(f"        heading_{idx}.scale(1.1).set_color(DesignTokens.GREEN).move_to(UP * 2.8)")
+    lines.append(f"        self.play(Write(heading_{idx}), run_time={per_point_t})")
 
-    anim_time = 0.7 + len(points) * 0.7
     for pi, point in enumerate(points):
         vname = f"point_{idx}_{pi}"
         lines.append(f"        {vname} = VGroup(")
-        lines.append(f'            Tex(r"$\\checkmark$", tex_template=my_template).scale(0.8).set_color(GREEN),')
-        lines.append(f"            {tex(point[:65])}.scale(0.75),")
+        lines.append(f'            Tex(r"\\\\checkmark", tex_template=my_template).scale(0.8).set_color(DesignTokens.GREEN),')
+        lines.append(f"            {tex(point, width=40)}.scale(DesignTokens.BODY_SIZE),")
         lines.append(f"        ).arrange(RIGHT, buff=0.2)")
         lines.append(f"        {vname}.move_to(np.array([0, {1.4 - pi * 1.1}, 0]))")
-        lines.append(f"        if {vname}.width > 12: {vname}.set_width(12)")  # Adaptive Fitting
-        lines.append(f"        self.play(FadeIn({vname}), run_time=0.7)")
+        lines.append(f"        self.play(FadeIn({vname}), run_time={per_point_t})")
 
-    lines.append(f"        {_wait(duration, anim_time)}")
+    lines.append(f"        self.wait(1.0)")
     return "\n".join(lines)
 
 
@@ -432,6 +490,8 @@ EXAMPLE 2 (Bar Chart):
 - NEVER use `self.set_background()` or `self.set_text()`. They do not exist.
 - ALWAYS use `Tex(r"\\text{{...}}")` or `MathTex(r"...")` for text/math.
 - ALWAYS suffix every variable with _{idx}.
+- USE THE 3B1B DESIGN SYSTEM: Use `DesignTokens.BLUE`, `DesignTokens.YELLOW`, `DesignTokens.GREEN`, `DesignTokens.RED`, `DesignTokens.WHITE`.
+- FRAME SAFETY: Title size `DesignTokens.TITLE_SIZE`, Body size `DesignTokens.BODY_SIZE`. 
 - Output ONLY the Python code. No explanation, no markdown.
 - Max 40 lines of code. No imports. No class definitions.
 """
@@ -586,12 +646,26 @@ import numpy as np
 from manim import *
 
 # ── LaTeX Template ─────────────────────────────────────────────────────────────
-# Includes amssymb and amsmath for symbols like \checkmark and \bullet
 my_template = TexTemplate()
 my_template.add_to_preamble(r"\\usepackage{{amsmath}}")
 my_template.add_to_preamble(r"\\usepackage{{amssymb}}")
 
-config.background_color = "#0d0d1a"  # deep dark background
+# ── 3Blue1Brown High-Fidelity Design System ──────────────────────────────────
+class DesignTokens:
+    BLUE   = "#58ADFF"
+    GREEN  = "#77DD77"
+    YELLOW = "#FFFF66"
+    RED    = "#FF6666"
+    PURPLE = "#C57AFF"
+    WHITE  = "#FFFFFF"
+    GRAY   = "#888888"
+    BLACK  = "#000000"
+    MAX_WIDTH = 12.0
+    TITLE_SIZE = 1.4
+    BODY_SIZE = 0.8
+    SUBTITLE_SIZE = 0.7
+
+config.background_color = DesignTokens.BLACK
 config.pixel_height = 1080
 config.pixel_width  = 1920
 
@@ -610,8 +684,9 @@ class EaseToLearnScene(Scene):
             self.play(*fos)
 
     def construct(self):
-        # Set default template for all Tex/MathTex objects in this scene
-        self.camera.background_color = "#0d0d1a"
+        # Industrial 3b1b Canvas: Absolute Black
+        # DesignTokens are available as a global class in this script.
+        self.camera.background_color = DesignTokens.BLACK
 ''' + scenes_code + f'''
         self.wait(1)
 '''

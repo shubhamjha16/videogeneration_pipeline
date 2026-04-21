@@ -19,6 +19,7 @@ You will receive:
 
 ━━━ CRITICAL RULES ━━━
 - NEVER use `self.set_background()` or `self.set_text()`. They do not exist. Use `FadeIn(Rectangle(...))` and `Write(Tex(...))`.
+- PRESERVE DESIGN SYSTEM: Always keep the `class DesignTokens:` block at the top. Use `DesignTokens.BLUE`, `DesignTokens.YELLOW`, `DesignTokens.GREEN`, etc. for coloring mobjects.
 - Fix ONLY what is broken. Do not rewrite the logic.
 - Keep all scene structure (`class ... (Scene): def construct(self)`) intact.
 - Return ONLY the complete fixed Python script inside a single markdown code block. No explanation.

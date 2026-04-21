@@ -60,9 +60,10 @@ def search_searxng(query: str, categories: str = "general", limit: int = None) -
         return formatted
         
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        # Re-raise technical errors so the caller (orchestrator) can handle fallback
-        print(f"❌ SearXNG Technical Failure: {e}")
-        raise RuntimeError(f"SearXNG connection failed: {e}") from e
+        # Industrial Hardening: Silence technical failures to prevent pipeline crashes.
+        # The Orchestrator will fallback to 'Internal Knowledge' if this returns [].
+        print(f"⚠️ SearXNG Research Offline ({e}). Falling back to Internal Knowledge.")
+        return []
     except Exception as e:
         print(f"❌ Unexpected Search Error: {e}")
         return []

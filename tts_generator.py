@@ -22,18 +22,25 @@ def _generate_silent_audio(output_filename: str, duration: float = 1.0) -> str:
         wf.writeframes(frames)
     return output_filename
 
-def generate_audio(text: str, scene_idx: int, output_dir: str = ".") -> str:
+def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenlabs: bool = None) -> str:
     """
-    Generates TTS audio using ElevenLabs API if key is present.
-    Fallback hierarchy: ElevenLabs -> macOS native 'say' -> gTTS (Linux) -> Silent WAV.
+    Generates TTS audio.
+    Hierarchy: 
+      1. passed use_elevenlabs (if specified)
+      2. FORCE_LOCAL_TTS env var
+      3. ELEVENLABS_API_KEY presence
     """
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     output_filename = os.path.join(output_dir, f"scene_{scene_idx}.m4a")
     
-    FORCE_LOCAL_TTS = os.environ.get("FORCE_LOCAL_TTS", "false").lower() == "true"
+    # 1. Determine preference
+    force_local = os.environ.get("FORCE_LOCAL_TTS", "false").lower() == "true"
     
-    if ELEVENLABS_API_KEY and not FORCE_LOCAL_TTS:
+    # Use explicitly passed boolean, otherwise fallback to global env
+    engage_elevenlabs = use_elevenlabs if use_elevenlabs is not None else (not force_local)
+    
+    if engage_elevenlabs and ELEVENLABS_API_KEY:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/with-timestamps"
         headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
         data = {"text": text, "model_id": "eleven_multilingual_v2"}

@@ -190,26 +190,18 @@ USER_GENERATED_VIDEO (1–4 long scenes):
   - subtitle_chunk scenes only
   - focus on the narration; the visuals will be a single talking head avatar.
 
-━━━ NARRATION RULES (GROUND TRUTH OATH) ━━━
-  - Use the PERSISTENT KNOWLEDGE BASE (GROUND TRUTH) as your primary source of facts.
-  - If a fact in the Knowledge Base contradicts the original input, the Knowledge Base WINS.
-  - Every `narration_text` must be information-dense. If you found specific dates, numbers, or names in research, they MUST appear in the narration.
-  - Speak like a confident teacher, not a textbook.
-  - 1–3 sentences per scene.
-  - Build tension before the answer/reveal.
-  - Use "we", "let's", "notice that" — conversational and engaging.
-  - For MCQ: make students think before revealing the answer.
-  - MCQ ALIGNMENT RULE: During "option_highlight" or "cross_out" scenes, the narration MUST ONLY discuss the specific options being visually focused on. Do NOT mention the final correct answer until the "answer_reveal" scene.
+━━━ NARRATION RULES (THE 3B1B STANDARD) ━━━
+  - SYNC-FIRST RULE: In scenes where an element is highlighted (option_highlight, option_arrow, image_arrow), your narration MUST begin by identifying that specific element. (e.g., "Looking at Option B...", "Observe this region..."). This ensures the Pointer and the Speech land at the exact same moment.
+  - CONCISE ELEGANCE: Favor short, powerful sentences. The 3b1b style thrives on clarity, not wordiness.
+  - GROUND TRUTH OATH: Use the PERSISTENT KNOWLEDGE BASE (GROUND TRUTH) as your primary source of facts. If a KB fact contradicts the input, the KB WINS.
+  - Build tension before an answer reveal. Use "we", "let's", "notice that" — conversational and engaging.
+  - MCQ ALIGNMENT: During "option_highlight" or "cross_out" scenes, ONLY discuss the specific options being visually focused on. Do NOT mention the final correct answer until the "answer_reveal" scene.
 
-━━━ VISUAL DATA RULES ━━━
-  - mcq_layout: {"options": {"A": "string", "B": "string", "C": "string", "D": "string"}}
-  - option_highlight: {"letter": "A", "verdict": "neutral", "reason": "why this option matters"}
-  - concept_bullets / summary: max 3 bullets/points, each under 8 words
-  - step_by_step: max 4 steps, each under 12 words
-  - option colors: "#FF6B6B" wrong/unlikely, "#4ECDC4" correct, "#FFFFFF" neutral/unknown
-  - formula: write in plain text (e.g. "v = u + at", "integral of ln(x) dx")
-  - graph_hint: {"graph_type": "string", "description": "MUST include the specific equation and any domain/ranges (e.g. 'Plot y=x^2 from x=4 to x=9 and shade the area'). Never omit the bounds for integrals."}
-  - graph_type examples: "velocity_time", "bar_chart", "number_line", "venn_diagram", "function_plot"
+━━━ VISUAL DATA RULES (HIGH FIDELITY) ━━━
+  - SMART WRAPPING: You can now provide up to 100 characters for bullet points or solution steps. The engine will automatically wrap these into a beautiful 3b1b-style layout.
+  - formula: Use plain text or LaTeX (e.g. "e = mc^2").
+  - graph_hint: MUST include specific equations and domain/ranges (e.g. 'Plot y=sin(x) from -pi to pi').
+  - option_highlight: {"letter": "A", "verdict": "wrong", "reason": "why this option is incorrect"}.
 
 OUTPUT: Return valid JSON only. No extra text."""
 

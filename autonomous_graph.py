@@ -256,6 +256,7 @@ class TonyState(TypedDict):
     job_id:      Optional[str]
     topic:       str
     raw_input:   str
+    use_elevenlabs: bool # Cost control switch
 
     # ── After director_node ────────────────────────────
     parsed_facts:  Optional[dict]
@@ -562,8 +563,9 @@ def architect_node(state: TonyState) -> TonyState:
     # 1. Generate TTS per scene and measure actual duration
     print("   Generating TTS audio for sync...")
     audio_files = []
+    use_el = state.get("use_elevenlabs", False)
     for i, scene in enumerate(scenes):
-        path = generate_audio(scene["narration_text"], i, output_dir=job_dir)
+        path = generate_audio(scene["narration_text"], i, output_dir=job_dir, use_elevenlabs=use_el)
         audio_files.append(path)
 
     # 2. Inject real duration into each scene's visual_data

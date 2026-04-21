@@ -27,11 +27,10 @@
         { "name": "S3_BUCKET", "value": "<S3_BUCKET>" },
         { "name": "AWS_REGION", "value": "ap-south-1" },
         { "name": "WEBHOOK_URL", "value": "https://api.easetolearn.com/videos/webhook" },
+        { "name": "SEARXNG_URL", "value": "http://localhost:8080" },
         { "name": "AUTO_DELETE_JOB_DIR", "value": "true" },
         { "name": "DEFAULT_HEYGEN_AVATAR", "value": "josh_video_20230607" }
       ],
-
-
       "secrets": [
         { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ANTHROPIC_API_KEY::" },
         { "name": "GROQ_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:GROQ_API_KEY::" },
@@ -41,7 +40,6 @@
         { "name": "HIGGSFIELD_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HIGGSFIELD_API_KEY::" },
         { "name": "FACTORY_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:FACTORY_API_KEY::" }
       ],
-
       "mountPoints": [
         {
           "sourceVolume": "factory-efs-volume",
@@ -54,6 +52,31 @@
           "awslogs-group": "/ecs/easetolearn-factory",
           "awslogs-region": "ap-south-1",
           "awslogs-stream-prefix": "ecs"
+        }
+      }
+    },
+    {
+      "name": "searxng",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/easetolearn-searxng:latest",
+      "cpu": 512,
+      "memory": 1024,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        { "name": "SEARXNG_BASE_URL", "value": "http://localhost:8080/" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/easetolearn-factory",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "searxng"
         }
       }
     }

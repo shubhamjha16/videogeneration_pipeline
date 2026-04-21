@@ -361,6 +361,7 @@ class RenderRequest(BaseModel):
     video_type:  Optional[Literal["marketing", "educational"]] = None
     image_path:  Optional[str] = None
     webhook_url: Optional[str] = None
+    use_elevenlabs: bool = False # Direct per-request switch (Industrial Cost Control)
 
     class Config:
         json_schema_extra = {
@@ -672,6 +673,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 "visual_prompts":     None,
                 "heygen_video_path":  None,
                 "subtitle_style":     None,
+                "use_elevenlabs":     job.get("use_elevenlabs", False),
             })
         except Exception as e:
             print(f"❌ Pipeline Error for job {job_id}: {e}")
@@ -789,6 +791,7 @@ def start_render(request: RenderRequest):
             "render_mode":  request.render_mode,
             "with_avatar":  request.with_avatar,
             "video_type":   request.video_type,
+            "use_elevenlabs": request.use_elevenlabs,
             "image_path":   request.image_path,
             "webhook_url":  request.webhook_url,
             "created_at":   now_iso,
