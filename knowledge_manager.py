@@ -9,6 +9,7 @@ import re
 from typing import Optional, List, Dict, Any
 import config
 from llm_factory import LLMFactory, clean_llm_json
+from knowledge_vector_store import index_research
 
 KNOWLEDGE_DIR = "factory_knowledge"
 
@@ -34,6 +35,10 @@ def save_knowledge(topic: str, facts: Dict[str, Any]) -> str:
     try:
         with open(path, "w") as f:
             json.dump(facts, f, indent=4)
+        
+        # INDUSTRIAL SENTINEL: Index newly acquired knowledge into the Vector DB
+        index_research(topic, facts)
+        
         return path
     except Exception as e:
         print(f"❌ Failed to save knowledge for {topic}: {e}")

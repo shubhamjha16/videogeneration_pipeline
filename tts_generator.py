@@ -109,7 +109,10 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
         word_count = len(text.split())
         heuristic_duration = max(1.0, word_count / 12.0)
         output_filename = _generate_silent_audio(output_filename, duration=heuristic_duration)
-        return output_filename
+        return output_filename, len(text)
+
+    # Note: Returning actual characters used for billing
+    return output_filename, len(text)
 
 if __name__ == "__main__":
     import sys

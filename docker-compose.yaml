@@ -5,7 +5,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SEARXNG_URL=http://searxng:8080
+      - SEARXNG_URL=${SEARXNG_URL:-http://localhost:8080}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
@@ -14,32 +14,11 @@ services:
       - MANIM_MEDIA_DIR=/app/output
     volumes:
       - ./output:/app/output # Persist renders on host machine
-    depends_on:
-      - searxng
     restart: always
 
-  # ── The Brain: SearXNG Research Engine ──────────────────────────────────────
-  searxng:
-    build: ./searxng
-    ports:
-      - "8080:8080"
-    environment:
-      - SEARXNG_BASE_URL=http://localhost:8080/
-    depends_on:
-      - redis
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    restart: always
-
-  # ── Cache: Redis for SearXNG Performance ────────────────────────────────────
-  redis:
-    image: "redis:alpine"
-    command: redis-server --save "" --appendonly no # Ephemeral cache for speed
-    restart: always
+  # ── The Brain: SearXNG Research Engine (DECOUPLED) ──────────────────────────
+  # Note: Move to searxng_standalone/ for dedicated deployment on Mac Mini.
+  # The Factory now connects via the SEARXNG_URL env var.
 
 networks:
   default:

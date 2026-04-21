@@ -41,8 +41,16 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
                 final_clip.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
             finally:
                 final_clip.close()
+                duration = aud.duration
                 aud.close()
-        return output_path
+        # Return path and duration for financial ledger
+        from moviepy.editor import VideoFileClip
+        try:
+            with VideoFileClip(output_path) as clip:
+                duration = clip.duration
+        except:
+            duration = 1.0 # fallback
+        return output_path, duration
 
     print(f"🚀 [HeyGen Gen] Initializing HeyGen avatar workflow for: {text[:30]}...")
     headers = {
@@ -168,7 +176,10 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
                          with open(output_path, 'wb') as f:
                              for chunk in r.iter_content(chunk_size=8192):
                                  f.write(chunk)
-                    return output_path
+                    
+                    # Return path and actual duration from API
+                    actual_duration = data.get("duration", 0)
+                    return output_path, actual_duration
             elif status in ["failed", "canceled"]:
 
                 print(f"❌ [HeyGen] Generation failed: {data.get('error', 'unknown error')}")

@@ -21,8 +21,9 @@ manim>=0.18.0              # animation rendering
 # ── AWS ────────────────────────────────────────────────
 boto3>=1.42.0              # S3 upload
 
-# ── TTS ────────────────────────────────────────────────
+# ── TTS & Alignment ─────────────────────────────────────
 gtts>=2.5.0                # Linux TTS fallback (ElevenLabs is primary)
+faster-whisper>=1.0.0      # High-fidelity alignment node
 
 # ── HTML parsing ───────────────────────────────────────
 beautifulsoup4>=4.12.0

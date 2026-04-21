@@ -214,94 +214,85 @@ def _sanitize_stalled_jobs():
 
 
 def _load_jobs():
-    """Loads jobs with cross-process file-level locking protection."""
-    if os.path.exists(JOBS_FILE):
-        try:
-            with open(JOBS_FILE, "r", encoding='utf-8') as f:
-                # Lock for shared reading (across workers)
-                if fcntl: fcntl.flock(f, fcntl.LOCK_SH)
-                data = json.load(f)
-                if fcntl: fcntl.flock(f, fcntl.LOCK_UN)
+    """Industrial Sentinel: Loads jobs with cross-process file-level locking."""
+    if not os.path.exists(JOBS_FILE):
+        return {}
 
+    try:
+        data = {}
+        with open(JOBS_FILE, "r", encoding='utf-8') as f:
+            if fcntl: fcntl.flock(f, fcntl.LOCK_SH)
+            data = json.load(f)
+            if fcntl: fcntl.flock(f, fcntl.LOCK_UN)
 
-            
-            global jobs
-            with _jobs_lock:
-                jobs = data
-            return jobs
-        except (json.JSONDecodeError, ValueError, Exception) as e:
-            import time, sys
-            timestamp = int(time.time())
-            corrupt_path = f"{JOBS_FILE}.corrupt_{timestamp}"
-            print(f"❌ DATA CORRUPTION ALERT: {JOBS_FILE} is unreadable. Archiving to {corrupt_path}", file=sys.stderr)
-            try:
-                os.rename(JOBS_FILE, corrupt_path)
-            except Exception as archive_error:
-                print(f"⚠️  Failed to archive corrupt jobs file: {archive_error}", file=sys.stderr)
-            return {}
-    return {}
+        global jobs
+        with _jobs_lock:
+            # INDUSTRIAL MERGE: Don't just reassign. Update existing entries 
+            # to preserve in-memory-only updates (like logs or progress)
+            # while bringing in new jobs from disk.
+            for jid, jdata in data.items():
+                if jid not in jobs:
+                    jobs[jid] = jdata
+                else:
+                    # If job is in memory, only overwrite if local state is stale (not processing)
+                    if jobs[jid].get("status") not in ("processing", "queued"):
+                        jobs[jid].update(jdata)
+        return jobs
+    except Exception as e:
+        import sys
+        print(f"⚠️ Persistence Warning: Could not load jobs ({e})", file=sys.stderr)
+        return jobs
 
 
 def _save_jobs():
-    """Disk persistence with cross-process Exclusive Locking and Atomic Write protection."""
+    """Industrial Sentinel: Disk persistence with Atomic Write protection."""
     with _jobs_lock:
-        tmp_file = JOBS_FILE + ".tmp"
-        try:
-            # 1. Acquire an exclusive lock on the main jobs file BEFORE doing anything
-            lock_file = JOBS_FILE + ".lock"
-            with open(lock_file, "w") as lf:
-                if fcntl: fcntl.flock(lf, fcntl.LOCK_EX)
-                
-                # 2. RELOAD the absolute current state from disk to merge
-                disk_state = {}
-                if os.path.exists(JOBS_FILE):
-                    try:
-                        with open(JOBS_FILE, "r", encoding='utf-8') as f:
-                            disk_state = json.load(f)
-                    except Exception as e:
-                        import sys
-                        print(f"⚠️ Merge Warning: Could not reload disk state for mutation ({e})", file=sys.stderr)
+        # Snapshot the current state to avoid lock-holding during long disk I/O
+        snapshot = copy.deepcopy(jobs)
 
-                
-                # 3. MERGE the in-memory changes into the disk state
-                # Industrial Sentinel: Use chronological precedence for all fields
-                # Plus additive merge for 'logs' to prevent telemetry loss.
-                for job_id, local_job in jobs.items():
-                    if job_id in disk_state:
-                        # Status and video_url ALWAYS win from memory — never overwrite with stale disk state
-                        for k, v in local_job.items():
-                            if k == "logs":
-                                existing_logs = disk_state[job_id].get("logs", [])
-                                existing_stamps = [str(l) for l in existing_logs]
-                                for l in v:
-                                    if str(l) not in existing_stamps:
-                                        existing_logs.append(l)
-                                disk_state[job_id]["logs"] = existing_logs[-100:]
-                            else:
-                                # Always overwrite — memory is the source of truth
-                                disk_state[job_id][k] = v
-                    else:
-                        disk_state[job_id] = local_job
-                
-                # 4. Write the merged state to a temporary file
-                with open(tmp_file, "w", encoding='utf-8') as f:
-                    json.dump(disk_state, f, indent=2, ensure_ascii=False)
+    tmp_file = JOBS_FILE + ".tmp"
+    lock_file = JOBS_FILE + ".lock"
+    
+    try:
+        # 1. Acquire cross-process exclusive lock
+        with open(lock_file, "w") as lf:
+            if fcntl: fcntl.flock(lf, fcntl.LOCK_EX)
+            
+            # 2. Re-load current disk state for merger
+            disk_state = {}
+            if os.path.exists(JOBS_FILE):
+                try:
+                    with open(JOBS_FILE, "r", encoding='utf-8') as f:
+                        disk_state = json.load(f)
+                except Exception:
+                    pass
 
-                
-                # 5. Atomic swap
-                os.replace(tmp_file, JOBS_FILE)
-                
-                # 6. Synchronize our global memory 'jobs' with the merger result
-                jobs.update(disk_state)
-                
-                if fcntl: fcntl.flock(lf, fcntl.LOCK_UN)
+            # 3. Merger logic: Memory snapshot wins for active records
+            for jid, jval in snapshot.items():
+                if jid in disk_state:
+                    # Logic: Only merge if memory has higher progress or terminal state
+                    mem_status = jval.get("status")
+                    disk_status = disk_state[jid].get("status")
+                    
+                    if mem_status in ("completed", "failed", "processing") or disk_status == "queued":
+                        disk_state[jid].update(jval)
+                else:
+                    disk_state[jid] = jval
 
-                
-        except Exception as e:
-            print(f"❌ Error saving jobs state: {e}")
-            if os.path.exists(tmp_file):
-                os.remove(tmp_file)
-            raise
+            # 4. Atomic Write
+            with open(tmp_file, "w", encoding='utf-8') as f:
+                json.dump(disk_state, f, indent=2, ensure_ascii=False)
+            
+            os.replace(tmp_file, JOBS_FILE)
+            if fcntl: fcntl.flock(lf, fcntl.LOCK_UN)
+            
+        return True
+    except Exception as e:
+        print(f"❌ Error persisting factory state: {e}")
+        if os.path.exists(tmp_file):
+            try: os.remove(tmp_file)
+            except: pass
+        return False
 
 
 def _safe_save_jobs(context: str, fatal: bool = False) -> bool:
@@ -905,7 +896,8 @@ def get_all_jobs():
     """Returns all jobs for the Factory Portal dashboard."""
     _load_jobs()
     with _jobs_lock:
-        return copy.deepcopy(jobs)
+        # INDUSTRIAL SENTINEL: Return a snapshot copy to prevent mutation pollution
+        return copy.deepcopy(dict(jobs))
 
 
 
@@ -919,6 +911,7 @@ def get_status(job_id: str):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     with _jobs_lock:
+        # Snapshot copy for thread-safe state isolation
         return copy.deepcopy(jobs[job_id])
 
 

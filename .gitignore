@@ -28,7 +28,12 @@ media/
 # MacOS
 .DS_Store
 
-# Temporary / Scratch Files (Allow professional tests/)
+# Factory Memory (Kept Local)
+factory_vector_db/
+factory_knowledge/*.json
+!factory_knowledge/fact_sheet_template.json
+
+# Temporary / Scratch Files
 !tests/
 temp_*.py
 *masterclass.py

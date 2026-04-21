@@ -160,6 +160,13 @@ def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = 
                     "DEPLOY":       95,
                 }
                 job["progress"] = progress_map.get(node_name.upper(), job.get("progress", 10))
+                
+                # INDUSTRIAL LEDGER: Sync grounded costs to API
+                metrics = job.get("metrics") or {}
+                ledger = state.get("ledger") or {}
+                for k, v in ledger.items():
+                    metrics[k] = metrics.get(k, 0) + v
+                job["metrics"] = metrics
         
         _api_bridge_refs._save_jobs()
 
@@ -188,11 +195,17 @@ def _llm_json_with_retry(*, messages: list[dict], node_name: str, state: "TonySt
     last_exc = None
     for attempt in range(1, _GROQ_MAX_ATTEMPTS + 1):
         try:
-            content = LLMFactory.get_completion(
+            content, usage = LLMFactory.get_completion(
                 messages=messages,
                 system_prompt=system_prompt,
-                json_mode=True
+                json_mode=True,
+                include_usage=True
             )
+            # Accumulate Ledger
+            state["ledger"] = state.get("ledger", {})
+            state["ledger"]["prompt_tokens"] = state["ledger"].get("prompt_tokens", 0) + usage.get("prompt_tokens", 0)
+            state["ledger"]["completion_tokens"] = state["ledger"].get("completion_tokens", 0) + usage.get("completion_tokens", 0)
+            
             return clean_llm_json(content)
         except Exception as e:
             if isinstance(e, (json.JSONDecodeError, KeyError, TypeError, ValueError)):
@@ -252,6 +265,18 @@ def _manim() -> str:
 # ── State ─────────────────────────────────────────────────────────────────────
 
 class TonyState(TypedDict):
+    # Core state
+    topic: str
+    video_type: str        # 'educational' | 'marketing' | 'social'
+    render_mode: str       # 'manim' | 'presentation' | 'heygen' | 'explainer' (auto)
+    with_avatar: bool      # Toggles HeyGen node
+    
+    # Financial & Audit (Phase 6)
+    ledger: Dict[str, Any] # Grounded usage tracking (tokens, chars, sec)
+    
+    # Storyboard & Script
+    script_segments: List[Dict[str, Any]] 
+
     # ── Input ──────────────────────────────────────────
     job_id:      Optional[str]
     topic:       str
@@ -302,11 +327,20 @@ class TonyState(TypedDict):
 # ── Node 1: Director ──────────────────────────────────────────────────────────
 
 def director_node(state: TonyState) -> TonyState:
-    """Parse Tony AI HTML and run Claude director to produce scenes."""
+    """The Factory Manager: Analyzes topic, chooses render mode, and plans scenes."""
     import copy
     import time
     start_t = time.time()
-    state = copy.deepcopy(state) # Node Isolation: Prevent side-effects on original state object
+    state = copy.deepcopy(state)
+    
+    # Initializing Ledger (Phase 6)
+    if "ledger" not in state or state["ledger"] is None:
+        state["ledger"] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "elevenlabs_chars": 0,
+            "heygen_seconds": 0
+        }
     
     _log_progress(state, "DIRECTOR", f"Analyzing curriculum and selecting render path for: {state['topic']}...")
     print(f"🎬 [Director] Parsing HTML and writing scene script for: {state['topic']}")
@@ -398,6 +432,25 @@ def research_node(state: TonyState) -> TonyState:
     state = copy.deepcopy(state)
     
     queries = state.get("search_queries") or []
+    topic = state.get("topic", "")
+    
+    # INDUSTRIAL SENTINEL: Semantic Memory Recall
+    # Before hitting the web, check the Factory Brain (Vector DB) for existing related research.
+    if topic:
+        print(f"   🧠 Vector Brain: Consulting internal memory for '{topic}'...")
+        hits = retrieve_related_research(topic)
+        if hits and hits[0]["similarity"] > 0.85:
+            match = hits[0]
+            print(f"   🎯 Vector Hit! Retrieved '{match['topic']}' (Similarity: {match['similarity']})")
+            _log_progress(state, "RESEARCH", f"🎯 Semantic Hit: Reusing research from '{match['topic']}'")
+            state["knowledge_base"] = {
+                "summary": match["summary"],
+                "key_facts": match["key_facts"],
+                "visual_metaphors": match["metadata"].get("video_metaphors", [])
+            }
+            state["search_queries"] = [] # Bypass web search
+            return state
+
     if not queries:
         return state
 
@@ -431,7 +484,7 @@ def research_node(state: TonyState) -> TonyState:
 
     # ━━━ 2. Knowledge Distillation & Memorization ━━━
     # Convert raw search results into a clean, reusable fact sheet.
-    from knowledge_manager import distill_search_results, save_knowledge
+    from knowledge_manager import distill_search_results, save_knowledge, get_knowledge
     if unique_results:
         print(f"   🧠 Distilling search results into verified knowledge...")
         _log_progress(state, "KNOWLEDGE", f"🧠 Distilling {len(unique_results)} search results into verified knowledge...")
@@ -565,8 +618,13 @@ def architect_node(state: TonyState) -> TonyState:
     audio_files = []
     use_el = state.get("use_elevenlabs", False)
     for i, scene in enumerate(scenes):
-        path = generate_audio(scene["narration_text"], i, output_dir=job_dir, use_elevenlabs=use_el)
-        audio_files.append(path)
+        # ━━━ Audio & Alignment ━━━
+        audio_path, char_count = generate_audio(scene["narration_text"], i, output_dir=job_dir, use_elevenlabs=use_el)
+        
+        # INDUSTRIAL LEDGER: Capture characters
+        state["ledger"] = state.get("ledger", {})
+        state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + char_count
+        audio_files.append(audio_path)
 
     # 2. Inject real duration into each scene's visual_data
     for i, (scene, audio_path) in enumerate(zip(scenes, audio_files)):
@@ -1061,7 +1119,10 @@ def ppt_tts_node(state: TonyState) -> TonyState:
             data = slide.get("data", {})
             narration = data.get("heading") or data.get("title") or state["topic"]
         try:
-            path = generate_audio(narration, i, output_dir=job_dir)
+            path, char_count = generate_audio(narration, i, output_dir=job_dir)
+            # INDUSTRIAL LEDGER: Capture characters
+            state["ledger"] = state.get("ledger", {})
+            state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + char_count
         except Exception as e:
             _record_error(state, "PPT_TTS", f"TTS failed for slide {i}: {e}")
             return state
@@ -1101,10 +1162,14 @@ def ppt_video_node(state: TonyState) -> TonyState:
 
             base_path = os.path.join(job_dir, f"base_{i:02d}.mp4")
             _image_to_video(slide_img, audio_path, base_path)
-            avatar_path = generate_avatar_video(
+            avatar_path, duration_sec = generate_avatar_video(
                 state["slides"][i].get("narration", ""), audio_path, i,
                 output_dir=job_dir, avatar_type="human"
             )
+            # INDUSTRIAL LEDGER: Capture duration
+            state["ledger"] = state.get("ledger", {})
+            state["ledger"]["heygen_seconds"] = state["ledger"].get("heygen_seconds", 0) + duration_sec
+            
             base_clip   = VideoFileClip(base_path)
             raw_avatar  = VideoFileClip(avatar_path).without_audio()
             avatar_clip = fx_loop(raw_avatar, duration=base_clip.duration)
@@ -1261,11 +1326,18 @@ def heygen_node(state: TonyState) -> TonyState:
     # 1. Generate audio for HeyGen to lip-sync to
     try:
         full_text = " ".join(s["narration_text"] for s in state["scenes"])
-        audio_path = generate_audio(full_text, 0, output_dir=job_dir)
+        audio_path, char_count = generate_audio(full_text, 0, output_dir=job_dir)
+        # INDUSTRIAL LEDGER: Capture characters
+        state["ledger"] = state.get("ledger", {})
+        state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + char_count
         state["audio_files"] = [audio_path]
 
         heygen_video_output = os.path.join(job_dir, "heygen_avatar.mp4")
-        heygen_video = generate_heygen_avatar(full_text, audio_path, heygen_video_output)
+        heygen_video, duration_sec = generate_heygen_avatar(full_text, audio_path, heygen_video_output)
+        
+        # INDUSTRIAL LEDGER: Capture duration
+        state["ledger"] = state.get("ledger", {})
+        state["ledger"]["heygen_seconds"] = state["ledger"].get("heygen_seconds", 0) + duration_sec
         
         if not heygen_video or not os.path.exists(heygen_video):
              raise RuntimeError("HeyGen API produced no video output.")
@@ -1286,7 +1358,7 @@ def subtitle_node(state: TonyState) -> TonyState:
     import time
     start_t = time.time()
     state = copy.deepcopy(state)
-    _log_progress(state, "SUBTITLE", "Post-Production: Adding kinetic kinetic subtitles...")
+    _log_progress(state, "SUBTITLE", "Post-Production: Adding kinetic subtitles...")
     
     from subtitle_generator import generate_kinetic_subtitles
     from moviepy.editor import VideoFileClip, AudioFileClip
@@ -1324,7 +1396,8 @@ def subtitle_node(state: TonyState) -> TonyState:
             full_text,
             audio_dur,
             style="insta_reels",
-            alignment_path=alignment_path
+            alignment_path=alignment_path,
+            audio_path=audio_path  # Enable High-Fidelity Sync
         )
 
         try:

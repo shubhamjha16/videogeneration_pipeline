@@ -27,8 +27,9 @@ class LLMFactory:
         system_prompt: Optional[str] = None,
         json_mode: bool = False,
         model_override: Optional[str] = None,
-        provider_override: Optional[str] = None
-    ) -> str:
+        provider_override: Optional[str] = None,
+        include_usage: bool = False # NEW: Enable usage tracking
+    ) -> Any:
         provider = provider_override or config.LLM_PROVIDER
         
         # Merge system prompt if provided separately
@@ -36,13 +37,15 @@ class LLMFactory:
             messages = [{"role": "system", "content": system_prompt}] + messages
             
         if provider == "groq":
-            return LLMFactory._call_groq(messages, json_mode, model_override)
+            content, usage = LLMFactory._call_groq(messages, json_mode, model_override)
         elif provider == "local":
-            return LLMFactory._call_local(messages, json_mode, model_override)
+            content, usage = LLMFactory._call_local(messages, json_mode, model_override)
         elif provider == "google":
-            return LLMFactory._call_google(messages, json_mode, model_override)
+            content, usage = LLMFactory._call_google(messages, json_mode, model_override)
         else:
             raise ValueError(f"Unknown LLM provider: {provider}")
+            
+        return (content, usage) if include_usage else content
 
     @staticmethod
     def _call_groq(messages, json_mode, model_override):
@@ -64,7 +67,14 @@ class LLMFactory:
             kwargs["response_format"] = {"type": "json_object"}
             
         response = client.chat.completions.create(**kwargs)
-        return response.choices[0].message.content
+        
+        # Industrial Usage Capture
+        usage = {
+            "prompt_tokens": getattr(response.usage, 'prompt_tokens', 0),
+            "completion_tokens": getattr(response.usage, 'completion_tokens', 0),
+            "total_tokens": getattr(response.usage, 'total_tokens', 0)
+        }
+        return response.choices[0].message.content, usage
 
     @staticmethod
     def _call_local(messages, json_mode, model_override):
@@ -82,46 +92,53 @@ class LLMFactory:
             "messages": messages,
         }
         
-        # INDUSTRIAL HARDENING: Some local runners (older Ollama/vLLM) crash with response_format.
-        # We try with it first, then fallback if it fails.
         if json_mode:
             try:
                 kwargs["response_format"] = {"type": "json_object"}
                 response = client.chat.completions.create(**kwargs)
-                return response.choices[0].message.content
+                usage = {
+                    "prompt_tokens": getattr(response.usage, 'prompt_tokens', 0),
+                    "completion_tokens": getattr(response.usage, 'completion_tokens', 0),
+                    "total_tokens": getattr(response.usage, 'total_tokens', 0)
+                }
+                return response.choices[0].message.content, usage
             except Exception as e:
-                # If it's a 400 Bad Request regarding response_format, retry without it
+                # Fallback if local provider doesn't support JSON mode
                 if "response_format" in str(e) or "400" in str(e):
-                    print(f"⚠️ Local LLM does not support JSON Mode. Retrying with raw format...")
                     kwargs.pop("response_format")
                 else:
                     raise
                     
         response = client.chat.completions.create(**kwargs)
-        return response.choices[0].message.content
+        usage = {
+            "prompt_tokens": getattr(response.usage, 'prompt_tokens', 0),
+            "completion_tokens": getattr(response.usage, 'completion_tokens', 0),
+            "total_tokens": getattr(response.usage, 'total_tokens', 0)
+        }
+        return response.choices[0].message.content, usage
 
     @staticmethod
     def _call_google(messages, json_mode, model_override):
-        raise NotImplementedError("Direct chat completion for Google provider through factory not yet implemented.")
+        # We wrap the existing google logic here or implement it for usage capture
+        # For now, we provide dummy usage for implementing the interface
+        # Actual implementation usually happens in autonomous_graph.py for Gemini
+        return "Not implemented in LLMFactory yet", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-# Helper for JSON cleaning (LLMs often wrap JSON in markdown or conversational chatter)
+# Helper for JSON cleaning
 def clean_llm_json(content: str) -> dict:
     import re
     import json
     
-    # 1. Try direct parse first (cleanest case)
     try:
         return json.loads(content.strip())
     except: pass
     
-    # 2. Look for markdown code blocks: ```json ... ``` or ``` ... ```
     match = re.search(r'```(?:json)?\s*(.*?)\s*```', content, re.DOTALL)
     if match:
         try:
             return json.loads(match.group(1).strip())
         except: pass
         
-    # 3. Look for the first '{' and last '}' — aggressive extraction
     try:
         start_idx = content.find('{')
         end_idx = content.rfind('}')
@@ -130,11 +147,9 @@ def clean_llm_json(content: str) -> dict:
             return json.loads(potential_json.strip())
     except: pass
     
-    # 4. Final attempt: strip common prefixes/suffixes
     cleaned = content.strip().lstrip("JSON response:").lstrip("Here is the JSON:").strip()
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
         print(f"❌ LLM-FACTORY: Critical JSON Decode Failure.")
-        print(f"   Raw Content (First 500 chars): {content[:500]}")
         raise ValueError(f"Failed to extract valid JSON from LLM response: {e}")
