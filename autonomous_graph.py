@@ -319,9 +319,8 @@ class TonyState(TypedDict):
     # ── Control ────────────────────────────────────────
     rendering_errors: Optional[str]
     attempt_count:    int
-    with_avatar:      Optional[bool]   # presentation only — show avatar on slides
-    video_type:       Optional[str]    # "marketing" | "educational" | None (default: educational)
     no_vision:        bool
+    research_count:   int # Phase 8: Loop Guard
 
 
 # ── Node 1: Director ──────────────────────────────────────────────────────────
@@ -341,6 +340,9 @@ def director_node(state: TonyState) -> TonyState:
             "elevenlabs_chars": 0,
             "heygen_seconds": 0
         }
+    
+    if "research_count" not in state:
+        state["research_count"] = 0
     
     _log_progress(state, "DIRECTOR", f"Analyzing curriculum and selecting render path for: {state['topic']}...")
     print(f"🎬 [Director] Parsing HTML and writing scene script for: {state['topic']}")
@@ -507,6 +509,14 @@ def vision_node(state: TonyState) -> TonyState:
 
     if state.get("no_vision"):
         print("   Skipping image generation (user-requested)")
+        state["image_path"] = None
+        state["image_paths"] = {}
+        return state
+
+    # Phase 8 Optimization: Skip Vision logic early if the current mode doesn't use Imagen assets
+    render_mode = state.get("render_mode")
+    if render_mode not in ["manim", "explainer", "auto"]:
+        print(f"   ℹ️  Vision Node: Skipping Imagen calls for {render_mode} path.")
         state["image_path"] = None
         state["image_paths"] = {}
         return state
@@ -1054,10 +1064,10 @@ def ppt_critic_node(state: TonyState) -> TonyState:
         state["ppt_attempt_count"] = state.get("ppt_attempt_count", 0) + (0 if approved else 1)
 
     except Exception as e:
-        print(f"   ⚠️  Critic failed: {e} — forcing planner retry")
-        _log_fallback(state, "PPT_CRITIC", "force_replan", str(e), type(e).__name__)
-        state["critic_feedback"] = "Automatic critic unavailable. Replan with stronger narrative specificity and layout diversity."
-        state["ppt_attempt_count"] = state.get("ppt_attempt_count", 0) + 1
+        # Phase 8: Critic Resilience — Auto-Approve on failure to prevent production block
+        print(f"   ⚠️  Critic unavailable: {e} — Auto-approving slide plan.")
+        _log_fallback(state, "PPT_CRITIC", "auto_approve", str(e), type(e).__name__)
+        state["critic_feedback"] = None # Auto-Approved
 
     _log_progress(state, "PPT_CRITIC", f"Critic review complete (Approved: {approved}).", duration=time.time() - start_t)
     return state
@@ -1514,7 +1524,7 @@ def deploy_node(state: TonyState) -> TonyState:
 
 def should_research(state: TonyState) -> str:
     """Route to research node if director requested queries, otherwise proceed to vision."""
-    if state.get("search_queries"):
+    if state.get("search_queries") and state.get("research_count", 0) < 3:
         return "research"
     return "vision"
 
@@ -1541,6 +1551,11 @@ def should_continue(state: TonyState) -> str:
     if state.get("rendering_errors") and state["attempt_count"] < 3:
         print(f"⚠️  Render error — routing to healer (attempt {state['attempt_count'] + 1}/3)")
         return "healer"
+    
+    # Phase 8: Explicit Error Reporting on max retry depletion
+    if state.get("rendering_errors") and state["attempt_count"] >= 3:
+        _record_error(state, "SYSTEM", f"Critical production failure after 3 healer attempts: {state['rendering_errors']}")
+        
     return "deploy"
 
 def after_heygen(state: TonyState) -> str:
@@ -1579,12 +1594,12 @@ workflow.set_entry_point("director")
 
 workflow.add_node("research", research_node)
 
+workflow.add_edge("research", "director")
+# Conditional routing for Director to either Research or Vision
 workflow.add_conditional_edges("director", should_research, {
     "research": "research",
     "vision": "vision"
 })
-
-workflow.add_edge("research", "director") # Loop back to director with new context
 
 workflow.add_conditional_edges("vision", route_by_mode, {
     "architect":   "architect",

@@ -58,7 +58,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
                 json.dump(res_data.get("alignment", {}), f)
                 
             print(f"Generated ElevenLabs audio + timestamps for scene {scene_idx} -> {output_filename}")
-            return output_filename
+            return output_filename, len(text)
         else:
             print(f"⚠️ ElevenLabs Error {response.status_code}: {response.text}")
             import time; time.sleep(0.5) 
@@ -80,7 +80,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
             )
             output_filename = mp3_path
             print(f"Generated Mac TTS fallback audio for scene {scene_idx} -> {output_filename}")
-            return output_filename
+            return output_filename, len(text)
         except Exception as e:
             print(f"❌ Mac FFmpeg conversion failed: {e}")
         finally:
@@ -101,7 +101,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
         tts.save(mp3_path)
         output_filename = mp3_path
         print(f"Generated gTTS ({lang}) audio for scene {scene_idx} -> {output_filename}")
-        return output_filename
+        return output_filename, len(text)
     except Exception as e:
         print(f"❌ gTTS failed: {e} — falling back to Silent Sentinel")
 
