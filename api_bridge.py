@@ -363,7 +363,7 @@ class RenderRequest(BaseModel):
     webhook_url: Optional[str] = None
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "topic": "Newton's Laws of Motion",
                 "html": "<html><body><h1>Lesson 1</h1>...</body></html>",
@@ -543,7 +543,7 @@ class CostsResponse(BaseModel):
     note: str
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "total_estimated_cost_usd": 12.50,
                 "completed_jobs": 100,
@@ -565,7 +565,7 @@ class WebhookTestResponse(BaseModel):
     hint: Optional[str] = None
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "sent",
                 "webhook_url": "https://callback.com/hook",
@@ -585,7 +585,7 @@ class VersionResponse(BaseModel):
     python_version: str
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "service": "EaseToLearn Video Generation Factory",
                 "version": "2.0.0",
