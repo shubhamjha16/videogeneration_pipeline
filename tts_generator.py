@@ -80,7 +80,8 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
             )
             output_filename = mp3_path
             print(f"Generated Mac TTS fallback audio for scene {scene_idx} -> {output_filename}")
-            return output_filename, len(text)
+            # Non-billable fallback
+            return output_filename, 0
         except Exception as e:
             print(f"❌ Mac FFmpeg conversion failed: {e}")
         finally:
@@ -101,7 +102,8 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
         tts.save(mp3_path)
         output_filename = mp3_path
         print(f"Generated gTTS ({lang}) audio for scene {scene_idx} -> {output_filename}")
-        return output_filename, len(text)
+        # Non-billable fallback
+        return output_filename, 0
     except Exception as e:
         print(f"❌ gTTS failed: {e} — falling back to Silent Sentinel")
 
@@ -109,7 +111,8 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
         word_count = len(text.split())
         heuristic_duration = max(1.0, word_count / 12.0)
         output_filename = _generate_silent_audio(output_filename, duration=heuristic_duration)
-        return output_filename, len(text)
+        # Silent fallback — no API was called, zero billable chars
+        return output_filename, 0
 
     # Note: Returning actual characters used for billing
     return output_filename, len(text)

@@ -1554,7 +1554,9 @@ def should_continue(state: TonyState) -> str:
     
     # Phase 8: Explicit Error Reporting on max retry depletion
     if state.get("rendering_errors") and state["attempt_count"] >= 3:
-        _record_error(state, "SYSTEM", f"Critical production failure after 3 healer attempts: {state['rendering_errors']}")
+        # Use the actual Manim/FFmpeg stderr for actionable forensics
+        final_err = state["rendering_errors"] or "Max retries reached"
+        _record_error(state, "SYSTEM", f"Critical production failure after 3 healer attempts: {final_err}")
         
     return "deploy"
 
