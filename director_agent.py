@@ -234,7 +234,7 @@ def run_director(parsed_facts: dict, search_results: list[dict] = None, knowledg
         return DirectorOutput(**data)
     except Exception as e:
         # Log the raw content for debugging if it fails
-        raw_content = response.choices[0].message.content
+        raw_content = content
         print(f"❌ Director Parse Error. Raw content: {raw_content[:500]}...")
         raise ValueError(f"Director Agent failed to yield structured JSON: {e}")
 

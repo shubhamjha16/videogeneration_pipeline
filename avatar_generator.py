@@ -43,9 +43,13 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
             if config.ELEVENLABS_API_KEY:
                 print(f"🚀 Calling ElevenLabs Lip-Sync API for scene {scene_idx}...")
                 try:
+                    audio_clip = AudioFileClip(audio_file)
+                    dur = audio_clip.duration
+                    audio_clip.close()
+                    
                     result = generate_lip_sync(base_video, audio_file, avatar_video_path)
                     if result:
-                        return result
+                        return result, dur
                     else:
                         if avatar_type == "user":
                             print(f"⚠️ ElevenLabs API Error. Generating local Simulated Lip-Sync...")
@@ -139,7 +143,7 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
         audio.close()
         animated_clip.close()
         final.close()
-    return avatar_video_path
+    return avatar_video_path, dur
 
 def create_talking_video_local(video_input, audio_input, output_path):
     """
@@ -186,7 +190,7 @@ def create_talking_video_local(video_input, audio_input, output_path):
         aud.close()
         base.close()
         talking.close()
-    return output_path
+    return output_path, dur
 
 if __name__ == "__main__":
     pass

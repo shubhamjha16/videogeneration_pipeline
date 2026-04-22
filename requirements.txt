@@ -12,6 +12,8 @@ google-genai>=1.47.0       # Gemini Imagen 3 — image generation
 openai>=1.0.0              # fallback / optional
 langgraph>=0.6.0           # LangGraph pipeline orchestration
 groq>=1.0.0                # Groq — Director + Healer (fast inference)
+fastembed>=0.2.0           # Local CPU-optimized embeddings
+lancedb>=0.6.0             # High-performance vector database
 
 # ── Video / Audio ──────────────────────────────────────
 moviepy==1.0.3             # video stitching

@@ -71,7 +71,8 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                     scene_clip, sub_to_close = _create_counting_clip(item_path, count, dur, bg_path=bg_path)
                     video_clips_to_close.extend(sub_to_close)
                 else:
-                    scene_clip = _create_fallback_clip(f"Count: {count} {item_name}", dur)
+                    scene_clip, fall_close = _create_fallback_clip(f"Count: {count} {item_name}", dur)
+                    video_clips_to_close.extend(fall_close)
             
             elif v_type == "generative_video":
                 prompt = v_data.get("prompt", "Cinematic motion")
@@ -94,7 +95,8 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                         scene_clip, sub_to_close = _create_zoom_clip(img_path, dur)
                         video_clips_to_close.extend(sub_to_close)
                     else:
-                        scene_clip = _create_fallback_clip(prompt, dur)
+                        scene_clip, fall_close = _create_fallback_clip(prompt, dur)
+                        video_clips_to_close.extend(fall_close)
 
 
             elif v_type == "b_roll_clip" or v_type == "concept_image":
@@ -104,10 +106,12 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                     scene_clip, sub_to_close = _create_zoom_clip(img_path, dur)
                     video_clips_to_close.extend(sub_to_close)
                 else:
-                    scene_clip = _create_fallback_clip("Educational visual", dur)
+                    scene_clip, fall_close = _create_fallback_clip("Educational visual", dur)
+                    video_clips_to_close.extend(fall_close)
             
             else:
-                scene_clip = _create_fallback_clip(f"Scene {i+1}", dur)
+                scene_clip, fall_close = _create_fallback_clip(f"Scene {i+1}", dur)
+                video_clips_to_close.extend(fall_close)
 
             # 3. Add scene-specific text overlay (optional)
             if v_type == "counting_metaphor":
@@ -262,4 +266,5 @@ def _create_fallback_clip(text, duration):
         duration=duration
     ).set_position('center')
     
-    return CompositeVideoClip([bg, txt])
+    final_comp = CompositeVideoClip([bg, txt])
+    return final_comp, [bg, txt, final_comp]
