@@ -483,6 +483,9 @@ EXAMPLE 2 (Bar Chart):
 ━━━ INDUSTRIAL LAYOUT RULES ━━━
 - ALWAYS use `axes.add_coordinates()` for clarity.
 - ALWAYS set `x_length` and `y_length` to prevent the graph from touching screen edges.
+- MANDATORY: Every Axes() call MUST include x_length=8, y_length=5.
+- Never create Axes without explicit x_length and y_length.
+- Never use default Axes sizing.
 - Use `x_length=8, y_length=5` as a safe default for a 16:9 horizontal frame.
 - For geometry, avoid `self.set_background()`.
 
@@ -494,6 +497,51 @@ EXAMPLE 2 (Bar Chart):
 - FRAME SAFETY: Title size `DesignTokens.TITLE_SIZE`, Body size `DesignTokens.BODY_SIZE`. 
 - Output ONLY the Python code. No explanation, no markdown.
 - Max 40 lines of code. No imports. No class definitions.
+"""
+
+# After getting code from LLM, force-suffix common variable names
+def _sanitize_graph_code(code: str, idx: int) -> str:
+    common_vars = [
+        "axes", "curve", "graph", "label", "bar",
+        "dot", "line", "arrow", "text", "point",
+        "x_label", "y_label", "area", "region"
+    ]
+    for var in common_vars:
+        # Replace var = with var_{idx} = 
+        code = re.sub(
+            rf'\b{var}\b(?!\w|_{idx})',
+            f'{var}_{idx}',
+            code
+        )
+    return code
+
+def _validate_graph_code(code: str) -> bool:
+    banned = [
+        "self.set_background",
+        "self.set_text", 
+        "Text(",
+        "self.camera.background_color = BLACK",
+    ]
+    for banned_pattern in banned:
+        if banned_pattern in code:
+            print(f"   ⚠️ graph_hint: banned pattern found: {banned_pattern}")
+            return False
+    return True
+
+def _graph_axes_fallback(idx: int, description: str, duration: float) -> str:
+    return f"""
+        # Scene {idx}: graph_hint — fallback
+        self._clear()
+        axes_{idx} = Axes(
+            x_range=[-0.5, 5, 1], y_range=[-0.5, 5, 1],
+            x_length=8, y_length=5,
+            axis_config={{"color": BLUE_C, "include_tip": True}},
+        ).move_to(ORIGIN)
+        label_{idx} = Tex(r"\\text{{{description[:30]}}}")
+        label_{idx}.scale(0.65).next_to(axes_{idx}, DOWN, buff=0.3)
+        self.play(Create(axes_{idx}), Write(label_{idx}), run_time=1.2)
+        self.wait({duration})
+        self._clear()
 """
 
 def _scene_graph_hint(scene: dict, idx: int) -> str:
@@ -524,6 +572,14 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
         # Strip any markdown fences if the extraction in LLMFactory was too loose
         code = re.sub(r"```(?:python)?", "", code, flags=re.IGNORECASE).replace("```", "").strip()
         
+        code = _sanitize_graph_code(code, idx)
+        
+        if "Axes(" in code and "x_length" not in code:
+            code = code.replace("Axes(", "Axes(x_length=8, y_length=5, ")
+
+        if not _validate_graph_code(code):
+            return _graph_axes_fallback(idx, description, duration)
+        
         import textwrap
         indented_code = textwrap.indent(code, "        ")
         
@@ -532,20 +588,7 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
         return f"        # Scene {idx}: graph_hint — {graph_type} (LLM-generated)\n{indented_code}\n"
     except Exception as e:
         print(f"   ⚠️  graph_hint LLM failed ({e}), falling back to plain axes")
-        return f"""
-        # Scene {idx}: graph_hint — {graph_type} (fallback)
-        self._clear()
-        axes_{idx} = Axes(
-            x_range=[-0.5, 5, 1], y_range=[-0.5, 5, 1],
-            x_length=8, y_length=5,
-            axis_config={{"color": BLUE_C, "include_tip": True}},
-        ).move_to(ORIGIN)
-        label_{idx} = Tex(r"\\text{{{description[:30]}}}")
-        label_{idx}.scale(0.65).next_to(axes_{idx}, DOWN, buff=0.3)
-        self.play(Create(axes_{idx}), Write(label_{idx}), run_time=1.2)
-        self.wait({duration})
-        self._clear()
-"""
+        return _graph_axes_fallback(idx, description, duration)
 
 
 def _scene_key_point(scene: dict, idx: int) -> str:
