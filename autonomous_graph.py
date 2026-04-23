@@ -247,8 +247,8 @@ def _manim() -> str:
     import sys
     import shutil
 
-    # Industrial Path Injection: Ensure Homebrew and MacTeX are visible to the engine
-    extra_paths = ["/usr/local/bin", "/opt/homebrew/bin", "/Library/TeX/texbin"]
+    # Industrial Path Injection: Ensure Homebrew, MacTeX, and standard Linux standard paths are visible to the engine
+    extra_paths = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/Library/TeX/texbin"]
     os.environ["PATH"] = ":".join(extra_paths) + ":" + os.environ.get("PATH", "")
 
     # 1. Check local venv first (highest priority)
