@@ -14,10 +14,10 @@ Subject-aware prompt engineering:
 
 import os
 import base64
+import re
 from pathlib import Path
-from google import genai
-from google.genai import types
 import config
+from openai import OpenAI
 
 
 # ── Prompt templates per subject ──────────────────────────────────────────────
@@ -95,62 +95,52 @@ def generate_concept_image(
     filename: str = None,
 ) -> str:
     """
-    Generate an educational diagram using Gemini Imagen 3.
-
-    Args:
-        topic      : Topic name (e.g. "Internal Iliac Artery")
-        subject    : Subject type from html_parser (medical/physics/maths/...)
-        output_dir : Directory to save the image
-        filename   : Override filename (default: topic_diagram.png)
-
-    Returns:
-        Absolute path to the saved PNG file
+    Generate an educational diagram using OpenAI gpt-image-2.
     """
-    api_key = config.GEMINI_API_KEY
+    api_key = config.OPENAI_API_KEY
     if not api_key:
-        raise ValueError("GEMINI_API_KEY not set in environment / .env")
+        raise ValueError("OPENAI_API_KEY not set in config / environment")
 
-    client = genai.Client(api_key=api_key)
+    client = OpenAI(api_key=api_key)
 
-    # Build subject-aware prompt
+
+    # Same subject-aware prompts you already have
     template = _PROMPT_TEMPLATES.get(subject, _PROMPT_TEMPLATES["default"])
     prompt = template.format(topic=topic)
 
-    print(f"🎨 Generating image for: {topic} [{subject}]...")
+    print(f"🎨 Generating image for: {topic} [{subject}] via gpt-image-2...")
 
     import time
     for attempt in range(3):
         try:
-            response = client.models.generate_images(
-                model="imagen-4.0-generate-001",
+            response = client.images.generate(
+                model="gpt-image-2",
                 prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="16:9",          # matches video frame
-                    safety_filter_level="block_low_and_above",
-                ),
+                size="1792x1024",
+                quality="high",
+                n=1,
+                response_format="b64_json"
             )
             break
         except Exception as e:
-            if attempt == 2 or "429" not in str(e):
+            if attempt == 2:
                 raise
-            print(f"   ⚠️ Imagen rate limit (429). Retrying in {2**attempt}s...")
+            print(f"   ⚠️ gpt-image-2 rate limit. Retrying in {2**attempt}s...")
             time.sleep(2**attempt)
 
-    if not response.generated_images:
-        raise RuntimeError(f"Imagen returned no images for topic: {topic}")
+    if not response.data:
+        raise RuntimeError(f"gpt-image-2 returned no images for: {topic}")
 
     # Save the image
     os.makedirs(output_dir, exist_ok=True)
-    import re
-    safe_topic = re.sub(r'[^a-zA-Z0-9_\-]', '_', topic.lower().strip())
     safe_name = filename or (
-        safe_topic[:50] + "_diagram.png"
+        re.sub(r'[^a-zA-Z0-9_\-]', '_', topic.lower().strip())[:50]
+        + "_diagram.png"
     )
 
     output_path = os.path.join(output_dir, safe_name)
+    image_bytes = base64.b64decode(response.data[0].b64_json)
 
-    image_bytes = response.generated_images[0].image.image_bytes
     with open(output_path, "wb") as f:
         f.write(image_bytes)
 

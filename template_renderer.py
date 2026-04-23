@@ -215,6 +215,12 @@ def _scene_image_arrow(scene: dict, idx: int, image_path: str = None) -> str:
 def _scene_mcq_layout(scene: dict, idx: int) -> str:
     d       = scene["visual_data"]
     options = d.get("options", {})
+    if isinstance(options, list):
+        options = {
+            item.get("letter", str(i)): item.get("name", str(item))
+            for i, item in enumerate(options)
+        }
+
     duration = d.get("duration", 2.0)
 
     # 3b1b Sync: 60% anim, 40% wait
