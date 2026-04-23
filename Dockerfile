@@ -19,7 +19,7 @@ ENV PYTHONUNBUFFERED=1 \
     # Tell Manim where to write media (mapped to EFS/ephemeral in ECS)
     MANIM_MEDIA_DIR=/app/output \
     # Tell MoviePy exactly where FFmpeg is (critical for Linux containers)
-    FFMPEG_BINARY=/usr/bin/ffmpeg \
+    IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg \
     # Manim config: no GUI, low quality default (overridden per job)
     MANIM_CONFIG_FILE=/app/manim.cfg \
     # Explicit UTF-8 for Hindi/Indic character safety
@@ -65,9 +65,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dvipng \
     dvisvgm \
+    ghostscript \
     cm-super \
     fonts-indic \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -fv
 
 
 # ── Python dependencies ───────────────────────────────────────────────────────
