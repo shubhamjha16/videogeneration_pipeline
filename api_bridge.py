@@ -788,6 +788,7 @@ def start_render(request: RenderRequest):
             "created_at":   now_iso,
             "updated_at":   now_iso,
             "topic":        request.topic,
+            "raw_html":     request.html,
             "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}]
         }
 
@@ -871,6 +872,7 @@ async def bulk_render(file: UploadFile = File(...)):
                 "image_path":   None,
                 "created_at":   now_iso,
                 "updated_at":   now_iso,
+                "raw_html":     html,
                 "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}],
                 "metrics":      {}
             }

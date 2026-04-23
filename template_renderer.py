@@ -524,9 +524,12 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
         # Strip any markdown fences if the extraction in LLMFactory was too loose
         code = re.sub(r"```(?:python)?", "", code, flags=re.IGNORECASE).replace("```", "").strip()
         
+        import textwrap
+        indented_code = textwrap.indent(code, "        ")
+        
         # Return exactly what Groq wrote so that list comprehensions down the chain are accurate.
         print(f"   🔢 graph_hint scene {idx}: LLM generated {len(code.splitlines())} lines")
-        return f"\n# Scene {idx}: graph_hint — {graph_type} (LLM-generated)\n" + code + "\n"
+        return f"        # Scene {idx}: graph_hint — {graph_type} (LLM-generated)\n{indented_code}\n"
     except Exception as e:
         print(f"   ⚠️  graph_hint LLM failed ({e}), falling back to plain axes")
         return f"""

@@ -40,6 +40,7 @@ from typing import TypedDict, List, Optional, Any
 from langgraph.graph import StateGraph, END
 import config
 from healer_agent import run_healer
+from knowledge_vector_store import retrieve_related_research
 
 
 # ── Industrial Helpers ───────────────────────────────────────────────────────
@@ -495,6 +496,7 @@ def research_node(state: TonyState) -> TonyState:
         state["knowledge_base"] = distilled
     
     _log_progress(state, "RESEARCH", f"Gathered {len(unique_results)} unique reference points and updated KB.", duration=time.time() - start_t)
+    state["research_count"] = state.get("research_count", 0) + 1
     return state
 
 

@@ -36,7 +36,7 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
             narration = scene["narration_text"]
             
             # 1. Generate narration audio for timing
-            audio_path = generate_audio(narration, f"explainer_{i}", output_dir=output_dir)
+            audio_path, _ = generate_audio(narration, f"explainer_{i}", output_dir=output_dir)
             audio_clip = AudioFileClip(audio_path)
             audio_clips.append(audio_clip)
             dur = audio_clip.duration
