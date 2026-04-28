@@ -162,11 +162,11 @@ def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = 
                 }
                 job["progress"] = progress_map.get(node_name.upper(), job.get("progress", 10))
                 
-                # INDUSTRIAL LEDGER: Sync grounded costs to API
+                # INDUSTRIAL LEDGER: Sync grounded costs to API (Stateful update)
+                job["ledger"] = state.get("ledger", {})
+                # For metrics compatibility
                 metrics = job.get("metrics") or {}
-                ledger = state.get("ledger") or {}
-                for k, v in ledger.items():
-                    metrics[k] = metrics.get(k, 0) + v
+                metrics.update(job["ledger"])
                 job["metrics"] = metrics
         
         _api_bridge_refs._save_jobs()
@@ -369,11 +369,15 @@ def director_node(state: TonyState) -> TonyState:
 
     print(f"   Subject: {parsed['subject']} | Type: {parsed['content_type']}")
 
-    director_output = run_director(
+    director_output, usage = run_director(
         parsed, 
         search_results=state.get("search_results"),
         knowledge_base=state.get("knowledge_base")
     )
+    # INDUSTRIAL LEDGER: Capture tokens
+    state["ledger"] = state.get("ledger", {})
+    state["ledger"]["prompt_tokens"] = state["ledger"].get("prompt_tokens", 0) + usage.get("prompt_tokens", 0)
+    state["ledger"]["completion_tokens"] = state["ledger"].get("completion_tokens", 0) + usage.get("completion_tokens", 0)
     # Respect user-specified render_mode — only use Claude's decision as fallback
     # Industrial Sentinel: Treat "auto" as unset to allow Director to drive the path
     user_mode = (state.get("render_mode") or "auto").lower().strip()
@@ -538,7 +542,7 @@ def research_node(state: TonyState) -> TonyState:
         if hits and hits[0]["similarity"] > 0.85:
             match = hits[0]
             print(f"   🎯 Vector Hit! Retrieved '{match['topic']}' (Similarity: {match['similarity']})")
-            _log_progress(state, "RESEARCH", f"🎯 Semantic Hit: Reusing research from '{match['topic']}'")
+            _log_progress(state, "KNOWLEDGE", f"💎 KNOWLEDGE ACQUIRED: Reusing grounded research for '{match['topic']}'", log_type="knowledge")
             state["knowledge_base"] = {
                 "summary": match["summary"],
                 "key_facts": match["key_facts"],
@@ -889,7 +893,11 @@ def healer_node(state: TonyState) -> TonyState:
     with open(state["manim_script_path"], "r") as f:
         script_content = f.read()
 
-    fixed_script = run_healer(script_content, state["rendering_errors"])
+    fixed_script, usage = run_healer(script_content, state["rendering_errors"])
+    # INDUSTRIAL LEDGER: Capture tokens
+    state["ledger"] = state.get("ledger", {})
+    state["ledger"]["prompt_tokens"] = state["ledger"].get("prompt_tokens", 0) + usage.get("prompt_tokens", 0)
+    state["ledger"]["completion_tokens"] = state["ledger"].get("completion_tokens", 0) + usage.get("completion_tokens", 0)
 
     with open(state["manim_script_path"], "w") as f:
         f.write(fixed_script)
@@ -1416,13 +1424,17 @@ def explainer_node(state: TonyState) -> TonyState:
 
     # 1. Call explainer generator (B-roll stitching)
     try:
-        video_path = generate_explainer_video(
+        video_path, metrics = generate_explainer_video(
             state["scenes"], 
             state.get("image_paths", {}), 
             job_dir, 
             state["topic"]
         )
         state["output_path"] = os.path.abspath(video_path)
+        
+        # INDUSTRIAL LEDGER: Capture Higgsfield calls
+        state["ledger"] = state.get("ledger", {})
+        state["ledger"]["higgsfield_calls"] = state["ledger"].get("higgsfield_calls", 0) + metrics.get("higgsfield_calls", 0)
         # Note: Handed off to deploy_node for S3 sync and Disk Hygiene
     except Exception as e:
         print(f"   ❌ Explainer failed: {e}")

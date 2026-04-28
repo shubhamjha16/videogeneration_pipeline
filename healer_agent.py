@@ -45,23 +45,15 @@ FIXED:
 Return ONLY the code. No chatter."""
 
 
-def run_healer(broken_script: str, error_message: str) -> str:
+def run_healer(broken_script: str, error_message: str) -> tuple[str, dict]:
     """
     Ask Groq (Llama 3.3) to fix a broken Manim script.
-
-    Args:
-        broken_script : full content of the broken .py file
-        error_message : stderr from the failed Manim render
-
-    Returns:
-        Fixed Python script as a string
+    Returns: (fixed_script, usage)
     """
-    # ── Search for solutions on the web ────────────────────────
+    # ... search logic remains same ...
     search_context = ""
     try:
-        # Extract the last few lines of the error message for a cleaner query
         clean_error = error_message.strip().splitlines()[-1] if error_message else "Manim render error"
-        # Only search if it looks like a real error
         if any(keyword in clean_error for keyword in ["Error", "Exception", "invalid", "not found"]):
             results = search_searxng(f"Manim {clean_error}", categories="it,general")
             if results:
@@ -71,7 +63,7 @@ def run_healer(broken_script: str, error_message: str) -> str:
     except Exception as e:
         print(f"   ⚠️ Healer search failed: {e}")
 
-    content = LLMFactory.get_completion(
+    content, usage = LLMFactory.get_completion(
         messages=[
             {"role": "user", "content": (
                 f"ERROR MESSAGE:\n{error_message}\n\n"
@@ -81,22 +73,19 @@ def run_healer(broken_script: str, error_message: str) -> str:
             )}
         ],
         system_prompt=SYSTEM_PROMPT,
-        json_mode=False
+        json_mode=False,
+        include_usage=True
     )
     fixed = content
-    # Robust extraction: Look for markdown code blocks (with or without 'python' tag)
     match = re.search(r'```(?:python)?\s*(.*?)```', fixed, re.DOTALL | re.IGNORECASE)
     if match:
-        return match.group(1).strip()
+        return match.group(1).strip(), usage
     
-    # Fallback: if no backticks but starts with 'import', it might be naked code
     if "import " in fixed:
         lines = fixed.splitlines()
         for i, line in enumerate(lines):
             if line.strip().startswith(("import ", "from ")):
-                # Take everything from the first import line onwards
                 code_body = "\n".join(lines[i:]).strip()
-                # Final check: remove any accidental trailing backticks
-                return code_body.split("```")[0].strip()
+                return code_body.split("```")[0].strip(), usage
     
-    return fixed.strip().split("```")[0].strip()
+    return fixed.strip().split("```")[0].strip(), usage

@@ -214,7 +214,7 @@ OUTPUT: Return valid JSON only. No extra text."""
 
 # ── Director ──────────────────────────────────────────────────────────────────
 
-def run_director(parsed_facts: dict, search_results: list[dict] = None, knowledge_base: dict = None) -> DirectorOutput:
+def run_director(parsed_facts: dict, search_results: list[dict] = None, knowledge_base: dict = None) -> tuple[DirectorOutput, dict]:
     """
     Call Groq (Llama 3.3) to decide render mode and generate teaching scenes.
 
@@ -250,10 +250,11 @@ Structure:
 """
     system_prompt_with_hint = SYSTEM_PROMPT + "\n\n" + schema_hint
     
-    content = LLMFactory.get_completion(
+    content, usage = LLMFactory.get_completion(
         messages=[{"role": "user", "content": user_message}],
         system_prompt=system_prompt_with_hint,
-        json_mode=True
+        json_mode=True,
+        include_usage=True
     )
     
     try:
@@ -296,7 +297,7 @@ Structure:
         except Exception as e:
             print(f"   ⚠️ Label Injection failed: {e}")
 
-        return response
+        return response, usage
         
     except Exception as e:
         print(f"❌ Director Parse Error: {e}")
@@ -312,7 +313,7 @@ Structure:
                 }
             ]
         }
-        return DirectorOutput(**fallback_plan)
+        return DirectorOutput(**fallback_plan), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
 def _build_prompt(facts: dict, search_results: list[dict] = None, knowledge_base: dict = None) -> str:

@@ -29,6 +29,7 @@ faster-whisper>=1.0.0      # High-fidelity alignment node
 
 # ── HTML parsing ───────────────────────────────────────
 beautifulsoup4>=4.12.0
+markdown>=3.6
 
 # ── Image processing ───────────────────────────────────
 pillow>=10.0.0

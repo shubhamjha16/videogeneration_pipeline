@@ -81,6 +81,9 @@ def tex(text: str, width: int = 45) -> str:
     )
     # Restore the backslash for our internal \textbf
     escaped = escaped.replace(r'\\textbf', r'\textbf')
+    # Industrial Guard: Remove any remaining raw backslashes that could break Tex()
+    # unless they are part of our controlled \textbf command.
+    escaped = re.sub(r'(?<!\\)\\(?!textbf\{)', r'\\\\', escaped)
 
     # 2. Wrap if too long
     lines = textwrap.wrap(escaped, width=width)
@@ -116,10 +119,10 @@ def _region_to_coords(region: str) -> str:
 def _option_position(letter: str) -> str:
     """Fixed positions for MCQ option boxes in a 2x2 grid."""
     positions = {
-        "A": "np.array([-3.2,  1.2, 0])",
-        "B": "np.array([ 3.2,  1.2, 0])",
-        "C": "np.array([-3.2, -1.2, 0])",
-        "D": "np.array([ 3.2, -1.2, 0])",
+        "A": "np.array([-3.2,  1.2, 0])", "1": "np.array([-3.2,  1.2, 0])",
+        "B": "np.array([ 3.2,  1.2, 0])", "2": "np.array([ 3.2,  1.2, 0])",
+        "C": "np.array([-3.2, -1.2, 0])", "3": "np.array([-3.2, -1.2, 0])",
+        "D": "np.array([ 3.2, -1.2, 0])", "4": "np.array([ 3.2, -1.2, 0])",
     }
     return positions.get(letter.upper(), "np.array([0, 0, 0])")
 

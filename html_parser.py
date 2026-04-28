@@ -361,7 +361,7 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
         html += "</body></html>"
     elif isinstance(input_data, dict):
         # If it already looks like a parsed fact sheet, pass it through or convert to HTML
-        if "topic" in input_data and ("concept" in input_data or "sections" in input_data):
+        if "topic" in input_data and ("concept" in input_data or "sections" in input_data or "options" in input_data):
             # This is already structured, but the rest of the function expects to work on soup.
             # We'll return it early if it's already a complete result.
             return input_data

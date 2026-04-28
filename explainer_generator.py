@@ -15,7 +15,7 @@ import random
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = Image.Resampling.LANCZOS
 
-def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, topic: str) -> str:
+def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, topic: str) -> tuple[str, dict]:
     """
     Multimodal Explainer Engine v5.0 (ImageMagick-Free)
     Stitches:
@@ -23,8 +23,11 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
       - Imagen 3.0 Counting Metaphors (1-to-N logic)
       - Cinematic static image zooms
       - ElevenLabs narration
+    Returns: (output_path, metrics)
     """
     print(f"🎬 [Explainer Gen] Building Multimodal Metaphor Factory for: {topic}")
+    
+    higgsfield_calls = 0
     
     clips = []
     audio_clips = []
@@ -80,6 +83,7 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                 img_path = image_paths.get(asset_id)
                 video_path = os.path.join(output_dir, f"gen_video_{i}.mp4")
                 try:
+                    higgsfield_calls += 1
                     video_path = generate_higgsfield_video(prompt, video_path)
                     raw_orig = VideoFileClip(video_path)
                     raw_v = raw_orig.without_audio()
@@ -172,7 +176,8 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
         for v in video_clips_to_close:
             safe_close(v)
     
-    return output_path
+    metrics = {"higgsfield_calls": higgsfield_calls}
+    return output_path, metrics
 
 def _create_zoom_clip(img_path, duration):
     """Applies a smooth randomized Ken Burns scale/pan effect."""

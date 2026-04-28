@@ -710,6 +710,10 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
         error_msg = final_state.get("rendering_errors", "")
 
         with _jobs_lock:
+            # Transfer Ledger for Financial Analytics (Grounded Usage Tracking)
+            if "ledger" in final_state:
+                jobs[job_id]["ledger"] = final_state["ledger"]
+
             if video_url:
                 jobs[job_id]["status"]    = "completed"
                 jobs[job_id]["video_url"] = video_url
@@ -718,6 +722,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
             else:
                 jobs[job_id]["status"] = "failed"
                 jobs[job_id]["error"]  = error_msg or "No output produced"
+                print(f"❌ Job {job_id} failed: {error_msg}")
                 jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": f"Failure: {jobs[job_id]['error']}", "type": "warning"})
                 print(f"❌ Job {job_id} failed: {jobs[job_id]['error']}")
 
@@ -877,19 +882,29 @@ async def bulk_render(file: UploadFile = File(...)):
     from datetime import datetime
     
     def _run_bulk_sequential(job_queue):
-        for job_id, topic, html in job_queue:
-            _run_pipeline(job_id, topic, html)
+        for job_id, topic, raw_content, source_type in job_queue:
+            _run_pipeline(job_id, topic, raw_content, source_type)
             print(f"✅ Bulk: Job {job_id} done, moving to next...")
 
     job_queue = []
     for lesson in lessons:
         topic = lesson.get("topic", "Untitled")
-        html = lesson.get("html", "")
-        img_path = lesson.get("image_path")
+        
+        # ── Polymorphic Content Resolution (Industrial Standard) ──
+        source_type = "html"
+        raw_content = lesson.get("html")
+        if lesson.get("json_data"):
+            raw_content = lesson.get("json_data")
+            source_type = "json"
+        elif lesson.get("markdown"):
+            raw_content = markdown.markdown(lesson.get("markdown"), extensions=['extra', 'tables', 'fenced_code'])
+            source_type = "markdown"
 
-        if not html:
+        if not raw_content:
+            print(f"⚠️ Skipping bulk lesson '{topic}': No valid content (html, json_data, or markdown) found.")
             continue
             
+        img_path = lesson.get("image_path")
         # 🛡️ MEDIA HARDENING: Bulk Validation
         if img_path:
             try:
@@ -907,7 +922,7 @@ async def bulk_render(file: UploadFile = File(...)):
         now_iso = datetime.utcnow().isoformat() + "Z"
         
         with _jobs_lock:
-            init_msg = f"🚀 Bulk job initialized for topic: {topic} | Mode: {lesson.get('render_mode', 'auto')}"
+            init_msg = f"🚀 Bulk job initialized for topic: {topic} | Source: {source_type.upper()} | Mode: {lesson.get('render_mode', 'auto')}"
             jobs[job_id] = {
                 "job_id":       job_id,
                 "topic":        topic,
@@ -922,12 +937,12 @@ async def bulk_render(file: UploadFile = File(...)):
                 "image_path":   None,
                 "created_at":   now_iso,
                 "updated_at":   now_iso,
-                "raw_html":     html,
+                "raw_html":     raw_content,
                 "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}],
                 "metrics":      {}
             }
         job_ids.append(job_id)
-        job_queue.append((job_id, topic, html))
+        job_queue.append((job_id, topic, raw_content, source_type))
 
     # Single thread runs all jobs one after another
     thread = threading.Thread(
@@ -1020,15 +1035,31 @@ def get_analytics():
         mode = j.get("render_mode") or "auto"
         render_modes[mode] = render_modes.get(mode, 0) + 1
         
-        # Financial Aggregation
-        has_avatar = j.get("with_avatar", False)
-        est = COST_PER_GROQ_CALL * 3 
-        est += COST_PER_ELEVENLABS_CHAR * 2000
-        if mode == "explainer":
-            est += COST_PER_HIGGSFIELD_CALL * 3
-        if has_avatar:
-            est += COST_PER_HEYGEN_MIN * 2
-        total_cost += est
+        # ── Financial Aggregation (Industrial Grounding) ──
+        ledger = j.get("ledger", {})
+        if ledger:
+            # Precise Usage Tracking
+            prompt_tokens = ledger.get("prompt_tokens", 0)
+            completion_tokens = ledger.get("completion_tokens", 0)
+            elevenlabs_chars = ledger.get("elevenlabs_chars", 0)
+            heygen_seconds = ledger.get("heygen_seconds", 0)
+            higgsfield_calls = ledger.get("higgsfield_calls", 0)
+
+            # Industry-standard blended rates
+            llm_cost = (prompt_tokens + completion_tokens) / 1_000_000 * 0.50 # $0.50 per 1M tokens
+            voice_cost = elevenlabs_chars * COST_PER_ELEVENLABS_CHAR
+            avatar_cost = (heygen_seconds / 60) * COST_PER_HEYGEN_MIN
+            explainer_cost = higgsfield_calls * COST_PER_HIGGSFIELD_CALL
+            
+            total_cost += llm_cost + voice_cost + avatar_cost + explainer_cost
+        else:
+            # Fallback for Legacy/Migrated Jobs without ledgers
+            has_avatar = j.get("with_avatar", False)
+            est = COST_PER_GROQ_CALL * 3 
+            est += COST_PER_ELEVENLABS_CHAR * 2000
+            if mode == "explainer": est += COST_PER_HIGGSFIELD_CALL * 3
+            if has_avatar: est += COST_PER_HEYGEN_MIN * 2
+            total_cost += est
         
     durations = [j.get("metrics", {}).get("total_duration_sec", 0) for j in completed]
     avg_duration = round(sum(durations) / len(durations), 1) if durations else 0
