@@ -1,0 +1,160 @@
+⚠️  SECURITY WARNING: ALLOWED_ORIGINS and FACTORY_API_KEY both unset. API is completely open!
+INFO:     Started server process [7451]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+🚀 Job 1a87050b-cd1 queued for: Clinical Neurology: Diffuse Axonal Injury
+INFO:     127.0.0.1:51960 - "POST /render HTTP/1.1" 200 OK
+📡 [2026-04-27T13:14:47.562542Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Clinical Neurology: Diffuse Axonal Injury...
+🎬 [Director] Parsing HTML and writing scene script for: Clinical Neurology: Diffuse Axonal Injury
+   Subject: unknown | Type: mcq
+🧼 [Hygiene Janitor] Starting scheduled cleanup pass...
+✨ [Hygiene Janitor] Cleanup complete. Disk is tidy.
+   Render mode: MANIM | Scenes: 11
+   💡 Reasoning: The subject involves Clinical Neurology with a focus on Diffuse Axonal Injury, a topic requiring anatomical diagrams and dynamic pathways to explain. It fits under Level 1 rendering due to the need for medical accuracy and anatomical visuals.
+📡 [2026-04-27T13:15:04.260614Z] [DIRECTOR] Planned 11 scenes for manim path. (16.7s)
+📡 [2026-04-27T13:15:04.275217Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Clinical Neurology: Diffuse Axonal Injury
+🎨 Generating image for: Clinical Neurology: Diffuse Axonal Injury [unknown] via gpt-image-2...
+✅ Image saved: output/job_1a87050b-cd1/tony_diagram.png
+📡 [2026-04-27T13:15:34.686632Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Clinical Neurology: Diffuse Axonal Injury
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_1a87050b-cd1/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_1a87050b-cd1/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_1a87050b-cd1/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_1a87050b-cd1/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_1a87050b-cd1/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_1a87050b-cd1/scene_5.mp3
+Generated Mac TTS fallback audio for scene 6 -> output/job_1a87050b-cd1/scene_6.mp3
+Generated Mac TTS fallback audio for scene 7 -> output/job_1a87050b-cd1/scene_7.mp3
+Generated Mac TTS fallback audio for scene 8 -> output/job_1a87050b-cd1/scene_8.mp3
+Generated Mac TTS fallback audio for scene 9 -> output/job_1a87050b-cd1/scene_9.mp3
+Generated Mac TTS fallback audio for scene 10 -> output/job_1a87050b-cd1/scene_10.mp3
+✅ Manim script written: output/job_1a87050b-cd1/scene_script.py (11 scenes)
+   Script written with synced durations: output/job_1a87050b-cd1/scene_script.py
+📡 [2026-04-27T13:15:46.295457Z] [ARCHITECT] Manim script generated successfully. (11.6s)
+📡 [2026-04-27T13:15:46.347841Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+   ✅ Manim video: output/job_1a87050b-cd1/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_1a87050b-cd1/clinical_neurology_diffuse_axonal_injury_masterclass.mp4
+   ℹ️  S3_BUCKET not set — skipping upload, returning local path
+📡 [2026-04-27T13:20:09.483619Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "local_file_url", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "1a87050b-cd1"}
+📡 [2026-04-27T13:20:09.759972Z] [SUPERVISOR] Manim production lifecycle complete. (263.4s)
+📡 [2026-04-27T13:20:10.377416Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — skipping upload, returning local path
+📡 [2026-04-27T13:20:10.387446Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "local_file_url", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "1a87050b-cd1"}
+📡 [2026-04-27T13:20:10.602573Z] [DEPLOY] Masterclass published successfully: /stream/1a87050b-cd1/clinical_neurology_diffuse_axonal_injury_masterclass.mp4 (0.2s)
+🎬 [Thumbnail] Clinical Neurology: Diffuse Axonal Injury [unknown]
+   🎨 Gemini generating base layer for: unknown...
+   ⚠️  Gemini unavailable (403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}) — using PIL fallback base
+   ✍️  Overlaying text: MASTER / MASTERY
+   ✅ Thumbnail: output/job_1a87050b-cd1/thumbnail.png
+   ℹ️  S3_BUCKET not set — skipping upload, returning local path
+📡 [2026-04-27T13:20:14.246504Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "local_file_url", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "1a87050b-cd1"}
+📡 [2026-04-27T13:20:14.264964Z] [DEPLOY] Thumbnail generated: /stream/1a87050b-cd1/thumbnail.png
+✅ Job 1a87050b-cd1 completed: /stream/1a87050b-cd1/clinical_neurology_diffuse_axonal_injury_masterclass.mp4
+🚀 Job 5e534817-6f2 queued for: Diffuse Axonal Injury: Professional Clinical Case
+📡 [2026-04-27T13:25:16.368481Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Diffuse Axonal Injury: Professional Clinical Case...
+INFO:     127.0.0.1:52073 - "POST /render HTTP/1.1" 200 OK
+🎬 [Director] Parsing HTML and writing scene script for: Diffuse Axonal Injury: Professional Clinical Case
+🚀 HTML Parser: Auto-converted JSON payload to structured HTML.
+   Subject: mba | Type: mcq
+   Render mode: MANIM | Scenes: 10
+   💡 Reasoning: The content involves a medical MCQ concerning Diffuse Axonal Injury (DAI), which requires an anatomical understanding and clinical diagrams to explain the condition, fulfilling the criteria for 'manim' rendering.
+📡 [2026-04-27T13:25:27.761357Z] [DIRECTOR] Planned 10 scenes for manim path. (11.4s)
+📡 [2026-04-27T13:25:27.827953Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Diffuse Axonal Injury: Professional Clinical Case
+🎨 Generating image for: Diffuse Axonal Injury: Professional Clinical Case [mba] via gpt-image-2...
+✅ Image saved: output/job_5e534817-6f2/tony_diagram.png
+📡 [2026-04-27T13:25:47.168080Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Diffuse Axonal Injury: Professional Clinical Case
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_5e534817-6f2/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_5e534817-6f2/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_5e534817-6f2/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_5e534817-6f2/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_5e534817-6f2/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_5e534817-6f2/scene_5.mp3
+Generated Mac TTS fallback audio for scene 6 -> output/job_5e534817-6f2/scene_6.mp3
+Generated Mac TTS fallback audio for scene 7 -> output/job_5e534817-6f2/scene_7.mp3
+Generated Mac TTS fallback audio for scene 8 -> output/job_5e534817-6f2/scene_8.mp3
+Generated Mac TTS fallback audio for scene 9 -> output/job_5e534817-6f2/scene_9.mp3
+✅ Manim script written: output/job_5e534817-6f2/scene_script.py (10 scenes)
+   Script written with synced durations: output/job_5e534817-6f2/scene_script.py
+📡 [2026-04-27T13:25:54.502384Z] [ARCHITECT] Manim script generated successfully. (7.3s)
+📡 [2026-04-27T13:25:54.520910Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+   ✅ Manim video: output/job_5e534817-6f2/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_5e534817-6f2/diffuse_axonal_injury_professional_clinical_case_masterclass.mp4
+   ℹ️  S3_BUCKET not set — skipping upload, returning local path
+📡 [2026-04-27T13:27:52.830855Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "local_file_url", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "5e534817-6f2"}
+📡 [2026-04-27T13:27:52.858114Z] [SUPERVISOR] Manim production lifecycle complete. (118.3s)
+📡 [2026-04-27T13:27:52.876121Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — skipping upload, returning local path
+📡 [2026-04-27T13:27:52.889436Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "local_file_url", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "5e534817-6f2"}
+📡 [2026-04-27T13:27:52.904098Z] [DEPLOY] Masterclass published successfully: /stream/5e534817-6f2/diffuse_axonal_injury_professional_clinical_case_masterclass.mp4 (0.0s)
+🎬 [Thumbnail] Diffuse Axonal Injury: Professional Clinical Case [mba]
+   🎨 Gemini generating base layer for: mba...
+   ⚠️  Gemini unavailable (403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}) — using PIL fallback base
+   ✍️  Overlaying text: CAT / MBA
+   ✅ Thumbnail: output/job_5e534817-6f2/thumbnail.png
+   ℹ️  S3_BUCKET not set — skipping upload, returning local path
+📡 [2026-04-27T13:27:53.970993Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "local_file_url", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "5e534817-6f2"}
+📡 [2026-04-27T13:27:53.989292Z] [DEPLOY] Thumbnail generated: /stream/5e534817-6f2/thumbnail.png
+✅ Job 5e534817-6f2 completed: /stream/5e534817-6f2/diffuse_axonal_injury_professional_clinical_case_masterclass.mp4
+🧼 [Hygiene Janitor] Starting scheduled cleanup pass...
+✨ [Hygiene Janitor] Cleanup complete. Disk is tidy.
+🧼 [Hygiene Janitor] Starting scheduled cleanup pass...
+✨ [Hygiene Janitor] Cleanup complete. Disk is tidy.
+INFO:     127.0.0.1:53136 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53136 - "GET /openapi.json HTTP/1.1" 200 OK
+📡 [2026-04-28T07:02:08.147571Z] [DIRECTOR] Analyzing curriculum and selecting render path for: HTML Test...
+🚀 Job c651f050-28c queued for: HTML Test
+🎬 [Director] Parsing HTML and writing scene script for: HTML Test
+INFO:     127.0.0.1:53354 - "POST /render HTTP/1.1" 200 OK
+   Subject: unknown | Type: concept
+INFO:     127.0.0.1:53355 - "POST /render HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:53356 - "POST /render HTTP/1.1" 422 Unprocessable Entity
+   Render mode: PRESENTATION | Scenes: 5
+   💡 Reasoning: The content concerns HTML, which is a web technology typically involving static text, tags, and attribute explanations. It doesn't require complex diagrams, motion, or deep conceptual visuals, so a presentation is efficient and sufficient.
+📡 [2026-04-28T07:02:16.565024Z] [DIRECTOR] Planned 5 scenes for presentation path. (8.4s)
+📡 [2026-04-28T07:02:16.584268Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: HTML Test
+   ℹ️  Vision Node: Skipping Imagen calls for presentation path.
+📋 [PPT Planner] Planning slides for: HTML Test (attempt 1)
+   Planned 7 slides:
+     1. [chaos_chapter] HTML: Foundation of the Web
+     2. [big_statement] Every HTML document starts with <html>, 
+     3. [bullets] Key HTML Components
+     4. [chaos_chapter] Tag Mastery
+     5. [two_column] HTML Structure
+     6. [key_highlight] 
+     7. [summary] Key Takeaways
+📡 [2026-04-28T07:02:23.982294Z] [PPT_PLANNER] Planned 7 slides. (7.3s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+   Score: 4/10 | ❌ Rejected
+   Feedback: Slide 1: Subtitle 'Unveiling the Basics of Web Development' is too generic (E2). Slide 3: All bullet points (e.g., '<html>: Root Element') rely on tags that need clearer definitions rather than one-word explanations (E4). Slide 4: Narration starts with 'Let's dive into' which violates rule E1. Slide 7: Narration overly mirrors bullet points (E5). Layout repeat issue: Three slides (3, 5, 7) use listing styles in a row, causing a layout variance problem (V2).
+📡 [2026-04-28T07:02:26.865105Z] [PPT_CRITIC] Critic review complete (Approved: False). (2.8s)
+   ↩️  Sending back to planner (attempt 1)
+📋 [PPT Planner] Planning slides for: HTML Test (attempt 2)
+   Planned 7 slides:
+     1. [chaos_chapter] HTML Unveiled
+     2. [definition_card] 
+     3. [key_highlight] 
+     4. [two_column] Critical HTML Elements
+     5. [big_statement] HTML is Essential for Web Development
+     6. [bullets] Why Master HTML?
+     7. [chaos_chapter] Building Beyond Basics
+📡 [2026-04-28T07:02:35.645164Z] [PPT_PLANNER] Planned 7 slides. (8.7s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [7451]

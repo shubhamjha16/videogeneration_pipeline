@@ -33,6 +33,7 @@ Output schema (common fields):
 """
 
 import re
+from typing import Any
 from bs4 import BeautifulSoup
 
 
@@ -188,6 +189,16 @@ def _extract_options(soup: BeautifulSoup) -> dict:
                 explanation = _clean(sib.get_text(separator=' '))
                 options[letter] = {"name": name, "explanation": explanation}
 
+    # Format 3: Raw text A. B. C. D. patterns (No headings)
+    if not options:
+        # Look for lines starting with A., B., C., or D.
+        # This handles raw text copy-pastes
+        matches = re.finditer(r'(?i)^\s*([A-D])[.\)]\s+(.+)', soup.get_text(), re.MULTILINE)
+        for m in matches:
+            letter = m.group(1).upper()
+            name = _clean(m.group(2))
+            options[letter] = {"name": name, "explanation": ""}
+
     return options
 
 
@@ -331,23 +342,75 @@ def _extract_concept(soup: BeautifulSoup) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def parse_tony_html(html: str, topic_hint: str = "") -> dict:
-    """
-    Parse Tony AI lesson HTML into structured facts.
+def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
+    """Industrial Sentinel: Universal Input Dispatcher (Handles Swagger JSON, Dicts, or Raw HTML)."""
+    import json
+    
+    # ── 1. Input Normalization (Tri-Input Support) ──
+    if isinstance(input_data, list):
+        # Swagger-style list of {title, description}
+        html = "<html><body>"
+        for item in input_data:
+            if isinstance(item, dict):
+                t = item.get("title", "") or item.get("heading", "")
+                d = item.get("description", "") or item.get("content", "") or item.get("body", "")
+                if t: html += f"### {t}\n"
+                if d: html += f"{d}\n\n"
+            else:
+                html += f"<p>{str(item)}</p>"
+        html += "</body></html>"
+    elif isinstance(input_data, dict):
+        # If it already looks like a parsed fact sheet, pass it through or convert to HTML
+        if "topic" in input_data and ("concept" in input_data or "sections" in input_data):
+            # This is already structured, but the rest of the function expects to work on soup.
+            # We'll return it early if it's already a complete result.
+            return input_data
+        
+        # Otherwise, try to extract text/html from common keys
+        html = input_data.get("html") or input_data.get("raw_input") or input_data.get("text") or input_data.get("content")
+        if not html:
+            # Fallback: if no obvious keys, just use the JSON string
+            html = f"<html><body><pre>{json.dumps(input_data, indent=2)}</pre></body></html>"
+    else:
+        # Raw string / HTML
+        html = str(input_data)
 
-    Args:
-        html       : Raw HTML string from Tony AI
-        topic_hint : Topic name from page title or caller
-
-    Returns:
-        Structured dict with content_type, subject, and type-specific fields.
-    """
     soup = BeautifulSoup(html, 'html.parser')
-    full_text = _clean(soup.get_text(separator=' '))
+    raw_text = soup.get_text(separator='\n')
+    full_text = _clean(raw_text)
 
     topic        = _infer_topic(soup, topic_hint)
     subject      = _detect_subject(full_text)
     content_type = _detect_content_type(soup, full_text)
+    
+    # ── 2. Structural Slicing ──
+    detected_options = {}
+    if content_type == "mcq":
+        all_markers = []
+        for m in re.finditer(r'###', raw_text):
+            all_markers.append({"pos": m.start(), "end": m.end(), "type": "header", "val": "###"})
+        # Refined label regex: handles A, B, C, D even with complex prefixes
+        for m in re.finditer(r'(?i)(?:Option\s+)?([A-D])[.\)]', raw_text):
+            all_markers.append({"pos": m.start(), "end": m.end(), "type": "label", "val": m.group(1).upper()})
+        
+        all_markers.sort(key=lambda x: x["pos"])
+        
+        current_header = ""
+        for i, marker in enumerate(all_markers):
+            start_idx = marker["end"]
+            end_idx = all_markers[i+1]["pos"] if i + 1 < len(all_markers) else len(raw_text)
+            chunk = raw_text[start_idx:end_idx].strip()
+            
+            if marker["type"] == "header":
+                current_header = "### " + chunk.split('\n')[0].strip()
+            elif marker["type"] == "label":
+                letter = marker["val"]
+                # This chunk is the clinical name/text for this label
+                # We stop if we hit a newline followed by a block marker
+                content = re.split(r'\n\n|###', chunk)[0].strip()
+                full_name = f"{current_header}\n{content}" if current_header else content
+                detected_options[letter] = {"name": full_name, "explanation": ""}
+
     concept      = _extract_concept(soup)
     sections     = _extract_all_sections(soup)
     citations    = _extract_citations(soup)
@@ -365,6 +428,15 @@ def parse_tony_html(html: str, topic_hint: str = "") -> dict:
 
     if content_type == "mcq":
         options = _extract_options(soup)
+        
+        # INDUSTRIAL OVERRIDE: If standard extraction is empty or lazy, use early detected labels
+        if not options:
+            options = detected_options
+        else:
+            for letter, data in detected_options.items():
+                if letter not in options or not options[letter].get("name"):
+                    options[letter] = data
+        
         correct_answer, correct_answer_name = _extract_correct_answer(soup)
         if correct_answer and not correct_answer_name and correct_answer in options:
             correct_answer_name = options[correct_answer]["name"]

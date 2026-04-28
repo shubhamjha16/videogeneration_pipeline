@@ -19,8 +19,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
 SEARXNG_RESULTS_LIMIT = int(os.environ.get("SEARXNG_RESULTS_LIMIT", "5"))
 
-# LLM Providers (groq | google | local)
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "groq")
+# LLM Providers (groq | google | local | openai)
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai")
 LOCAL_LLM_URL = os.environ.get("LOCAL_LLM_URL", "http://localhost:11434/v1")
 LOCAL_LLM_MODEL = os.environ.get("LOCAL_LLM_MODEL", "gemma:4b")
 
@@ -31,7 +31,7 @@ HYGIENE_CHECK_INTERVAL_SECONDS = int(os.environ.get("HYGIENE_CHECK_INTERVAL_SECO
 
 # Pipeline Settings
 DEFAULT_AVATAR = "logo"
-DEFAULT_HEYGEN_AVATAR = "josh_video_20230607" # High-quality stock instructor
+HEYGEN_AVATAR_ID = os.environ.get("HEYGEN_AVATAR_ID", "josh_video_20230607") # High-quality stock instructor
 DEFAULT_RESOLUTION = (854, 480) # 480p for speed
 FPS = 24
 

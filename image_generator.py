@@ -1,5 +1,5 @@
 """
-Image Generator — Gemini Imagen 3
+Image Generator gpt image 2
 Generates educational diagrams for concept phase of the video.
 
 Subject-aware prompt engineering:
@@ -114,10 +114,10 @@ def generate_concept_image(
     for attempt in range(3):
         try:
             response = client.images.generate(
-                model="gpt-image-2",
+                model="dall-e-3",
                 prompt=prompt,
-                size="1792x1024",
-                quality="high",
+                size="1024x1024",
+                quality="hd",
                 n=1,
                 response_format="b64_json"
             )

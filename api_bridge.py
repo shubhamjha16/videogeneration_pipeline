@@ -23,6 +23,7 @@ import requests
 import json
 import copy
 import time
+import markdown
 import config
 from datetime import datetime
 from typing import List, Dict, Any
@@ -37,7 +38,7 @@ from datetime import datetime
 
 
 _jobs_lock = threading.RLock()
-from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Body
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -104,9 +105,9 @@ async def stream_video(job_id: str, filename: str):
 JOBS_FILE = os.environ.get("JOBS_FILE_PATH", "/tmp/jobs.json")
 jobs = {}
 
-# Industrial Concurrency Cap: Max 3 high-compute jobs (Manim/Video) at once
-# This prevents RAM/CPU exhaustion during traffic spikes.
-RENDER_SEMAPHORE = threading.BoundedSemaphore(3)
+# Industrial Concurrency Cap: Max 2 high-compute jobs (Manim/Video) at once
+# Reduced from 3 to 2 to prevent OOM on ECS during concurrent renders.
+RENDER_SEMAPHORE = threading.BoundedSemaphore(2)
 
 def _sanitize_stalled_jobs():
     """Industrial Sentinel: Clean up 'Processing' jobs and purge their heavy storage folders."""
@@ -346,7 +347,9 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
 
 class RenderRequest(BaseModel):
     topic:       str
-    html:        str
+    html:        Optional[Any] = None  # Backward compatibility
+    json_data:   Optional[Any] = None  # For structured JSON input
+    markdown:    Optional[str] = None  # For Markdown input
     render_mode: Optional[Literal["manim", "presentation", "explainer", "user_generated_video", "user_generated"]] = None
     with_avatar: bool = False
     video_type:  Optional[Literal["marketing", "educational"]] = None
@@ -593,7 +596,7 @@ class VersionResponse(BaseModel):
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
 
-def _run_pipeline(job_id: str, topic: str, html: str):
+def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html"):
     """Run the full LangGraph pipeline with Concurrency Sentinel protection."""
     global RENDER_SEMAPHORE
 
@@ -644,6 +647,7 @@ def _run_pipeline(job_id: str, topic: str, html: str):
                 "topic":             topic,
                 "attempt_count":     0,
                 "parsed_facts":      None,
+                "source_type":       source_type,
                 "render_mode":       job.get("render_mode"),
                 "with_avatar":       job.get("with_avatar", False),
                 "video_type":        job.get("video_type"),
@@ -747,10 +751,56 @@ def _run_pipeline(job_id: str, topic: str, html: str):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@app.post("/render", response_model=JobStatus, tags=["Core"], summary="Submit single job", description="Accepts lesson HTML and metadata to queue a single video production job. Returns a job_id immediately while rendering proceeds in a background thread.")
-def start_render(request: RenderRequest):
-    if not request.topic or not request.html:
-        raise HTTPException(status_code=400, detail="topic and html are required")
+@app.post("/render", response_model=JobStatus, tags=["Core"], summary="Submit single job", description="Accepts lesson HTML, JSON, or Markdown to queue a single video production job. Returns a job_id immediately while rendering proceeds in a background thread.")
+def start_render(
+    request: RenderRequest = Body(
+        ...,
+        openapi_examples={
+            "HTML Input": {
+                "summary": "Legacy HTML support",
+                "description": "The original format using the 'html' field.",
+                "value": {
+                    "topic": "Newton's Laws of Motion",
+                    "html": "<html><body><h1>Lesson 1</h1><p>Force equals mass times acceleration.</p></body></html>",
+                    "render_mode": "manim"
+                }
+            },
+            "JSON Input": {
+                "summary": "Structured JSON facts",
+                "description": "Send a list of dictionaries for precise fact control.",
+                "value": {
+                    "topic": "Chemistry Basics",
+                    "json_data": [
+                        {"title": "The Atom", "description": "Basic unit of matter."},
+                        {"title": "Molecules", "description": "Groups of atoms bonded together."}
+                    ],
+                    "render_mode": "presentation"
+                }
+            },
+            "Markdown Input": {
+                "summary": "Raw Markdown",
+                "description": "Write your lesson in plain markdown.",
+                "value": {
+                    "topic": "History of AI",
+                    "markdown": "# Early AI\n\n- **1950**: Turing Test\n- **1956**: Dartmouth Workshop",
+                    "render_mode": "explainer"
+                }
+            }
+        }
+    )
+):
+    # ── 1. Content Resolution (Priority: json_data > markdown > html) ──
+    source_type = "html"
+    raw_content = request.html
+    if request.json_data:
+        raw_content = request.json_data
+        source_type = "json"
+    elif request.markdown:
+        raw_content = markdown.markdown(request.markdown, extensions=['extra', 'tables', 'fenced_code'])
+        source_type = "markdown"
+    
+    if not request.topic or not raw_content:
+        raise HTTPException(status_code=400, detail="topic and at least one content source (html, json_data, or markdown) are required")
 
     # 🛡️ MEDIA HARDENING: Validate image assets before enqueuing
     if request.image_path:
@@ -771,7 +821,7 @@ def start_render(request: RenderRequest):
     now_iso = datetime.utcnow().isoformat() + "Z"
 
     with _jobs_lock:
-        init_msg = f"🚀 Job initialized for topic: {request.topic} | Mode: {request.render_mode or 'auto'} | Avatar: {request.with_avatar}"
+        init_msg = f"🚀 Job initialized for topic: {request.topic} | Source: {source_type.upper()} | Mode: {request.render_mode or 'auto'} | Avatar: {request.with_avatar}"
         jobs[job_id] = {
             "job_id":       job_id,
             "status":       "queued",
@@ -788,14 +838,14 @@ def start_render(request: RenderRequest):
             "created_at":   now_iso,
             "updated_at":   now_iso,
             "topic":        request.topic,
-            "raw_html":     request.html,
+            "raw_html":     raw_content,
             "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}]
         }
 
 
     thread = threading.Thread(
         target=_run_pipeline,
-        args=(job_id, request.topic, request.html),
+        args=(job_id, request.topic, raw_content, source_type),
         daemon=True,
     )
     thread.start()

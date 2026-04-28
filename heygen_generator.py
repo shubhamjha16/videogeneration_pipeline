@@ -5,6 +5,13 @@ import requests
 import config
 
 
+# Industrial Sentinel: Startup Validation
+HEYGEN_AVATAR_ID = os.environ.get("HEYGEN_AVATAR_ID") or config.HEYGEN_AVATAR_ID
+if not os.environ.get("HEYGEN_AVATAR_ID"):
+    print(f"⚠️  [HeyGen] HEYGEN_AVATAR_ID not set in env. Using config default: {HEYGEN_AVATAR_ID}")
+else:
+    print(f"🧬 [HeyGen] Active Avatar ID: {HEYGEN_AVATAR_ID}")
+
 
 def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_id: str = None) -> str:
     """
@@ -16,7 +23,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
     api_key = os.environ.get("HEYGEN_API_KEY")
 
     # Industrial Hardening: avatar_id from environment variable (set in ECS)
-    avatar_id = avatar_id or os.environ.get("HEYGEN_AVATAR_ID") or os.environ.get("DEFAULT_HEYGEN_AVATAR") or "Abigail_expressive_2024112501"
+    avatar_id = avatar_id or HEYGEN_AVATAR_ID
 
 
 

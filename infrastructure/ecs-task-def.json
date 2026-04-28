@@ -29,7 +29,7 @@
         { "name": "WEBHOOK_URL", "value": "https://api.easetolearn.com/videos/webhook" },
         { "name": "SEARXNG_URL", "value": "http://localhost:8080" },
         { "name": "AUTO_DELETE_JOB_DIR", "value": "true" },
-        { "name": "DEFAULT_HEYGEN_AVATAR", "value": "josh_video_20230607" }
+        { "name": "HEYGEN_AVATAR_ID", "value": "josh_video_20230607" }
       ],
       "secrets": [
         { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ANTHROPIC_API_KEY::" },

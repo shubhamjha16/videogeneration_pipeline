@@ -61,9 +61,14 @@ def tex(text: str, width: int = 45) -> str:
     if not text or not text.strip():
         return f'Tex(r"\\text{{-}}", tex_template=my_template)'
     
-    # 1. Sanitize for LaTeX
+    # 0. Pedagogical Importance Translation (MD to LaTeX)
+    # Convert **bold** to \textbf{bold}
+    text = re.sub(r'\*\*(.*?)\*\*', r'\\textbf{\1}', text)
+    # Convert ### Header to high-contrast bold
+    text = re.sub(r'###\s*(.*)', r'\\textbf{\1}', text)
+
+    # 1. Sanitize for LaTeX (preserving our new \textbf commands)
     escaped = (text
-        .replace("\\", r"\textbackslash{}")
         .replace("&", r"\&")
         .replace("%", r"\%")
         .replace("$", r"\$")
@@ -74,15 +79,17 @@ def tex(text: str, width: int = 45) -> str:
         .replace("~", r"\textasciitilde{}")
         .replace("^", r"\textasciicircum{}")
     )
+    # Restore the backslash for our internal \textbf
+    escaped = escaped.replace(r'\\textbf', r'\textbf')
 
     # 2. Wrap if too long
     lines = textwrap.wrap(escaped, width=width)
     if len(lines) > 1:
         # Build a VGroup of individual Tex lines for perfect alignment
-        line_objs = [f'Tex(r"\\\\text{{{l}}}", tex_template=my_template)' for l in lines]
+        line_objs = [f'Tex(r"\\text{{{l}}}", tex_template=my_template)' for l in lines]
         return f'VGroup({", ".join(line_objs)}).arrange(DOWN, aligned_edge=LEFT, buff=0.15)'
     
-    return f'Tex(r"\\\\text{{{escaped}}}", tex_template=my_template)'
+    return f'Tex(r"\\text{{{escaped}}}", tex_template=my_template)'
 
 
 def math(formula: str) -> str:
@@ -164,23 +171,29 @@ def _scene_title_card(scene: dict, idx: int, topic: str = "EaseToLearn") -> str:
 
 def _scene_concept_image(scene: dict, idx: int, image_path: str) -> str:
     d = scene["visual_data"]
-    title    = d.get("title", "")
+    title    = d.get("title", "") or scene.get("narration_text", "")[:30] + "..."
     duration = d.get("duration", 3.0)
 
     if image_path and os.path.exists(image_path):
-        img_line = f'img_{idx} = ImageMobject(r"{image_path}").scale_to_fit_width(13)'
+        # INDUSTRIAL FRAME: Shrink to 8.5 width to allow room for annotations
+        img_line = f'img_{idx} = ImageMobject(r"{image_path}").scale_to_fit_width(8.5)'
     else:
         # Fallback: dark rectangle placeholder
-        img_line = f'img_{idx} = Rectangle(width=13, height=7.3, color=DARK_GRAY, fill_opacity=0.3)'
+        img_line = f'img_{idx} = Rectangle(width=8.5, height=4.8, color=DARK_GRAY, fill_opacity=0.3)'
 
     return f"""
-        # Scene {idx}: concept_image
+        # Scene {idx}: concept_image (Premium Framed)
         {img_line}
         img_{idx}.move_to(ORIGIN)
+        # Add a subtle glow frame
+        frame_{idx} = SurroundingRectangle(img_{idx}, color=BLUE_E, buff=0.1, stroke_width=4)
+        shadow_{idx} = frame_{idx}.copy().set_color(BLACK).set_opacity(0.5).shift(0.1*DOWN + 0.1*RIGHT)
+        
         label_{idx} = {tex(title)}
-        label_{idx}.scale(0.9).set_color(YELLOW).to_edge(UP, buff=0.2)
-        box_{idx} = BackgroundRectangle(label_{idx}, color=BLACK, fill_opacity=0.7, buff=0.1)
-        self.play(FadeIn(img_{idx}), run_time=1.0)
+        label_{idx}.scale(0.85).set_color(DesignTokens.YELLOW).to_edge(UP, buff=0.15)
+        box_{idx} = BackgroundRectangle(label_{idx}, color=BLACK, fill_opacity=0.85, buff=0.15)
+        
+        self.play(FadeIn(shadow_{idx}), FadeIn(frame_{idx}), FadeIn(img_{idx}), run_time=1.2)
         self.play(FadeIn(box_{idx}), Write(label_{idx}))
         self.wait({duration})
 """
@@ -196,19 +209,22 @@ def _scene_image_arrow(scene: dict, idx: int, image_path: str = None) -> str:
     return f"""
         # Scene {idx}: image_arrow — pointing to {region}
         target_{idx} = {target}
+        # Premium Arrow Styling
         arrow_{idx} = Arrow(
-            start=target_{idx} + np.array([1.2, -1.2, 0]),
+            start=target_{idx} + np.array([1.5, -1.5, 0]), 
             end=target_{idx},
-            color=YELLOW, buff=0.1, stroke_width=4,
+            buff=0.1, color=DesignTokens.BLUE, stroke_width=10, tip_length=0.4
         )
-        label_{idx} = {tex(label)}
-        label_{idx}.scale(0.75).set_color(YELLOW)
-        label_{idx}.next_to(arrow_{idx}.get_start(), RIGHT, buff=0.15)
-        box_{idx} = BackgroundRectangle(label_{idx}, color=BLACK, fill_opacity=0.75, buff=0.08)
-        self.play(GrowArrow(arrow_{idx}), run_time=0.8)
-        self.play(FadeIn(box_{idx}), Write(label_{idx}))
+        glow_{idx} = arrow_{idx}.copy().set_stroke(DesignTokens.WHITE, opacity=0.3, width=15)
+        
+        label_v_{idx} = {tex(label)}
+        label_v_{idx}.scale(0.8).set_color(DesignTokens.BLUE).next_to(arrow_{idx}.get_start(), DOWN + RIGHT, buff=0.1)
+        bg_v_{idx} = BackgroundRectangle(label_v_{idx}, color=BLACK, fill_opacity=0.8, buff=0.1)
+
+        self.play(Create(glow_{idx}), Create(arrow_{idx}), run_time=1.0)
+        self.play(FadeIn(bg_v_{idx}), Write(label_v_{idx}))
         self.wait({duration})
-        self.play(FadeOut(arrow_{idx}), FadeOut(label_{idx}), FadeOut(box_{idx}))
+        self.play(FadeOut(arrow_{idx}), FadeOut(glow_{idx}), FadeOut(label_v_{idx}), FadeOut(bg_v_{idx}))
 """
 
 
@@ -403,7 +419,8 @@ def _scene_step_by_step(scene: dict, idx: int) -> str:
             lines.append(f"        {vname} = {tex(step[:100])}")
         lines.append(f"        {vname}.scale(0.75).move_to(np.array([0, {1.2 - si * 1.0}, 0]))")
         lines.append(f"        if {vname}.width > 12: {vname}.set_width(12)")  # Adaptive Fitting
-        lines.append(f"        self.play(Write({vname}), run_time=0.9)")
+        lines.append(f"        {vname}_bg = BackgroundRectangle({vname}, color=BLACK, fill_opacity=0.7, buff=0.1)")
+        lines.append(f"        self.play(FadeIn({vname}_bg), Write({vname}), run_time=0.9)")
 
     lines.append(f"        {_wait(duration, anim_time)}")
     lines.append(f"        self._clear()")
@@ -430,7 +447,8 @@ def _scene_concept_bullets(scene: dict, idx: int) -> str:
         lines.append(f"        ).arrange(RIGHT, buff=0.15)")
         lines.append(f"        {vname}.move_to(np.array([0, {1.2 - bi * 1.1}, 0]))")
         lines.append(f"        if {vname}.width > 12: {vname}.set_width(12)")  # Adaptive Fitting
-        lines.append(f"        self.play(FadeIn({vname}), run_time=0.7)")
+        lines.append(f"        {vname}_bg = BackgroundRectangle({vname}, color=BLACK, fill_opacity=0.7, buff=0.1)")
+        lines.append(f"        self.play(FadeIn({vname}_bg), FadeIn({vname}), run_time=0.7)")
 
     lines.append(f"        {_wait(duration, anim_time)}")
     lines.append(f"        self._clear()")
@@ -459,7 +477,8 @@ def _scene_summary(scene: dict, idx: int) -> str:
         lines.append(f"            {tex(point, width=40)}.scale(DesignTokens.BODY_SIZE),")
         lines.append(f"        ).arrange(RIGHT, buff=0.2)")
         lines.append(f"        {vname}.move_to(np.array([0, {1.4 - pi * 1.1}, 0]))")
-        lines.append(f"        self.play(FadeIn({vname}), run_time={per_point_t})")
+        lines.append(f"        {vname}_bg = BackgroundRectangle({vname}, color=BLACK, fill_opacity=0.7, buff=0.1)")
+        lines.append(f"        self.play(FadeIn({vname}_bg), FadeIn({vname}), run_time={per_point_t})")
 
     lines.append(f"        self.wait(1.0)")
     return "\n".join(lines)
@@ -618,7 +637,8 @@ def _scene_key_point(scene: dict, idx: int) -> str:
         vn = f"body_{idx}_{li}"
         lines.append(f"        {vn} = {tex(line)}")
         lines.append(f"        {vn}.scale(0.75).move_to(np.array([0, {1.5 - li * 0.9}, 0]))")
-        lines.append(f"        self.play(FadeIn({vn}), run_time=0.5)")
+        lines.append(f"        {vn}_bg = BackgroundRectangle({vn}, color=BLACK, fill_opacity=0.7, buff=0.1)")
+        lines.append(f"        self.play(FadeIn({vn}_bg), FadeIn({vn}), run_time=0.5)")
         body_vnames.append(vn)
 
     lines.append(f"        self.wait({duration})")

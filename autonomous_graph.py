@@ -282,6 +282,7 @@ class TonyState(TypedDict):
     job_id:      Optional[str]
     topic:       str
     raw_input:   str
+    source_type: Optional[str] # 'html' | 'json' | 'markdown'
     use_elevenlabs: bool # Cost control switch
 
     # ── After director_node ────────────────────────────
@@ -330,6 +331,7 @@ def director_node(state: TonyState) -> TonyState:
     """The Factory Manager: Analyzes topic, chooses render mode, and plans scenes."""
     import copy
     import time
+    import re
     start_t = time.time()
     state = copy.deepcopy(state)
     
@@ -362,6 +364,8 @@ def director_node(state: TonyState) -> TonyState:
     
     parsed = parse_tony_html(state["raw_input"], topic_hint=state["topic"])
     state["parsed_facts"] = parsed
+    source_label = state.get("source_type", "html").upper()
+    _log_progress(state, "KNOWLEDGE", f"📚 {source_label} Source: Successfully ingested input curriculum.")
 
     print(f"   Subject: {parsed['subject']} | Type: {parsed['content_type']}")
 
@@ -414,6 +418,95 @@ def director_node(state: TonyState) -> TonyState:
                 data["letters"] = cleaned
                 data.pop("letter", None)
         print(f"   Correct answer locked: {correct_letter}. {correct_name}")
+
+    # 3. INDUSTRIAL PLACEHOLDER HUNTER: Ensure real content from the lesson is used
+    html_text = state.get("parsed_facts", {}).get("html_content", "")
+    for scene in scenes:
+        v_data = scene.get("visual_data", {})
+        v_type = scene.get("visual_type")
+        
+        # Recover bullets/steps if lazy
+        if v_type in ["concept_bullets", "step_by_step"]:
+            for i, p in enumerate(v_data.get("bullets", []) + v_data.get("steps", [])):
+                if "Key point" in str(p) or "Step " in str(p):
+                     # Force extraction of first 3 sentences from HTML if lazy
+                     real_facts = re.findall(r'<li>(.*?)</li>', html_text)
+                     if real_facts:
+                         v_data["bullets" if v_type == "concept_bullets" else "steps"] = real_facts[:3]
+                         print(f"   🎯 Placeholder Hunter: Replaced lazy text with real lesson data.")
+                         break
+
+        # High-Contrast Image Labels
+        if v_type == "concept_image":
+            # Ensure label doesn't wash out
+            if v_data.get("label") == "Maintenance Therapy in Schizophrenia" or not v_data.get("label"):
+                 v_data["label"] = state.get("topic", "Key Medical Concept")
+
+        # MCQ String Scrubber (fixes Gemma's literal JSON bug)
+        if v_type == "mcq_layout":
+            raw_options = v_data.get("options", {})
+            fixed_options = {}
+            
+            # Universal Handler for Dict or List
+            if isinstance(raw_options, list):
+                # Convert list of dicts to flat dict
+                for item in raw_options:
+                    if isinstance(item, dict):
+                        l = item.get("letter", "A")
+                        t = item.get("text") or item.get("name") or str(item)
+                        fixed_options[l] = t
+            elif isinstance(raw_options, dict):
+                fixed_options = raw_options
+            
+            # Now scrub each string
+            for l, t in fixed_options.items():
+                # If Gemma literalized the dict: {'letter': 'A', 'text': '...'}
+                if isinstance(t, str) and "{'text':" in t:
+                    match = re.search(r"'text':\s*'(.*?)'", t)
+                    if match: t = match.group(1)
+                fixed_options[l] = t
+            v_data["options"] = fixed_options
+
+    # MINIMUM SCENE GUARD: If Gemma gets lazy and plans < 3 scenes for a full lesson
+    if len(scenes) < 3 and state.get("render_mode") == "manim":
+        print(f"   ⚠️  Laziness Alert: Gemma planned only {len(scenes)} scenes. FORCING INDUSTRIAL FALLBACK...")
+        # INDUSTRIAL RECOVERY: Build a guaranteed 5-scene masterclass if the AI fails
+        facts = state.get("parsed_facts", {})
+        topic = state.get("topic", "Medical Masterclass")
+        
+        fallback_scenes = [
+            {
+                "visual_type": "title_card",
+                "visual_data": {"title": topic, "subtitle": "Comprehensive Review"},
+                "narration_text": f"Welcome back. Today we are performing a deep dive into {topic}. This is essential material for your boards."
+            },
+            {
+                "visual_type": "concept_bullets",
+                "visual_data": {"heading": "Core Principles", "bullets": facts.get("key_points", ["Conceptual Overview", "Mechanism of Action"])[:3]},
+                "narration_text": "Let's begin with the core principles. Understanding the underlying mechanism is the key to mastering this topic."
+            },
+            {
+                "visual_type": "concept_image",
+                "visual_data": {"title": topic, "duration": 5.0},
+                "narration_text": "Looking at the visual representation here, you can see how these factors interact in a clinical setting."
+            },
+            {
+                "visual_type": "mcq_layout",
+                "visual_data": {"options": facts.get("mcq_data", {}).get("options", {})},
+                "narration_text": "Now, let's test your knowledge with a board-style question. Study the options carefully."
+            },
+            {
+                "visual_type": "answer_reveal",
+                "visual_data": {
+                    "correct_answer": facts.get("mcq_data", {}).get("correct_answer", "C"),
+                    "explanation": facts.get("correct_answer_text", "See clinical reasoning above.")
+                },
+                "narration_text": "The correct answer is highlighted. Clinical mastery requires recognizing these specific patterns."
+            }
+        ]
+        scenes = fallback_scenes
+        state["scenes"] = scenes
+        print(f"   ✅ Industrial Recovery: Forced a high-fidelity 5-scene structure.")
 
     state["scenes"] = scenes
     state["search_queries"] = director_output.search_queries
@@ -623,9 +716,29 @@ def architect_node(state: TonyState) -> TonyState:
     from moviepy.editor import AudioFileClip
     from template_renderer import build_manim_script
 
-    scenes = state["scenes"]
+    scenes = state["scenes"] or []
+    image_path = state.get("image_path")
 
-    # 1. Generate TTS per scene and measure actual duration
+    # 1. INDUSTRIAL GUARD: Fix stringified visual_data if the LLM hallucinated the type
+    for scene in scenes:
+        if isinstance(scene.get("visual_data"), str):
+            try:
+                import json
+                scene["visual_data"] = json.loads(scene["visual_data"])
+            except:
+                scene["visual_data"] = {"name": scene["visual_data"]}
+
+    # 2. VISUAL INJECTION: Force concept_image after title_card if missing but exists on disk
+    has_image_scene = any(s.get("visual_type") == "concept_image" for s in scenes)
+    if image_path and not has_image_scene and len(scenes) > 1:
+        print(f"   ⚓ Injection: Forcing concept_image for topic: {state['topic']}")
+        image_scene = {
+            "visual_type": "concept_image",
+            "narration_text": f"To understand {state['topic']} in depth, let's first look at this essential overview.",
+            "visual_data": {"title": state["topic"], "duration": 5.0}
+        }
+        # Insert after title_card (usually index 0)
+        scenes.insert(1, image_scene)
     print("   Generating TTS audio for sync...")
     audio_files = []
     use_el = state.get("use_elevenlabs", False)

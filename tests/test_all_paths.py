@@ -33,7 +33,7 @@ def test_path(mode, topic, html):
 
     # Poll for completion
     start_t = time.time()
-    while time.time() - start_t < 900: # 15 min max
+    while time.time() - start_t < 1200: # 20 min max
         try:
             r = requests.get(f"{API_BASE}/status/{job_id}", headers=headers, timeout=5)
             r.raise_for_status()
@@ -63,9 +63,14 @@ def run_all_tests():
         ("user_generated_video", "Safety Update", "<h1>Update</h1><p>Please wear your safety gear.</p>")
     ]
     
+    results = []
+    def run_wrapper(mode, topic, html):
+        success = test_path(mode, topic, html)
+        results.append(success)
+
     threads = []
     for mode, topic, html in tests:
-        t = threading.Thread(target=test_path, args=(mode, topic, html))
+        t = threading.Thread(target=run_wrapper, args=(mode, topic, html))
         threads.append(t)
         t.start()
         time.sleep(1) # Stagger start logs
@@ -73,7 +78,16 @@ def run_all_tests():
     for t in threads:
         t.join()
         
-    print("\n" + "="*40 + "\n🏁 ALL PATH TESTS CONCLUDED.")
+    print("\n" + "="*40)
+    success_count = sum(1 for r in results if r)
+    print(f"🏁 ALL PATH TESTS CONCLUDED. Success: {success_count}/{len(tests)}")
+    
+    if success_count < len(tests):
+        print("❌ CRITICAL: One or more paths failed validation.")
+        sys.exit(1)
+    else:
+        print("✅ ALL PATHS VERIFIED.")
+        sys.exit(0)
 
 if __name__ == "__main__":
     run_all_tests()

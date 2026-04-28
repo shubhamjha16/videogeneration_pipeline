@@ -45,9 +45,21 @@ class VectorStore:
             try:
                 from fastembed import TextEmbedding
                 # BGE-small is industry standard for low-resource environments (~100MB)
-                self._model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+                # Industrial Hardening: Use a persistent cache directory in the workspace
+                # to prevent ONNXRuntimeErrors when OS temp folders are cleared.
+                model_cache = os.path.join(VECTOR_DB_PATH, "models")
+                os.makedirs(model_cache, exist_ok=True)
+                
+                print(f"🧠 Vector Store: Loading local models from {model_cache}...")
+                self._model = TextEmbedding(
+                    model_name="BAAI/bge-small-en-v1.5",
+                    cache_dir=model_cache
+                )
             except ImportError:
                 print("⚠️ Vector Store: fastembed library missing. pip install fastembed")
+                return None
+            except Exception as e:
+                print(f"❌ Vector Store: Model initialization failed: {e}")
                 return None
         return self._model
 
