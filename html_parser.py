@@ -107,7 +107,7 @@ def _detect_content_type(soup: BeautifulSoup, full_text: str) -> str:
 
     # MCQ: has option analysis or A/B/C/D pattern or options list
     has_options_heading = any('option' in h or 'analysis' in h for h in headings)
-    has_abcd = bool(re.search(r'\b[A-D]\.\s+\w', full_text))
+    has_abcd = bool(re.search(r'\b[A-D1-4]\.\s+\w', full_text))
     has_correct = any('correct' in h or 'answer' in h for h in headings)
     if has_options_heading or has_abcd or has_correct:
         return "mcq"
@@ -193,7 +193,7 @@ def _extract_options(soup: BeautifulSoup) -> dict:
     if not options:
         # Look for lines starting with A., B., C., or D.
         # This handles raw text copy-pastes
-        matches = re.finditer(r'(?i)^\s*([A-D])[.\)]\s+(.+)', soup.get_text(), re.MULTILINE)
+        matches = re.finditer(r'(?i)^\s*([A-D1-4])[.\)]\s+(.+)', soup.get_text(separator="\n"), re.MULTILINE)
         for m in matches:
             letter = m.group(1).upper()
             name = _clean(m.group(2))

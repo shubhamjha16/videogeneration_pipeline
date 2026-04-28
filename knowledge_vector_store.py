@@ -21,6 +21,8 @@ class VectorStore:
     _model = None
 
     def __init__(self):
+        import threading
+        self._load_lock = threading.Lock()
         if not os.path.exists(VECTOR_DB_PATH):
             os.makedirs(VECTOR_DB_PATH, exist_ok=True)
             
@@ -41,27 +43,53 @@ class VectorStore:
 
     def _get_model(self):
         """Lazy load the FastEmbed model (saves memory/disk until needed)."""
-        if self._model is None:
-            try:
-                from fastembed import TextEmbedding
-                # BGE-small is industry standard for low-resource environments (~100MB)
-                # Industrial Hardening: Use a persistent cache directory in the workspace
-                # to prevent ONNXRuntimeErrors when OS temp folders are cleared.
-                model_cache = os.path.join(VECTOR_DB_PATH, "models")
-                os.makedirs(model_cache, exist_ok=True)
-                
-                print(f"🧠 Vector Store: Loading local models from {model_cache}...")
-                self._model = TextEmbedding(
-                    model_name="BAAI/bge-small-en-v1.5",
-                    cache_dir=model_cache
-                )
-            except ImportError:
-                print("⚠️ Vector Store: fastembed library missing. pip install fastembed")
-                return None
-            except Exception as e:
-                print(f"❌ Vector Store: Model initialization failed: {e}")
-                return None
+        with self._load_lock:
+            if self._model is None:
+                try:
+                    from fastembed import TextEmbedding
+                    # BGE-small is industry standard for low-resource environments (~100MB)
+                    # Industrial Hardening: Use an absolute, normalized path for the cache.
+                    model_cache = os.path.abspath(os.path.join(VECTOR_DB_PATH, "models"))
+                    os.makedirs(model_cache, exist_ok=True)
+                    
+                    # SELF-HEALING: Detect and fix broken or unreadable symlinks (Common ONNXRuntime bug)
+                    self._heal_model_symlinks(model_cache)
+
+                    print(f"🧠 Vector Store: Loading local models from {model_cache}...")
+                    self._model = TextEmbedding(
+                        model_name="BAAI/bge-small-en-v1.5",
+                        cache_dir=model_cache,
+                        providers=["CPUExecutionProvider"] # Force CPU for maximum compatibility
+                    )
+                except ImportError:
+                    print("⚠️ Vector Store: fastembed library missing. pip install fastembed")
+                    return None
+                except Exception as e:
+                    print(f"❌ Vector Store: Model initialization failed: {e}")
+                    # Fallback: Try one more time without the custom cache_dir if local path is blocked
+                    try:
+                        print("🔄 Vector Store: Attempting fallback to default cache...")
+                        self._model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+                    except:
+                        return None
         return self._model
+
+    def _heal_model_symlinks(self, cache_dir: str):
+        """
+        Industrial Guard: ONNXRuntime on Mac/Linux often fails to follow relative symlinks 
+        created by huggingface_hub. We convert them to hard copies if detected.
+        """
+        import shutil
+        for root, dirs, files in os.walk(cache_dir):
+            for f in files:
+                if f.endswith(".onnx"):
+                    f_path = os.path.join(root, f)
+                    if os.path.islink(f_path):
+                        target = os.path.realpath(f_path)
+                        if os.path.exists(target):
+                            print(f"🩹 Vector Store: Healing symlink {f} -> {target}")
+                            os.remove(f_path)
+                            shutil.copy2(target, f_path)
 
     def _get_embedding(self, text: str) -> List[float]:
         """Generate high-fidelity embeddings locally without an API key."""

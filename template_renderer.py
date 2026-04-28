@@ -79,8 +79,10 @@ def tex(text: str, width: int = 45) -> str:
         .replace("~", r"\textasciitilde{}")
         .replace("^", r"\textasciicircum{}")
     )
-    # Restore the backslash for our internal \textbf
+    # Restore the backslash and braces for our internal \textbf
     escaped = escaped.replace(r'\\textbf', r'\textbf')
+    # Restore braces only for \textbf{...}
+    escaped = re.sub(r'\\textbf\\{(.*?)\\}', r'\\textbf{\1}', escaped)
     # Industrial Guard: Remove any remaining raw backslashes that could break Tex()
     # unless they are part of our controlled \textbf command.
     escaped = re.sub(r'(?<!\\)\\(?!textbf\{)', r'\\\\', escaped)
