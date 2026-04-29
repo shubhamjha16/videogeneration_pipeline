@@ -24,11 +24,10 @@ Visual types per mode:
     formula_display  {"formula": str, "label": str}           # key equation / law
     step_by_step     {"heading": str, "steps": list[str]}    # max 4 steps, ≤12 words each
     option_highlight {"letter": str, "name": str, "body": str, "color": str}
-    cross_out        {"letter": str, "name": str}
+    cross_out        {"letters": list[str]}
     answer_reveal    {"letter": str, "name": str, "explanation": str}
     graph_hint       {"graph_type": str, "description": str} # e.g. velocity-time, bar chart
-    concept_image    {"description": str}                    # for AI artist (Gemini Vision)
-    image_arrow      {"region": str, "label": str}           # points to anatomical area
+    annotated_image  {"region": str, "label": str, "bullets": list[str]} # Image on right, text on left, arrow pointing to region
     summary          {"heading": str, "points": list[str]}   # closing takeaway
 
   EXPLAINER:
@@ -67,8 +66,7 @@ _REQUIRED_FIELDS = {
     "graph_hint":      {"graph_type": "generic", "description": "", "highlight": ""},
     "summary":         {"heading": "Key Takeaways", "points": ["Remember this"]},
     "key_point":       {"heading": "Key Point", "body": ""},
-    "concept_image":   {"description": ""},
-    "image_arrow":     {"region": "center", "label": ""},
+    "annotated_image": {"region": "center_right", "label": "Title", "bullets": ["Fact 1"]},
     "b_roll_clip":     {"prompt": "Cinematic visual of...", "metaphor": ""},
     "counting_metaphor": {"item_name": "apple", "count": 6, "style": "3D stylized", "background_prompt": "A rustic wooden table in a sunlight kitchen"},
     "generative_video": {"prompt": "Cinematic motion of...", "metaphor": ""},
@@ -90,8 +88,7 @@ class Scene(BaseModel):
         "summary",
         "key_point",
         "subtitle_chunk",
-        "concept_image",
-        "image_arrow",
+        "annotated_image",
         "b_roll_clip",
         "counting_metaphor",
         "generative_video",
@@ -149,10 +146,13 @@ LEVEL 4 (Efficiency / Default) → Use "presentation":
 ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" to Manim/Explainer if the content strictly warrants it.
 
 ━━━ MCQ MANDATORY SCENE RULE ━━━
-If the content type is "mcq", you MUST include exactly these three scenes at the end of your script:
+If the content type is "mcq", you MUST include exactly these scenes at the end of your script in this exact order:
   1. "mcq_layout": To show the question and all 4 options.
-  2. "cross_out": To eliminate the wrong options one by one.
-  3. "answer_reveal": To highlight the correct answer and provide the explanation.
+  2. "option_highlight" (optional): To analyze specific wrong options before elimination.
+  3. "cross_out": To eliminate the wrong options one by one.
+  4. "answer_reveal": To highlight the correct answer and provide the explanation.
+━━━ CONSECUTIVE RULE ━━━
+These scenes (1 through 4) MUST be consecutive. Once you call "mcq_layout", you MUST NOT insert other visual types (like formula_display or step_by_step) until after the "answer_reveal" is complete. Explain the logic BEFORE the MCQ block starts or AFTER it ends.
 Do NOT skip these scenes if options are provided in the input.
 
 ━━━ SEARCH / RESEARCH RULE ━━━
@@ -166,17 +166,16 @@ MANIM SCENES (8–12 scenes):
   - HYBRID RULE: If the lesson includes a "Concept Explanation" section, you MUST start with 2–4 scenes explaining the background material (using concept_bullets, formula_display, or key_point) before starting the MCQ phase.
   - For MCQ Phase (CONTINUOUS VISUAL FLOW):
       1. title_card (Topic)
-      2. concept_image (anatomical/clinical overview)
-      3. image_arrow (Pointers to the first core fact)
-      4. CONCEPT TEACHING (Use concept_bullets + concept_image to reinforce each new fact)
-      5. image_arrow (Update pointers for the new concept)
-      6. mcq_layout (Switch to MCQ focus)
+      2. annotated_image (anatomical/clinical overview with bullets on left)
+      3. CONCEPT TEACHING (Use concept_bullets to reinforce each new fact)
+      4. annotated_image (Update image region pointer for the new concept)
+      5. mcq_layout (Switch to MCQ focus)
       7. option_highlight (wrong options, color "#FF6B6B")
       8. cross_out (Scrub wrong options)
       9. answer_reveal (explanation + final diagram summarizing the answer)
   - PEDAGOGICAL INTEGRITY: NEVER use generic placeholders like "Option A" or "Option B" if real names (e.g., "Cortical contusion") are available in the parsed_facts. You MUST use the exact names from the facts in your `visual_data`.
   - ANSWER LOCK: The "correct_answer" letter and "explanation" in the answer_reveal scene MUST match the ground truth provided in the parsed_facts. Do not hallucinate a different answer.
-  - cross_out rule: if correct answer is D, cross_out A, B, C — never D. Always cross out all wrong options.
+  - cross_out rule (SINGLE SCENE): You MUST provide exactly ONE "cross_out" scene that includes all incorrect letters in a single list (e.g., {"letters": ["A", "B", "C"]}). NEVER split cross-outs across multiple scenes.
   - For numerical: formula_display → graph_hint (if applicable) → step_by_step (max 4 steps) → summary
   - For concept: concept_bullets → graph_hint (if applicable) → key supporting facts → summary
   - PEDAGOGICAL IMPORTANCE (CRITICAL):
@@ -251,9 +250,21 @@ Structure:
       "visual_type": "title_card",
       "visual_data": {"title": "Topic", "subtitle": "Description"},
       "narration_text": "Hello, today we talk about..."
+    },
+    {
+      "visual_type": "annotated_image",
+      "visual_data": {"label": "Internal Iliac Artery", "region": "center_left", "bullets": ["Anterior division: Obturator, Uterine", "Posterior division: Iliolumbar, Lateral sacral"]},
+      "narration_text": "Let us look at the branches of the internal iliac artery..."
+    },
+    {
+      "visual_type": "annotated_image",
+      "visual_data": {"label": "Cross Section of the Heart", "region": "lower_right", "bullets": ["Left ventricle pumps oxygenated blood", "Right ventricle sends blood to lungs"]},
+      "narration_text": "Notice the thickness of the left ventricular wall compared to the right..."
     }
   ]
 }
+
+IMPORTANT: Use "annotated_image" whenever you need to show an image with explanatory text. It creates a split layout (image right, bullets left, arrow pointing to region). Do NOT use "concept_image" or "image_arrow" — they are deprecated.
 """
     system_prompt_with_hint = SYSTEM_PROMPT + "\n\n" + schema_hint
     
@@ -287,13 +298,32 @@ Structure:
         
         # Fallback for required fields (Industrial Resilience)
         if not data.get("render_mode"): data["render_mode"] = "manim"
-        if not data.get("scenes"): data["scenes"] = []
-        if not data.get("decision_reasoning"): data["decision_reasoning"] = "Gemma-fallback: defaulting to standard manim flow."
-        
+        def _ensure_mcq_continuity(scenes):
+            """Defense in Depth: Group MCQ scenes into a contiguous atomic block."""
+            mcq_types = {"mcq_layout", "option_highlight", "cross_out", "answer_reveal"}
+            mcq_scenes = [s for s in scenes if s.visual_type in mcq_types]
+            other_scenes = [s for s in scenes if s.visual_type not in mcq_types]
+            
+            if not mcq_scenes:
+                return scenes
+            
+            # The atomic block always moves to the end to ensure the question is the final takeaway
+            return other_scenes + mcq_scenes
+
+        data["scenes"] = _ensure_mcq_continuity(data.get("scenes", []))
         response = DirectorOutput(**data)
         
         # INDUSTRIAL OVERRIDE: Programmatic Label Injection
         try:
+            import re
+            def sanitize(txt):
+                if not txt: return ""
+                # Strip Markdown headers (###), bolding (**), and bullets (-)
+                t = re.sub(r'^(#+\s*|\*+|-\s*)', '', str(txt)).strip()
+                t = re.sub(r'\*+', '', t)
+                # Avoid literal dashes
+                return t if t != "-" else ""
+
             real_options = parsed_facts.get("options", {})
             if isinstance(real_options, dict):
                 for scene in response.scenes:
@@ -301,15 +331,18 @@ Structure:
                         for letter, real_data in real_options.items():
                             if "options" not in scene.visual_data:
                                 scene.visual_data["options"] = {}
+                            
                             # Handle both dict and string forms of real_data
-                            option_text = real_data.get("name") if isinstance(real_data, dict) else str(real_data)
+                            raw_text = real_data.get("name") if isinstance(real_data, dict) else str(real_data)
+                            option_text = sanitize(raw_text)
                             scene.visual_data["options"][letter] = option_text or f"Option {letter}"
                     
                     elif scene.visual_type in ["option_highlight", "answer_reveal", "cross_out", "option_arrow"]:
                         letter = str(scene.visual_data.get("letter", "A")).upper()
                         if letter in real_options:
                             real_data = real_options[letter]
-                            scene.visual_data["name"] = real_data.get("name", "") if isinstance(real_data, dict) else str(real_data)
+                            raw_text = real_data.get("name", "") if isinstance(real_data, dict) else str(real_data)
+                            scene.visual_data["name"] = sanitize(raw_text)
                             if scene.visual_type == "answer_reveal":
                                  # If LLM didn't provide a good explanation, use the one from parsed_facts
                                  if not scene.visual_data.get("explanation") and isinstance(real_data, dict):

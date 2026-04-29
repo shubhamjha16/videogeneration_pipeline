@@ -61,17 +61,15 @@ def tex(text: str, width: int = 45) -> str:
     if not text or not text.strip():
         return f'Tex(r"\\text{{-}}", tex_template=my_template)'
     
-    # 0. Pedagogical Importance Translation (MD to LaTeX)
-    # Convert **bold** to \textbf{bold}
-    text = re.sub(r'\*\*(.*?)\*\*', r'\\textbf{\1}', text)
-    # Convert ### Header to high-contrast bold
-    text = re.sub(r'###\s*(.*)', r'\\textbf{\1}', text)
+    # Convert headers to bold
+    text = re.sub(r'###\s*(.*)', r'**\1**', text)
+    
+    # Normalize explicit \textbf{...} to **...** so our state machine handles it safely
+    text = re.sub(r'\\textbf\{(.*?)\}', r'**\1**', text)
 
-    # 1. Sanitize for LaTeX (preserving our new \textbf commands)
-    # INDUSTRIAL GUARD: We use raw strings in Manim, so we only need to escape
-    # characters that LaTeX itself considers special.
+    # 1. Sanitize for LaTeX (preserving **)
     escaped = (text
-        .replace("\\", r"\\") # First escape actual backslashes in text
+        .replace("\\", r"\\")
         .replace("&", r"\&")
         .replace("%", r"\%")
         .replace("$", r"\$")
@@ -82,19 +80,41 @@ def tex(text: str, width: int = 45) -> str:
         .replace("~", r"\textasciitilde{}")
         .replace("^", r"\textasciicircum{}")
     )
-    # Restore the backslash and braces for our internal \textbf
-    escaped = escaped.replace(r'\\textbf', r'\textbf')
-    # Restore braces only for \textbf{...}
-    escaped = re.sub(r'\\textbf\\{(.*?)\\}', r'\\textbf{\1}', escaped)
-
-    # 2. Wrap if too long
+    
+    # 2. Wrap text, then apply bold state
     lines = textwrap.wrap(escaped, width=width)
-    if len(lines) > 1:
-        # Build a VGroup of individual Tex lines for perfect alignment
-        line_objs = [f'Tex(r"\\text{{{l}}}", tex_template=my_template, color=DesignTokens.WHITE)' for l in lines]
+    latex_lines = []
+    is_bold = False
+    
+    for line in lines:
+        formatted_line = ""
+        if is_bold:
+            formatted_line += r'\textbf{'
+            
+        i = 0
+        while i < len(line):
+            if line[i:i+2] == '**':
+                if not is_bold:
+                    formatted_line += r'\textbf{'
+                    is_bold = True
+                else:
+                    formatted_line += r'}'
+                    is_bold = False
+                i += 2
+            else:
+                formatted_line += line[i]
+                i += 1
+                
+        if is_bold:
+            formatted_line += r'}'
+            
+        latex_lines.append(formatted_line)
+
+    if len(latex_lines) > 1:
+        line_objs = [f'Tex(r"\\text{{{l}}}", tex_template=my_template)' for l in latex_lines]
         return f'VGroup({", ".join(line_objs)}).arrange(DOWN, aligned_edge=LEFT, buff=0.15)'
     
-    return f'Tex(r"\\text{{{escaped}}}", tex_template=my_template, color=DesignTokens.WHITE)'
+    return f'Tex(r"\\text{{{latex_lines[0]}}}", tex_template=my_template)'
 
 
 def math(formula: str) -> str:
@@ -223,14 +243,32 @@ def _scene_image_arrow(scene: dict, idx: int, image_path: str = None) -> str:
         glow_{idx} = arrow_{idx}.copy().set_stroke(DesignTokens.WHITE, opacity=0.3, width=15)
         
         label_v_{idx} = {tex(label)}
-        label_v_{idx}.scale(0.8).set_color(DesignTokens.BLUE).next_to(arrow_{idx}.get_start(), DOWN + RIGHT, buff=0.1)
-        bg_v_{idx} = BackgroundRectangle(label_v_{idx}, color=BLACK, fill_opacity=0.8, buff=0.1)
+        label_v_{idx}.scale(0.8).set_color(DesignTokens.WHITE).next_to(arrow_{idx}.get_start(), DOWN + RIGHT, buff=0.1)
+        bg_v_{idx} = BackgroundRectangle(label_v_{idx}, color=BLACK, fill_opacity=0.92, buff=0.2)
 
         self.play(Create(glow_{idx}), Create(arrow_{idx}), run_time=1.0)
         self.play(FadeIn(bg_v_{idx}), Write(label_v_{idx}))
         self.wait({duration})
         self.play(FadeOut(arrow_{idx}), FadeOut(glow_{idx}), FadeOut(label_v_{idx}), FadeOut(bg_v_{idx}))
 """
+
+
+def _render_option_box(letter: str, name: str, idx: int, pos: str, is_ghost: bool = False) -> str:
+    """
+    Unified factory for MCQ option Mobjects. 
+    Ensures 100% stylistic alignment between Layout, Highlight, Cross-Out, and Reveal.
+    """
+    vname = f"opt_{letter}_{idx}"
+    op = 0.3 if is_ghost else 1.0
+    
+    return f"""
+        {vname}_box = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15,
+            color=DesignTokens.WHITE, stroke_width=2, stroke_opacity={op}).move_to({pos})
+        {vname}_letter = {tex(letter + ".")}
+        {vname}_letter.scale(0.85).set_color(DesignTokens.BLUE).move_to({pos} + np.array([-2.4, 0, 0])).set_opacity({op})
+        {vname}_text = {tex(name, width=35)}
+        {vname}_text.scale(0.65).set_color(DesignTokens.WHITE).move_to({pos} + np.array([0.3, 0, 0])).set_opacity({op})
+        {vname}_grp = VGroup({vname}_box, {vname}_letter, {vname}_text)"""
 
 
 def _scene_mcq_layout(scene: dict, idx: int) -> str:
@@ -253,17 +291,10 @@ def _scene_mcq_layout(scene: dict, idx: int) -> str:
     lines.append(f"        self._clear()")
 
     for letter, name in options.items():
-        pos   = _option_position(letter)
-        vname = f"opt_{letter}_{idx}"
-        lines.append(f"""
-        {vname}_box = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15,
-            color=DesignTokens.WHITE, stroke_width=2).move_to({pos})
-        {vname}_letter = {tex(letter + ".")}
-        {vname}_letter.scale(0.85).set_color(DesignTokens.BLUE).move_to({pos} + np.array([-2.4, 0, 0]))
-        {vname}_text = {tex(name, width=35)}
-        {vname}_text.scale(0.65).set_color(DesignTokens.WHITE).move_to({pos} + np.array([0.3, 0, 0]))
-        {vname}_grp = VGroup({vname}_box, {vname}_letter, {vname}_text)
-        self.play(FadeIn({vname}_grp), run_time={per_opt_t})""")
+        option_text = name if (name and str(name).strip() and str(name) != "-") else f"Option {letter}"
+        pos = _option_position(letter)
+        lines.append(_render_option_box(letter, option_text, idx, pos, is_ghost=False))
+        lines.append(f"        self.play(FadeIn(opt_{letter}_{idx}_grp), run_time={per_opt_t})")
 
     lines.append(f"        self.wait({hold_t})")
     return "\n".join(lines)
@@ -286,7 +317,11 @@ def _scene_option_arrow(scene: dict, idx: int) -> str:
     return f"""
         # Scene {idx}: option_arrow — highlight {letter}
         box_pos_{idx} = {_option_position(letter)}
-        focus_ring_{idx} = RoundedRectangle(width=6.0, height=1.7, color={color}, stroke_width=4).move_to(box_pos_{idx})
+        # Continuity Guard: Phantom redraw with helper
+        {_render_option_box(letter, "", idx, f"box_pos_{idx}", is_ghost=True)}
+        self.add(opt_{letter}_{idx}_grp)
+        
+        focus_ring_{idx} = RoundedRectangle(width=6.0, height=1.7, color={color}, stroke_width=4, corner_radius=0.15).move_to(box_pos_{idx})
         self.play(Indicate(focus_ring_{idx}, color={color}, scale_factor=1.1), run_time={anim_t})
         self.wait({hold_t})
 """
@@ -310,10 +345,10 @@ def _scene_cross_out(scene: dict, idx: int) -> str:
     for li, letter in enumerate(letters):
         pos = _option_position(letter)
         lines.append(f"""
-        cross_{idx}_{li} = Cross(
-            RoundedRectangle(width=5.8, height=1.5).move_to({pos}),
-            color=RED, stroke_width=6,
-        )
+        # Continuity Guard: Phantom redraw with helper
+        {_render_option_box(letter, "", idx, pos, is_ghost=True)}
+        self.add(opt_{letter}_{idx}_grp)
+        cross_{idx}_{li} = Cross(opt_{letter}_{idx}_grp, color=DesignTokens.RED, stroke_width=6)
         self.play(Create(cross_{idx}_{li}), run_time=0.4)""")
 
     lines.append(f"        self.wait({duration})")
@@ -338,9 +373,12 @@ def _scene_answer_reveal(scene: dict, idx: int) -> str:
 
     return f"""
         # Scene {idx}: answer_reveal — correct: {letter}
-        ans_box_{idx} = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15).move_to({pos})
-        highlight_{idx} = SurroundingRectangle(ans_box_{idx}, color=GREEN, buff=0.08, stroke_width=5)
-        tick_{idx} = Tex(r"$\\checkmark$", tex_template=my_template).scale(1.4).set_color(GREEN)
+        # Continuity Guard: Phantom redraw with helper
+        {_render_option_box(letter, name, idx, pos, is_ghost=True)}
+        self.add(opt_{letter}_{idx}_grp)
+        
+        highlight_{idx} = SurroundingRectangle(opt_{letter}_{idx}_grp, color=DesignTokens.GREEN, buff=0.08, stroke_width=5)
+        tick_{idx} = Tex(r"$\\checkmark$", tex_template=my_template).scale(1.4).set_color(DesignTokens.GREEN)
         tick_{idx}.move_to({pos} + np.array([2.2, 0, 0]))
         self.play(GrowFromCenter(highlight_{idx}), run_time=0.8)
         self.play(Write(tick_{idx})){exp_code}
@@ -596,6 +634,65 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
         return _graph_axes_fallback(idx, description, duration)
 
 
+def _scene_annotated_image(scene: dict, idx: int, image_path: str = None) -> str:
+    d = scene["visual_data"]
+    label = d.get("label", "")
+    bullets = d.get("bullets", [])[:3]
+    duration = d.get("duration", 4.0)
+    
+    bullets_code = ""
+    if bullets:
+        bullets_code = f"""
+        bullets_grp_{idx} = VGroup(
+            {", ".join([f"{tex(b, width=22)}.scale(0.65)" for b in bullets])}
+        ).arrange(DOWN, aligned_edge=LEFT, buff=0.3)
+        """
+        left_grp_code = f"""left_grp_{idx} = VGroup(title_{idx}, bullets_grp_{idx}).arrange(DOWN, aligned_edge=LEFT, buff=0.5)"""
+    else:
+        left_grp_code = f"""left_grp_{idx} = VGroup(title_{idx})"""
+
+    region = d.get("region", "center_left")
+    
+    # Map region to image anchor points
+    region_map = {
+        "upper_left": "get_corner(UL)",
+        "upper_center": "get_top()",
+        "upper_right": "get_corner(UR)",
+        "center_left": "get_left()",
+        "center": "get_center()",
+        "center_right": "get_right()",
+        "lower_left": "get_corner(DL)",
+        "lower_center": "get_bottom()",
+        "lower_right": "get_corner(DR)"
+    }
+    anchor = region_map.get(region, "get_left()")
+
+    return f"""
+        # Scene {idx}: annotated_image
+        self._clear()
+        img_{idx} = ImageMobject(r"{image_path}").scale_to_fit_width(5.5).move_to(RIGHT * 3.2)
+        frame_{idx} = SurroundingRectangle(img_{idx}, color=BLUE_E, buff=0.08, stroke_width=3)
+        
+        # Left side: explanation
+        title_{idx} = {tex(label)}.scale(0.9).set_color(DesignTokens.YELLOW)
+        {bullets_code}
+        {left_grp_code}
+        left_grp_{idx}.move_to(LEFT * 3.5)
+        
+        # Arrow from text to image region
+        arrow_{idx} = Arrow(
+            start=left_grp_{idx}.get_right() + RIGHT * 0.2,
+            end=img_{idx}.{anchor},
+            color=DesignTokens.YELLOW, buff=0.1, stroke_width=6
+        )
+        
+        self.play(FadeIn(img_{idx}), FadeIn(frame_{idx}))
+        self.play(Write(left_grp_{idx}))
+        self.play(GrowArrow(arrow_{idx}))
+        self.wait({duration})
+    """
+
+
 def _scene_key_point(scene: dict, idx: int) -> str:
     """Presentation mode: single heading + body text."""
     d        = scene["visual_data"]
@@ -632,6 +729,7 @@ _GENERATORS = {
     "title_card":       _scene_title_card,
     "concept_image":    _scene_concept_image,
     "image_arrow":      _scene_image_arrow,
+    "annotated_image":  _scene_annotated_image,
     "mcq_layout":       _scene_mcq_layout,
     "option_arrow":     _scene_option_arrow,
     "option_highlight": _scene_option_arrow,
@@ -653,6 +751,7 @@ def build_manim_script(
     image_path: str,
     topic: str,
     output_path: str,
+    knowledge_base: dict = None,
 ) -> str:
     """
     Convert a list of scene dicts into a complete Manim Python script.

@@ -65,6 +65,8 @@ Your job is to take raw web search results and turn them into a clean, structure
 - If snippets contradict each other, note the discrepancy.
 - Categorize information into: summary, key_facts, dates_and_events, and visual_metaphors.
 - 'visual_metaphors' should be ideas for cinematic or mathematical visualizations of the concept.
+- **KB_CONFIDENCE**: Include a "kb_confidence" float (0.0 to 1.0) reflecting the consistency and authority of the sources.
+- **PROVENANCE_NOTE**: Include a brief note on the reliability of the sources used.
 - Return ONLY valid JSON.
 """
 

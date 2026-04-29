@@ -45,11 +45,15 @@ FIXED:
 Return ONLY the code. No chatter."""
 
 
-def run_healer(broken_script: str, error_message: str) -> tuple[str, dict]:
+def run_healer(broken_script: str, error_message: str, knowledge_base: dict = None) -> tuple[str, dict]:
     """
     Ask Groq (Llama 3.3) to fix a broken Manim script.
     Returns: (fixed_script, usage)
     """
+    kb_context = ""
+    if knowledge_base:
+        import json
+        kb_context = f"\n━━━ VERIFIED LESSON FACTS (KB) ━━━\n{json.dumps(knowledge_base, indent=2)}\n"
     # ... search logic remains same ...
     search_context = ""
     try:
@@ -67,6 +71,7 @@ def run_healer(broken_script: str, error_message: str) -> tuple[str, dict]:
         messages=[
             {"role": "user", "content": (
                 f"ERROR MESSAGE:\n{error_message}\n\n"
+                f"{kb_context}\n"
                 f"{search_context}\n"
                 f"BROKEN SCRIPT:\n```python\n{broken_script}\n```\n\n"
                 f"Return the complete fixed script."

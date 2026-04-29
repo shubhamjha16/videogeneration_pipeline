@@ -63,7 +63,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["X-API-Key", "Content-Type", "Authorization"],
+    allow_headers=["X-API-Key", "Content-Type", "Authorization", "Idempotency-Key"],
     allow_credentials=True,
 )
 
@@ -108,6 +108,61 @@ jobs = {}
 # Industrial Concurrency Cap: Max 2 high-compute jobs (Manim/Video) at once
 # Reduced from 3 to 2 to prevent OOM on ECS during concurrent renders.
 RENDER_SEMAPHORE = threading.BoundedSemaphore(2)
+
+# ── Idempotency Cache ─────────────────────────────────────────────────────────
+# Prevents duplicate jobs when Spring Boot retries on network blips.
+# Maps Idempotency-Key → {job_id, created_at} with a 1-hour TTL.
+
+_IDEMPOTENCY_TTL_SECONDS = int(os.environ.get("IDEMPOTENCY_TTL", 3600))
+_idempotency_cache: dict[str, dict] = {}
+_idempotency_lock = threading.Lock()
+
+def _idempotency_lookup(key: str) -> str | None:
+    """Return existing job_id if a non-expired entry exists for this key."""
+    if not key:
+        return None
+    with _idempotency_lock:
+        entry = _idempotency_cache.get(key)
+        if not entry:
+            return None
+        age = time.time() - entry["created_at"]
+        if age > _IDEMPOTENCY_TTL_SECONDS:
+            del _idempotency_cache[key]
+            return None
+        return entry["job_id"]
+
+def _idempotency_register(key: str, job_id: str):
+    """Store a new idempotency mapping."""
+    if not key:
+        return
+    with _idempotency_lock:
+        _idempotency_cache[key] = {"job_id": job_id, "created_at": time.time()}
+
+# ── Webhook Dead-Letter Queue (DLQ) ──────────────────────────────────────────
+# Persists failed webhook payloads to disk so they can be replayed.
+
+DLQ_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webhook_dlq.json")
+
+def _dlq_persist(job_id: str, payload: dict):
+    """Append a failed webhook payload to the dead-letter queue file."""
+    entry = {
+        "job_id": job_id,
+        "payload": payload,
+        "failed_at": datetime.utcnow().isoformat() + "Z",
+        "retries_exhausted": True,
+    }
+    try:
+        existing = []
+        if os.path.exists(DLQ_FILE):
+            with open(DLQ_FILE, "r") as f:
+                existing = json.load(f)
+        existing.append(entry)
+        with open(DLQ_FILE, "w") as f:
+            json.dump(existing, f, indent=2)
+        print(f"📬 [DLQ] Persisted failed webhook for job {job_id}")
+    except Exception as e:
+        print(f"⚠️  [DLQ] Failed to persist webhook for job {job_id}: {e}")
+
 
 def _sanitize_stalled_jobs():
     """Industrial Sentinel: Clean up 'Processing' jobs and purge their heavy storage folders."""
@@ -345,7 +400,8 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
         if attempt < max_retries - 1:
             time.sleep(2 ** attempt) # Exponential backoff: 1, 2, 4s
 
-    print(f"❌ Webhook FAILED (Job {job_id}) after {max_retries} attempts.")
+    print(f"❌ Webhook FAILED (Job {job_id}) after {max_retries} attempts. Persisting to DLQ.")
+    _dlq_persist(job_id, status_data)
 
 
 
@@ -676,15 +732,25 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
                 "subtitle_style":     None,
                 "use_elevenlabs":     job.get("use_elevenlabs", False),
             })
+        except ImportError as e:
+            error_category = "DEPENDENCY"
+            error_detail = f"Missing module: {e.name if hasattr(e, 'name') else e}"
+        except (KeyError, ValueError, TypeError) as e:
+            error_category = "DATA"
+            error_detail = f"{type(e).__name__}: {e}"
         except Exception as e:
-            print(f"❌ Pipeline Error for job {job_id}: {e}")
+            error_category = type(e).__name__
+            error_detail = str(e)
+        else:
+            error_category = None
+            error_detail = None
+
+        if error_category:
+            print(f"❌ [{error_category}] Pipeline Error for job {job_id}: {error_detail}")
             with _jobs_lock:
                 jobs[job_id]["status"] = "failed"
-                jobs[job_id]["error"]  = str(e)
-                final_status = "failed"
-                final_error = str(e)
-            
-            # ── METRICS LOGGING ───────────────────────────────────
+                jobs[job_id]["error"]  = f"[{error_category}] {error_detail}"
+
             duration = time.time() - start_pipeline_t
             with _jobs_lock:
                 if "metrics" not in jobs[job_id]:
@@ -692,22 +758,20 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
                 jobs[job_id]["metrics"]["total_duration_sec"] = round(duration, 2)
                 jobs[job_id]["updated_at"] = datetime.utcnow().isoformat() + "Z"
             
-            # Final state persistence
-            _safe_save_jobs(f"pipeline complete ({job_id})")
+            _safe_save_jobs(f"pipeline failed ({job_id})")
             
             _notify_webhook_with_retry(
                 job_id=job_id,
                 status_data={
                     "job_id": job_id,
                     "status": "failed",
-                    "error": str(e),
+                    "error": f"[{error_category}] {error_detail}",
                     "video_url": "",
                     "progress": 0,
                     "webhook_url": jobs[job_id].get("webhook_url"),
                     "updated_at": datetime.utcnow().isoformat() + "Z"
                 }
             )
-
             return
 
         # ── Post-Render Phase (Network I/O) ──
@@ -799,8 +863,18 @@ def start_render(
                 }
             }
         }
-    )
+    ),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    # ── 0. Idempotency Guard ──
+    existing_job_id = _idempotency_lookup(idempotency_key)
+    if existing_job_id:
+        _load_jobs()
+        with _jobs_lock:
+            if existing_job_id in jobs:
+                print(f"🔁 Idempotency hit: key={idempotency_key} → job={existing_job_id}")
+                return copy.deepcopy(jobs[existing_job_id])
+
     # ── 1. Content Resolution (Priority: json_data > markdown > html) ──
     source_type = "html"
     raw_content = request.html
@@ -869,13 +943,25 @@ def start_render(
 
     _safe_save_jobs(f"start_render enqueue ({job_id})", fatal=False)  # non-fatal
 
+    _idempotency_register(idempotency_key, job_id)
     print(f"🚀 Job {job_id} queued for: {request.topic}")
     return job_snapshot
 
 
 @app.post("/bulk_render", response_model=BulkRenderResponse, dependencies=[SecurityDep], tags=["Core"], summary="Submit batch jobs", description="Accepts a JSON array of lessons. Jobs are processed sequentially in a single background worker to prevent resource exhaustion.")
-async def bulk_render(file: UploadFile = File(...)):
+async def bulk_render(
+    file: UploadFile = File(...),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
     """Accept a JSON file and queue all lessons as separate jobs."""
+    # ── Idempotency Guard ──
+    existing_job_id = _idempotency_lookup(idempotency_key)
+    if existing_job_id:
+        # For bulk, we stored a comma-separated list of job_ids as the "job_id"
+        cached_ids = existing_job_id.split(",")
+        print(f"🔁 Bulk idempotency hit: key={idempotency_key} → {len(cached_ids)} jobs")
+        return {"job_ids": cached_ids, "total": len(cached_ids), "status": "queued"}
+
     content = await file.read()
     
     try:
@@ -964,6 +1050,7 @@ async def bulk_render(file: UploadFile = File(...)):
     thread.start()
     
     _safe_save_jobs("bulk_render enqueue")
+    _idempotency_register(idempotency_key, ",".join(job_ids))
     print(f"🚀 Bulk ingest: {len(job_ids)} jobs queued")
     
     return {"job_ids": job_ids, "total": len(job_ids), "status": "queued"}

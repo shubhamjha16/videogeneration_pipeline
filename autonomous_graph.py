@@ -319,10 +319,14 @@ class TonyState(TypedDict):
     subtitle_style:   Optional[str]    # "insta_reels" | "classic"
 
     # ── Control ────────────────────────────────────────
-    rendering_errors: Optional[str]
-    attempt_count:    int
-    no_vision:        bool
-    research_count:   int # Phase 8: Loop Guard
+    rendering_errors:  Optional[str]
+    attempt_count:     int
+    no_vision:         bool
+    research_count:    int # Phase 8: Loop Guard
+    
+    # ── Industrial Resilience (New Architecture) ──────
+    rejected_attempts: List[Dict[str, Any]]  # Stores [{"plan": ..., "critique": ...}] for revision
+    media_manifest:    List[Dict[str, Any]]  # Assets requested by Architect/Planner
 
 
 # ── Node 1: Director ──────────────────────────────────────────────────────────
@@ -343,6 +347,10 @@ def director_node(state: TonyState) -> TonyState:
             "elevenlabs_chars": 0,
             "heygen_seconds": 0
         }
+    
+    # Initialize Industrial Memory & Manifest
+    state["rejected_attempts"] = state.get("rejected_attempts") or []
+    state["media_manifest"]    = state.get("media_manifest") or []
     
     if "research_count" not in state:
         state["research_count"] = 0
@@ -626,14 +634,30 @@ def vision_node(state: TonyState) -> TonyState:
 
     subject = state.get("parsed_facts", {}).get("subject", "default")
 
-    # ── PATH 1: Manim (Single Diagram) ────────────────
+    # ── PATH 1: Manim (Scene-Driven Asset Generation) ────────────────
     if state.get("render_mode") in ["manim", "auto"]:
+        scenes = state.get("scenes") or []
+        # Back-Pressure: Only generate if a scene actually needs a concept_image
+        needs_image = any(s.get("visual_type") == "concept_image" for s in scenes)
+        
+        if not needs_image:
+            print("   ℹ️  Vision Node: No concept_image scenes detected. Skipping diagram generation.")
+            state["image_path"] = None
+            return state
+
         pre_path = os.path.join(output_dir, "tony_diagram.png")
         if os.path.exists(pre_path):
             state["image_path"] = pre_path
         else:
             try:
-                state["image_path"] = generate_concept_image(state["topic"], subject, output_dir=output_dir, filename="tony_diagram.png")
+                # Find the specific prompt from the scene if available
+                target_prompt = state["topic"]
+                for s in scenes:
+                    if s.get("visual_type") == "concept_image":
+                        target_prompt = s.get("visual_data", {}).get("image_prompt") or s.get("visual_data", {}).get("title") or state["topic"]
+                        break
+                
+                state["image_path"] = generate_concept_image(target_prompt, subject, output_dir=output_dir, filename="tony_diagram.png")
             except Exception as e:
                 state["image_path"] = None
                 _log_fallback(state, "VISION", "skip_concept_image", str(e), type(e).__name__)
@@ -730,17 +754,19 @@ def architect_node(state: TonyState) -> TonyState:
             except:
                 scene["visual_data"] = {"name": scene["visual_data"]}
 
-    # 2. VISUAL INJECTION: Force concept_image after title_card if missing but exists on disk
-    has_image_scene = any(s.get("visual_type") == "concept_image" for s in scenes)
-    if image_path and not has_image_scene and len(scenes) > 1:
-        print(f"   ⚓ Injection: Forcing concept_image for topic: {state['topic']}")
-        image_scene = {
-            "visual_type": "concept_image",
-            "narration_text": f"To understand {state['topic']} in depth, let's first look at this essential overview.",
-            "visual_data": {"title": state["topic"], "duration": 5.0}
-        }
-        # Insert after title_card (usually index 0)
-        scenes.insert(1, image_scene)
+    # 2. INDUSTRIAL MANIFEST: Declare asset needs instead of hoping they exist.
+    # We scan scenes for 'concept_image' and add them to the manifest.
+    for i, scene in enumerate(scenes):
+        if scene.get("visual_type") == "concept_image":
+            v_data = scene.get("visual_data", {})
+            prompt = v_data.get("image_prompt") or v_data.get("title") or state["topic"]
+            state["media_manifest"].append({
+                "id": f"scene_{i}_image",
+                "type": "concept_image",
+                "prompt": prompt,
+                "target_scene_index": i
+            })
+    
     print("   Generating TTS audio for sync...")
     audio_files = []
     use_el = state.get("use_elevenlabs", False)
@@ -768,6 +794,10 @@ def architect_node(state: TonyState) -> TonyState:
     state["audio_files"] = audio_files
     state["scenes"]      = scenes
 
+    # INDUSTRIAL PROVENANCE: Trace the source of truth for labels/diagrams
+    truth_source = "KNOWLEDGE_BASE" if state.get("knowledge_base") else "PARSED_FACTS"
+    _log_progress(state, "ARCHITECT", f"Provenance Trace: Script labels anchored in {truth_source}.")
+
     # 3. Build Manim script with synced durations
     script_path = os.path.join(job_dir, "scene_script.py")
     build_manim_script(
@@ -775,6 +805,7 @@ def architect_node(state: TonyState) -> TonyState:
         image_path=state.get("image_path"),
         topic=state["topic"],
         output_path=script_path,
+        knowledge_base=state.get("knowledge_base")
     )
     state["manim_script_path"] = script_path
     print(f"   Script written with synced durations: {script_path}")
@@ -891,7 +922,15 @@ def healer_node(state: TonyState) -> TonyState:
     with open(state["manim_script_path"], "r") as f:
         script_content = f.read()
 
-    fixed_script, usage = run_healer(script_content, state["rendering_errors"])
+    # INDUSTRIAL PROVENANCE: Trace the source of the repair logic
+    truth_source = "KNOWLEDGE_BASE" if state.get("knowledge_base") else "SEARCH_RESULTS"
+    _log_progress(state, "HEALER", f"Provenance Trace: Self-healing grounded in {truth_source}.")
+    
+    fixed_script, usage = run_healer(
+        script_content, 
+        state["rendering_errors"], 
+        knowledge_base=state.get("knowledge_base")
+    )
     # INDUSTRIAL LEDGER: Capture tokens
     state["ledger"] = state.get("ledger", {})
     state["ledger"]["prompt_tokens"] = state["ledger"].get("prompt_tokens", 0) + usage.get("prompt_tokens", 0)
@@ -1102,10 +1141,17 @@ def ppt_planner_node(state: TonyState) -> TonyState:
     if kb:
         knowledge_section = f"\n━━━ VERIFIED GROUND TRUTH (KNOWLEDGE BASE) ━━━\n{json.dumps(kb, indent=2)}\n"
 
-    # Inject critic feedback on retry
+    # Inject historical rejections on retry
     feedback_section = ""
-    if feedback:
-        feedback_section = f"\n⚠️ PREVIOUS ATTEMPT WAS REJECTED. Fix these specific issues:\n{feedback}\nDo NOT repeat the same mistakes.\n"
+    rejections = state.get("rejected_attempts", [])
+    if rejections:
+        history = "\n".join([
+            f"--- REJECTED ATTEMPT {i+1} ---\nPLAN: {r['plan']}\nCRITIQUE: {r['feedback']}" 
+            for i, r in enumerate(rejections)
+        ])
+        feedback_section = f"\n⚠️ PREVIOUS ATTEMPTS WERE REJECTED. Do NOT repeat these specific mistakes:\n{history}\n"
+    elif feedback:
+        feedback_section = f"\n⚠️ PREVIOUS ATTEMPT WAS REJECTED. Fix these specific issues:\n{feedback}\n"
 
     prompt = _PPT_PLANNER_PROMPT.format(
         knowledge_section=knowledge_section,
@@ -1183,6 +1229,24 @@ def ppt_critic_node(state: TonyState) -> TonyState:
 
         state["critic_feedback"]   = None if approved else feedback
         state["ppt_attempt_count"] = state.get("ppt_attempt_count", 0) + (0 if approved else 1)
+        
+        # INDUSTRIAL MEMORY: Sliding Window (Cap at 3, truncate text)
+        if not approved:
+            if "rejected_attempts" not in state or state["rejected_attempts"] is None:
+                state["rejected_attempts"] = []
+            
+            # Truncate feedback for prompt efficiency
+            truncated_feedback = feedback[:500] + "..." if len(feedback) > 500 else feedback
+            
+            state["rejected_attempts"].append({
+                "plan": slides_summary[:1000], # Summary only
+                "feedback": truncated_feedback,
+                "score": score
+            })
+            
+            # Keep only last 3 to prevent prompt bloat
+            if len(state["rejected_attempts"]) > 3:
+                state["rejected_attempts"] = state["rejected_attempts"][-3:]
 
     except Exception as e:
         # Phase 8: Critic Resilience — Auto-Approve on failure to prevent production block
