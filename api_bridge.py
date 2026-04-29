@@ -112,6 +112,11 @@ RENDER_SEMAPHORE = threading.BoundedSemaphore(2)
 # ── Idempotency Cache ─────────────────────────────────────────────────────────
 # Prevents duplicate jobs when Spring Boot retries on network blips.
 # Maps Idempotency-Key → {job_id, created_at} with a 1-hour TTL.
+#
+# NOTE: This cache is in-memory and does NOT survive server restarts.
+# Accepted risk: during a deploy (typically <30s), a retry could create a
+# duplicate job. For zero-downtime deploys, back this with Redis or the
+# jobs.json file itself.
 
 _IDEMPOTENCY_TTL_SECONDS = int(os.environ.get("IDEMPOTENCY_TTL", 3600))
 _idempotency_cache: dict[str, dict] = {}
@@ -143,12 +148,15 @@ def _idempotency_register(key: str, job_id: str):
 
 DLQ_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webhook_dlq.json")
 
-def _dlq_persist(job_id: str, payload: dict):
+def _dlq_persist(job_id: str, payload: dict, webhook_url: str = "", last_status_code: int | None = None, last_error: str = ""):
     """Append a failed webhook payload to the dead-letter queue file."""
     entry = {
         "job_id": job_id,
+        "webhook_url": webhook_url,
         "payload": payload,
         "failed_at": datetime.utcnow().isoformat() + "Z",
+        "last_status_code": last_status_code,
+        "last_error": last_error,
         "retries_exhausted": True,
     }
     try:
@@ -384,24 +392,28 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
 
     import time
     max_retries = 3
+    last_status_code = None
+    last_error = ""
     for attempt in range(max_retries):
         try:
-            # Industrial Sentinel: Explicit 30s timeout for webhook resilience
             resp = requests.post(webhook_url, json=status_data, timeout=30)
+            last_status_code = resp.status_code
 
             if resp.status_code < 300:
                 print(f"🔔 Webhook Success (Job {job_id}) on attempt {attempt + 1}")
                 return
             else:
+                last_error = f"HTTP {resp.status_code}"
                 print(f"⚠️  Webhook Status {resp.status_code} on attempt {attempt + 1}")
         except requests.RequestException as e:
+            last_error = str(e)
             print(f"⚠️  Webhook Retry {attempt + 1} for job {job_id}: {e}")
         
         if attempt < max_retries - 1:
-            time.sleep(2 ** attempt) # Exponential backoff: 1, 2, 4s
+            time.sleep(2 ** attempt)
 
     print(f"❌ Webhook FAILED (Job {job_id}) after {max_retries} attempts. Persisting to DLQ.")
-    _dlq_persist(job_id, status_data)
+    _dlq_persist(job_id, status_data, webhook_url=webhook_url, last_status_code=last_status_code, last_error=last_error)
 
 
 

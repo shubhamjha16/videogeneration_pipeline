@@ -258,8 +258,8 @@ Structure:
     },
     {
       "visual_type": "annotated_image",
-      "visual_data": {"label": "Cross Section of the Heart", "region": "lower_right", "bullets": ["Left ventricle pumps oxygenated blood", "Right ventricle sends blood to lungs"]},
-      "narration_text": "Notice the thickness of the left ventricular wall compared to the right..."
+      "visual_data": {"label": "Convex Lens Ray Diagram", "region": "center_right", "bullets": ["Parallel rays converge at focal point", "Image is real and inverted beyond 2F"]},
+      "narration_text": "Observe how parallel rays pass through the lens and meet at the focal point..."
     }
   ]
 }
