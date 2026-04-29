@@ -403,24 +403,16 @@ def director_node(state: TonyState) -> TonyState:
                 scene["visual_data"]["letter"] = correct_letter
                 scene["visual_data"]["name"]   = correct_name
             elif scene["visual_type"] == "cross_out":
-                # Ensure cross_out never targets the correct answer and prefers list form.
-                data = scene["visual_data"]
-                raw_letters = data.get("letters") or data.get("letter") or []
-                if isinstance(raw_letters, str):
-                    letters = re.findall(r"\b([A-D])\b", raw_letters.upper())
-                elif isinstance(raw_letters, list):
-                    letters = []
-                    for item in raw_letters:
-                        letters.extend(re.findall(r"\b([A-D])\b", str(item).upper()))
-                else:
-                    letters = []
-
-                cleaned = [l for l in letters if l in ("A", "B", "C", "D") and l != correct_letter]
-                if not cleaned:
-                    # Fall back to all wrong letters even when parsed options are incomplete.
-                    cleaned = [l for l in ("A", "B", "C", "D") if l != correct_letter]
-                data["letters"] = cleaned
-                data.pop("letter", None)
+                # INDUSTRIAL OVERRIDE: Always cross out ALL wrong options to ensure a clean reveal.
+                # Even if the LLM provided a partial list, we force extraction of all incorrect letters.
+                all_wrong = [l for l in ("A", "B", "C", "D") if l != correct_letter]
+                
+                # Check which of these options actually exist in the parsed curriculum
+                existing_wrong = [l for l in all_wrong if l in (state.get("parsed_facts", {}).get("options") or {})]
+                
+                # Use existing wrong options if found, otherwise fall back to all standard wrong letters
+                scene["visual_data"]["letters"] = existing_wrong if existing_wrong else all_wrong
+                scene["visual_data"].pop("letter", None)
         print(f"   Correct answer locked: {correct_letter}. {correct_name}")
 
     # 3. INDUSTRIAL PLACEHOLDER HUNTER: Ensure real content from the lesson is used
@@ -464,10 +456,16 @@ def director_node(state: TonyState) -> TonyState:
             
             # Now scrub each string
             for l, t in fixed_options.items():
-                # If Gemma literalized the dict: {'letter': 'A', 'text': '...'}
-                if isinstance(t, str) and "{'text':" in t:
-                    match = re.search(r"'text':\s*'(.*?)'", t)
-                    if match: t = match.group(1)
+                if isinstance(t, str):
+                    # Aggressive regex to extract content from Hallucinated JSON strings
+                    # Handles: {'text': '...'}, {'content': '...'}, {'name': '...'}
+                    for key in ["text", "content", "name", "body"]:
+                        match = re.search(rf"['\"]{key}['\"]:\s*['\"](.*?)['\"]", t)
+                        if match:
+                            t = match.group(1)
+                            break
+                    # Final cleanup: remove any leftover braces if the whole string was a JSON literal
+                    t = re.sub(r"^\{.*\}|\{.*\}$", "", t).strip("'\" ")
                 fixed_options[l] = t
             v_data["options"] = fixed_options
 

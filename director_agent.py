@@ -148,6 +148,13 @@ LEVEL 4 (Efficiency / Default) → Use "presentation":
 
 ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" to Manim/Explainer if the content strictly warrants it.
 
+━━━ MCQ MANDATORY SCENE RULE ━━━
+If the content type is "mcq", you MUST include exactly these three scenes at the end of your script:
+  1. "mcq_layout": To show the question and all 4 options.
+  2. "cross_out": To eliminate the wrong options one by one.
+  3. "answer_reveal": To highlight the correct answer and provide the explanation.
+Do NOT skip these scenes if options are provided in the input.
+
 ━━━ SEARCH / RESEARCH RULE ━━━
 - If the input lesson is thin or lacks specific facts (names, dates, stats), you MUST populate `search_queries` with 1-3 specific search terms. 
 - Example: Topic "History of AI" but no dates. Query: ["first artificial intelligence conference date", "early AI pioneers timeline"].
@@ -266,6 +273,17 @@ Structure:
             if "DirectorOutput" in data: data = data["DirectorOutput"]
             elif "output" in data: data = data["output"]
             elif "json" in data: data = data["json"]
+            
+            # INDUSTRIAL SCRUBBER: Ensure visual_data is always a dict
+            if "scenes" in data and isinstance(data["scenes"], list):
+                for scene in data["scenes"]:
+                    if isinstance(scene, dict) and "visual_data" in scene:
+                        if isinstance(scene["visual_data"], list):
+                            # LLM hallucinated a list for visual_data, wrap it in a dict or take first item
+                            if len(scene["visual_data"]) > 0 and isinstance(scene["visual_data"][0], dict):
+                                scene["visual_data"] = scene["visual_data"][0]
+                            else:
+                                scene["visual_data"] = {"data": scene["visual_data"]}
         
         # Fallback for required fields (Industrial Resilience)
         if not data.get("render_mode"): data["render_mode"] = "manim"
@@ -275,25 +293,27 @@ Structure:
         response = DirectorOutput(**data)
         
         # INDUSTRIAL OVERRIDE: Programmatic Label Injection
-        # Ensure options and correct answer name are STATED in the visual_data
-        # even if the LLM hallucinated placeholders like "Option A"
         try:
             real_options = parsed_facts.get("options", {})
-            for scene in response.scenes:
-                if scene.visual_type == "mcq_layout":
-                    for letter, real_data in real_options.items():
-                        if "options" not in scene.visual_data:
-                            scene.visual_data["options"] = {}
-                        scene.visual_data["options"][letter] = real_data.get("name", f"Option {letter}")
-                
-                elif scene.visual_type in ["option_highlight", "answer_reveal", "cross_out", "option_arrow"]:
-                    letter = scene.visual_data.get("letter", "A").upper()
-                    if letter in real_options:
-                        scene.visual_data["name"] = real_options[letter].get("name", "")
-                        if scene.visual_type == "answer_reveal":
-                             # If LLM didn't provide a good explanation, use the one from parsed_facts
-                             if not scene.visual_data.get("explanation"):
-                                 scene.visual_data["explanation"] = real_options[letter].get("explanation", "")
+            if isinstance(real_options, dict):
+                for scene in response.scenes:
+                    if scene.visual_type == "mcq_layout":
+                        for letter, real_data in real_options.items():
+                            if "options" not in scene.visual_data:
+                                scene.visual_data["options"] = {}
+                            # Handle both dict and string forms of real_data
+                            option_text = real_data.get("name") if isinstance(real_data, dict) else str(real_data)
+                            scene.visual_data["options"][letter] = option_text or f"Option {letter}"
+                    
+                    elif scene.visual_type in ["option_highlight", "answer_reveal", "cross_out", "option_arrow"]:
+                        letter = str(scene.visual_data.get("letter", "A")).upper()
+                        if letter in real_options:
+                            real_data = real_options[letter]
+                            scene.visual_data["name"] = real_data.get("name", "") if isinstance(real_data, dict) else str(real_data)
+                            if scene.visual_type == "answer_reveal":
+                                 # If LLM didn't provide a good explanation, use the one from parsed_facts
+                                 if not scene.visual_data.get("explanation") and isinstance(real_data, dict):
+                                     scene.visual_data["explanation"] = real_data.get("explanation", "")
         except Exception as e:
             print(f"   ⚠️ Label Injection failed: {e}")
 

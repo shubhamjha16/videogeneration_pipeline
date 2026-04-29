@@ -41,28 +41,46 @@ def search_searxng(query: str, categories: str = "general", limit: int = None) -
             base_url += "/search"
             
         print(f"🔍 Searching SearXNG [{categories}]: '{query}'...")
-        response = requests.get(base_url, params=params, timeout=10)
-        response.raise_for_status()
         
-        data = response.json()
-        raw_results = data.get("results", [])
+        # Industrial Retry Strategy: Exponential Backoff
+        import time
+        max_retries = config.SEARXNG_RETRIES
+        timeout = config.SEARXNG_TIMEOUT
         
-        # Format and truncate
-        formatted = []
-        for res in raw_results[:limit]:
-            formatted.append({
-                "title": res.get("title", ""),
-                "content": res.get("content", ""), # This is the snippet/summary
-                "url": res.get("url", ""),
-                "engine": res.get("engine", "unknown")
-            })
-            
-        return formatted
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(base_url, params=params, timeout=timeout)
+                response.raise_for_status()
+                
+                data = response.json()
+                raw_results = data.get("results", [])
+                
+                # Format and truncate
+                formatted = []
+                for res in raw_results[:limit]:
+                    formatted.append({
+                        "title": res.get("title", ""),
+                        "content": res.get("content", ""), # This is the snippet/summary
+                        "url": res.get("url", ""),
+                        "engine": res.get("engine", "unknown")
+                    })
+                    
+                return formatted
+            except requests.exceptions.RequestException as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) # 1s, 2s, 4s...
+                    print(f"   ⚠️ Search Attempt {attempt+1} failed. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                continue
+
+        # If we reach here, all retries failed
+        print(f"⚠️ SearXNG Research Offline after {max_retries} attempts ({last_error}). Falling back to Internal Knowledge.")
+        return []
         
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        # Industrial Hardening: Silence technical failures to prevent pipeline crashes.
-        # The Orchestrator will fallback to 'Internal Knowledge' if this returns [].
-        print(f"⚠️ SearXNG Research Offline ({e}). Falling back to Internal Knowledge.")
+    except json.JSONDecodeError as e:
+        print(f"❌ Invalid JSON from SearXNG: {e}")
         return []
     except Exception as e:
         print(f"❌ Unexpected Search Error: {e}")

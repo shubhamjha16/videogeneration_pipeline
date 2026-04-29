@@ -68,7 +68,10 @@ def tex(text: str, width: int = 45) -> str:
     text = re.sub(r'###\s*(.*)', r'\\textbf{\1}', text)
 
     # 1. Sanitize for LaTeX (preserving our new \textbf commands)
+    # INDUSTRIAL GUARD: We use raw strings in Manim, so we only need to escape
+    # characters that LaTeX itself considers special.
     escaped = (text
+        .replace("\\", r"\\") # First escape actual backslashes in text
         .replace("&", r"\&")
         .replace("%", r"\%")
         .replace("$", r"\$")
@@ -83,23 +86,20 @@ def tex(text: str, width: int = 45) -> str:
     escaped = escaped.replace(r'\\textbf', r'\textbf')
     # Restore braces only for \textbf{...}
     escaped = re.sub(r'\\textbf\\{(.*?)\\}', r'\\textbf{\1}', escaped)
-    # Industrial Guard: Remove any remaining raw backslashes that could break Tex()
-    # unless they are part of our controlled \textbf command.
-    escaped = re.sub(r'(?<!\\)\\(?!textbf\{)', r'\\\\', escaped)
 
     # 2. Wrap if too long
     lines = textwrap.wrap(escaped, width=width)
     if len(lines) > 1:
         # Build a VGroup of individual Tex lines for perfect alignment
-        line_objs = [f'Tex(r"\\text{{{l}}}", tex_template=my_template)' for l in lines]
+        line_objs = [f'Tex(r"\\text{{{l}}}", tex_template=my_template, color=DesignTokens.WHITE)' for l in lines]
         return f'VGroup({", ".join(line_objs)}).arrange(DOWN, aligned_edge=LEFT, buff=0.15)'
     
-    return f'Tex(r"\\text{{{escaped}}}", tex_template=my_template)'
+    return f'Tex(r"\\text{{{escaped}}}", tex_template=my_template, color=DesignTokens.WHITE)'
 
 
 def math(formula: str) -> str:
     """Wrap a formula in MathTex with high-contrast 3b1b coloring."""
-    return f'MathTex(r"{formula}", tex_template=my_template).scale(1.2)'
+    return f'MathTex(r"{formula}", tex_template=my_template, color=DesignTokens.WHITE).scale(1.2)'
 
 
 def _region_to_coords(region: str) -> str:
@@ -261,7 +261,7 @@ def _scene_mcq_layout(scene: dict, idx: int) -> str:
         {vname}_letter = {tex(letter + ".")}
         {vname}_letter.scale(0.85).set_color(DesignTokens.BLUE).move_to({pos} + np.array([-2.4, 0, 0]))
         {vname}_text = {tex(name, width=35)}
-        {vname}_text.scale(0.65).move_to({pos} + np.array([0.3, 0, 0]))
+        {vname}_text.scale(0.65).set_color(DesignTokens.WHITE).move_to({pos} + np.array([0.3, 0, 0]))
         {vname}_grp = VGroup({vname}_box, {vname}_letter, {vname}_text)
         self.play(FadeIn({vname}_grp), run_time={per_opt_t})""")
 
@@ -285,35 +285,10 @@ def _scene_option_arrow(scene: dict, idx: int) -> str:
 
     return f"""
         # Scene {idx}: option_arrow — highlight {letter}
-        # Find the box from a previous MCQ scene if possible
-        # For robustness in multi-scene files, we re-declare the box location if missing
         box_pos_{idx} = {_option_position(letter)}
-        
         focus_ring_{idx} = RoundedRectangle(width=6.0, height=1.7, color={color}, stroke_width=4).move_to(box_pos_{idx})
         self.play(Indicate(focus_ring_{idx}, color={color}, scale_factor=1.1), run_time={anim_t})
         self.wait({hold_t})
-"""
-
-    color_map = {"correct": "GREEN", "likely": "GREEN",
-                 "wrong": "RED", "incorrect": "RED", "unlikely": "RED",
-                 "neutral": "YELLOW"}
-    color = color_map.get(verdict, "YELLOW")
-    pos   = _option_position(letter)
-
-    return f"""
-        # Scene {idx}: option_arrow — {letter} ({verdict})
-        arrow_{idx} = Arrow(
-            start={pos} + np.array([-5, 0, 0]),
-            end={pos} + np.array([-2.9, 0, 0]),
-            color={color}, stroke_width=5, buff=0.05,
-        )
-        reason_{idx} = {tex(reason[:60])}
-        reason_{idx}.scale(0.6).set_color({color}).to_edge(DOWN, buff=0.5)
-        bg_{idx} = BackgroundRectangle(reason_{idx}, color=BLACK, fill_opacity=0.8, buff=0.1)
-        self.play(GrowArrow(arrow_{idx}), run_time=0.7)
-        self.play(FadeIn(bg_{idx}), Write(reason_{idx}))
-        self.wait({duration})
-        self.play(FadeOut(arrow_{idx}), FadeOut(reason_{idx}), FadeOut(bg_{idx}))
 """
 
 
@@ -478,7 +453,7 @@ def _scene_summary(scene: dict, idx: int) -> str:
     for pi, point in enumerate(points):
         vname = f"point_{idx}_{pi}"
         lines.append(f"        {vname} = VGroup(")
-        lines.append(f'            Tex(r"\\\\checkmark", tex_template=my_template).scale(0.8).set_color(DesignTokens.GREEN),')
+        lines.append(f'            Tex(r"\\checkmark", tex_template=my_template).scale(0.8).set_color(DesignTokens.GREEN),')
         lines.append(f"            {tex(point, width=40)}.scale(DesignTokens.BODY_SIZE),")
         lines.append(f"        ).arrange(RIGHT, buff=0.2)")
         lines.append(f"        {vname}.move_to(np.array([0, {1.4 - pi * 1.1}, 0]))")

@@ -18,6 +18,8 @@ HIGGSFIELD_API_KEY = os.environ.get("HIGGSFIELD_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
 SEARXNG_RESULTS_LIMIT = int(os.environ.get("SEARXNG_RESULTS_LIMIT", "5"))
+SEARXNG_TIMEOUT = int(os.environ.get("SEARXNG_TIMEOUT", "25"))
+SEARXNG_RETRIES = int(os.environ.get("SEARXNG_RETRIES", "3"))
 
 # LLM Providers (groq | google | local | openai)
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai")

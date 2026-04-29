@@ -203,6 +203,7 @@ def _extract_options(soup: BeautifulSoup) -> dict:
 
 
 def _extract_correct_answer(soup: BeautifulSoup) -> tuple:
+    # 1. Look for dedicated headings
     for h in soup.find_all(['h2', 'h3']):
         ht = _heading_text(h)
         if any(k in ht for k in ['conclusion', 'final answer', 'answer', 'correct']):
@@ -212,18 +213,24 @@ def _extract_correct_answer(soup: BeautifulSoup) -> tuple:
                 if hasattr(sib, 'get_text'):
                     raw = _clean(sib.get_text(separator=' '))
                     if raw:
-                        letter = _extract_letter(raw)
-                        nm = re.search(r'\b[A-D][.:\s]+(.+?)(?:\.|$)', raw, re.IGNORECASE)
-                        name = _clean(nm.group(1)) if nm else ""
+                        # Improved: Look for [A-D] following "answer"
+                        nm = re.search(r'(?:answer|correct|is)\s+([A-D])\b', raw, re.IGNORECASE)
+                        letter = nm.group(1).upper() if nm else _extract_letter(raw)
+                        nm_name = re.search(r'\b[A-D][.:\s]+(.+?)(?:\.|$)', raw, re.IGNORECASE)
+                        name = _clean(nm_name.group(1)) if nm_name else ""
                         if letter:
                             return letter, name
 
-    for p in soup.find_all('p'):
+    # 2. Look for "Correct answer is X" patterns in any paragraph or div
+    for p in soup.find_all(['p', 'div', 'li']):
         raw = _clean(p.get_text(separator=' '))
-        if 'correct' in raw.lower():
-            letter = _extract_letter(raw)
-            nm = re.search(r'\b[A-D][.:\s]+(.+?)(?:\.|$)', raw, re.IGNORECASE)
-            name = _clean(nm.group(1)) if nm else ""
+        if 'correct' in raw.lower() or 'answer' in raw.lower():
+            # Specifically target the letter after the word "answer" or "correct" or "is"
+            nm = re.search(r'(?:answer|correct|is)\s+([A-D])\b', raw, re.IGNORECASE)
+            letter = nm.group(1).upper() if nm else _extract_letter(raw)
+            # Try to get the name that follows the letter
+            nm_name = re.search(rf'{letter}[.:\s]+(.+?)(?:\.|$)', raw, re.IGNORECASE)
+            name = _clean(nm_name.group(1)) if nm_name else ""
             if letter:
                 return letter, name
 
@@ -354,8 +361,15 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
             if isinstance(item, dict):
                 t = item.get("title", "") or item.get("heading", "")
                 d = item.get("description", "") or item.get("content", "") or item.get("body", "")
-                if t: html += f"### {t}\n"
-                if d: html += f"{d}\n\n"
+                if t: html += f"<h3>{t}</h3>\n"
+                if d:
+                    # If description looks like an MCQ, wrap it in a div to help detection
+                    if re.search(r'[A-D][.\)]', d):
+                        # Convert A. B. C. D. into list items for the standard parser
+                        d_fixed = re.sub(r'([A-D][.\)])', r'<li>\1', d)
+                        html += f"<div>{d_fixed}</div>\n"
+                    else:
+                        html += f"<p>{d}</p>\n"
             else:
                 html += f"<p>{str(item)}</p>"
         html += "</body></html>"

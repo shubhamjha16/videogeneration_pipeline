@@ -102,7 +102,7 @@ async def stream_video(job_id: str, filename: str):
     return FileResponse(path, media_type=mime_type or "video/mp4")
 
 
-JOBS_FILE = os.environ.get("JOBS_FILE_PATH", "/tmp/jobs.json")
+JOBS_FILE = os.environ.get("JOBS_FILE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs.json"))
 jobs = {}
 
 # Industrial Concurrency Cap: Max 2 high-compute jobs (Manim/Video) at once
@@ -310,7 +310,13 @@ def _safe_save_jobs(context: str, fatal: bool = False) -> bool:
 
 # ── In-memory job store ───────────────────────────────────────────────────────
 jobs = _load_jobs()
-_sanitize_stalled_jobs()
+def start_industrial_services():
+    """Starts the background janitor and sanitizes stalled jobs."""
+    _sanitize_stalled_jobs()
+
+# Only run if explicitly called or if main
+if __name__ == "__main__":
+    start_industrial_services()
 
 
 def _notify_webhook_with_retry(job_id: str, status_data: dict):
@@ -715,8 +721,9 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
                 jobs[job_id]["ledger"] = final_state["ledger"]
 
             if video_url:
-                jobs[job_id]["status"]    = "completed"
-                jobs[job_id]["video_url"] = video_url
+                jobs[job_id]["status"]        = "completed"
+                jobs[job_id]["video_url"]     = video_url
+                jobs[job_id]["thumbnail_url"] = final_state.get("thumbnail_url") or ""
                 jobs[job_id]["logs"].append({"node": "DEPLOY", "msg": "Video production finalized and uploaded.", "type": "success"})
                 print(f"✅ Job {job_id} completed: {video_url}")
             else:
@@ -756,7 +763,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@app.post("/render", response_model=JobStatus, tags=["Core"], summary="Submit single job", description="Accepts lesson HTML, JSON, or Markdown to queue a single video production job. Returns a job_id immediately while rendering proceeds in a background thread.")
+@app.post("/render", response_model=JobStatus, dependencies=[SecurityDep], tags=["Core"], summary="Submit single job", description="Accepts lesson HTML, JSON, or Markdown to queue a single video production job. Returns a job_id immediately while rendering proceeds in a background thread.")
 def start_render(
     request: RenderRequest = Body(
         ...,
@@ -831,10 +838,11 @@ def start_render(
             "job_id":       job_id,
             "status":       "queued",
             "video_url":    "",
+            "thumbnail_url": "",
             "error":        "",
             "progress":     0,
             "current_step": "Initializing",
-            "render_mode":  request.render_mode,
+            "render_mode":  request.render_mode or "auto",
             "with_avatar":  request.with_avatar,
             "video_type":   request.video_type,
             "use_elevenlabs": request.use_elevenlabs,
@@ -877,6 +885,8 @@ async def bulk_render(file: UploadFile = File(...)):
     
     if not isinstance(lessons, list):
         raise HTTPException(status_code=400, detail="JSON must be an array of lessons")
+    
+    print(f"DEBUG: Loaded {len(lessons)} lessons from bulk upload")
     
     job_ids = []
     from datetime import datetime
@@ -928,6 +938,7 @@ async def bulk_render(file: UploadFile = File(...)):
                 "topic":        topic,
                 "status":       "queued",
                 "video_url":    "",
+                "thumbnail_url": "",
                 "error":        "",
                 "progress":     0,
                 "current_step": "Initializing",
