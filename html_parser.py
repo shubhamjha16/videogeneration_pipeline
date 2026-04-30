@@ -350,17 +350,18 @@ def _extract_concept(soup: BeautifulSoup) -> str:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
-    """Industrial Sentinel: Universal Input Dispatcher (Handles Swagger JSON, Dicts, or Raw HTML)."""
+    """Industrial Sentinel: Universal Input Dispatcher (Handles JSON, Markdown, HTML, or Raw Text)."""
     import json
     
-    # ── 1. Input Normalization (Tri-Input Support) ──
+    # ── 1. Input Normalization (Polymorphic Dispatcher) ──
+    html = ""
     if isinstance(input_data, list):
-        # Swagger-style list of {title, description}
+        # 1. SWAGGER/API JSON: List of {title, description}
         html = "<html><body>"
         for item in input_data:
             if isinstance(item, dict):
-                t = item.get("title", "") or item.get("heading", "")
-                d = item.get("description", "") or item.get("content", "") or item.get("body", "")
+                t = item.get("title") or item.get("heading") or item.get("label", "")
+                d = item.get("description") or item.get("content") or item.get("body", "")
                 if t: html += f"<h3>{t}</h3>\n"
                 if d:
                     # If description looks like an MCQ, wrap it in a div to help detection
@@ -374,20 +375,50 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
                 html += f"<p>{str(item)}</p>"
         html += "</body></html>"
     elif isinstance(input_data, dict):
-        # If it already looks like a parsed fact sheet, pass it through or convert to HTML
-        if "topic" in input_data and ("concept" in input_data or "sections" in input_data or "options" in input_data):
-            # This is already structured, but the rest of the function expects to work on soup.
-            # We'll return it early if it's already a complete result.
-            return input_data
+        # 2. STRUCTURED JSON: Direct curriculum object
+        if "topic" in input_data and ("concept" in input_data or "options" in input_data):
+            return input_data # Already structured
         
-        # Otherwise, try to extract text/html from common keys
-        html = input_data.get("html") or input_data.get("raw_input") or input_data.get("text") or input_data.get("content")
-        if not html:
-            # Fallback: if no obvious keys, just use the JSON string
+        # Fallback: Extract from dict fields
+        html_val = input_data.get("html") or input_data.get("raw_input") or input_data.get("text") or input_data.get("content")
+        if html_val:
+            html = html_val
+        else:
             html = f"<html><body><pre>{json.dumps(input_data, indent=2)}</pre></body></html>"
     else:
-        # Raw string / HTML
-        html = str(input_data)
+        # 3. RAW STRING: Markdown or HTML
+        raw_str = str(input_data).strip()
+        
+        # Detect JSON string
+        if raw_str.startswith("{") or raw_str.startswith("["):
+            try:
+                parsed_json = json.loads(raw_str)
+                return parse_tony_html(parsed_json, topic_hint=topic_hint) # Recursive dispatch
+            except: pass
+            
+        # Detect Markdown (contains ### headers or **bold**)
+        if "###" in raw_str or "**" in raw_str or "- " in raw_str:
+            # Simple Industrial Markdown-to-HTML converter
+            html = "<html><body>"
+            lines = raw_str.split("\n")
+            for line in lines:
+                line = line.strip()
+                if line.startswith("###"):
+                    html += f"<h3>{line.replace('###', '').strip()}</h3>\n"
+                elif line.startswith("##"):
+                    html += f"<h2>{line.replace('##', '').strip()}</h2>\n"
+                elif line.startswith("#"):
+                    html += f"<h1>{line.replace('#', '').strip()}</h1>\n"
+                elif line.startswith("- "):
+                    html += f"<li>{line[2:]}</li>\n"
+                elif line:
+                    # Handle bold
+                    line = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', line)
+                    html += f"<p>{line}</p>\n"
+            html += "</body></html>"
+        else:
+            # Assume HTML
+            html = raw_str
 
     soup = BeautifulSoup(html, 'html.parser')
     raw_text = soup.get_text(separator='\n')

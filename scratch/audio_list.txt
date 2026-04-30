@@ -1,0 +1,6 @@
+file '/Users/apple/Desktop/easetolearn.videogeneration/scratch/audio/scene_0.mp3'
+file '/Users/apple/Desktop/easetolearn.videogeneration/scratch/audio/scene_1.mp3'
+file '/Users/apple/Desktop/easetolearn.videogeneration/scratch/audio/scene_2.mp3'
+file '/Users/apple/Desktop/easetolearn.videogeneration/scratch/audio/scene_3.mp3'
+file '/Users/apple/Desktop/easetolearn.videogeneration/scratch/audio/scene_4.mp3'
+file '/Users/apple/Desktop/easetolearn.videogeneration/scratch/audio/scene_5.mp3'

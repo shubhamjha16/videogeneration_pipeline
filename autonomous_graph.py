@@ -293,6 +293,7 @@ class TonyState(TypedDict):
     # ── After vision_node ──────────────────────────────
     image_path:  Optional[str]
     image_paths: Optional[dict[str, str]] # Map of scene_id or asset_id to local path
+    landmark_coords: Optional[dict]       # Map of scene_id -> {label: [x, y]}
 
     # ── After architect_node ───────────────────────────
     manim_script_path: Optional[str]
@@ -484,6 +485,17 @@ def director_node(state: TonyState) -> TonyState:
         facts = state.get("parsed_facts", {})
         topic = state.get("topic", "Medical Masterclass")
         
+        # ── Recovery Content ──
+        mcq_options = facts.get("mcq_data", {}).get("options", {})
+        if not mcq_options:
+            mcq_options = {
+                "A": "Increase in Cardiac Output",
+                "B": "Decrease in Left Ventricular Pressure",
+                "C": "Pulmonary Venous Congestion",
+                "D": "Systemic Hypertension"
+            }
+            print(f"   ⚠️  Recovery: No MCQ found in source. Injecting high-yield placeholders.")
+
         fallback_scenes = [
             {
                 "visual_type": "title_card",
@@ -496,20 +508,38 @@ def director_node(state: TonyState) -> TonyState:
                 "narration_text": "Let's begin with the core principles. Understanding the underlying mechanism is the key to mastering this topic."
             },
             {
-                "visual_type": "concept_image",
-                "visual_data": {"title": topic, "duration": 5.0},
-                "narration_text": "Looking at the visual representation here, you can see how these factors interact in a clinical setting."
+                "visual_type": "annotated_image",
+                "visual_data": {
+                    "label": f"Anatomy of {topic}", 
+                    "target_landmark": "heart",
+                    "region": "center_right",
+                    "bullets": ["Left Ventricular Dysfunction", "Pulmonary Fluid Backup"]
+                },
+                "narration_text": "Observe the cardiac structures here. Identifying the specific dysfunctional regions is critical for diagnosis."
             },
             {
                 "visual_type": "mcq_layout",
-                "visual_data": {"options": facts.get("mcq_data", {}).get("options", {})},
+                "visual_data": {
+                    "question": f"What is the primary clinical feature of {topic}?",
+                    "options": mcq_options
+                },
                 "narration_text": "Now, let's test your knowledge with a board-style question. Study the options carefully."
+            },
+            {
+                "visual_type": "cross_out",
+                "visual_data": {
+                    "question": f"What is the primary clinical feature of {topic}?",
+                    "letters": ["A", "B", "D"]
+                },
+                "narration_text": "We can immediately rule out several of these. Focus on the core pathophysiology we discussed."
             },
             {
                 "visual_type": "answer_reveal",
                 "visual_data": {
-                    "correct_answer": facts.get("mcq_data", {}).get("correct_answer", "C"),
-                    "explanation": facts.get("correct_answer_text", "See clinical reasoning above.")
+                    "question": f"What is the primary clinical feature of {topic}?",
+                    "letter": facts.get("mcq_data", {}).get("correct_answer", "C"),
+                    "name": mcq_options.get(facts.get("mcq_data", {}).get("correct_answer", "C"), "Pulmonary Venous Congestion"),
+                    "explanation": facts.get("correct_answer_text", "This reflects the underlying pathophysiology discussed in the lesson.")
                 },
                 "narration_text": "The correct answer is highlighted. Clinical mastery requires recognizing these specific patterns."
             }

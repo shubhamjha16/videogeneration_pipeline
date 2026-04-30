@@ -273,7 +273,8 @@ def _render_option_box(letter: str, name: str, idx: int, pos: str, is_ghost: boo
 
 def _scene_mcq_layout(scene: dict, idx: int) -> str:
     d       = scene["visual_data"]
-    options = d.get("options", {})
+    question = d.get("question", "")
+    options  = d.get("options", {})
     if isinstance(options, list):
         options = {
             item.get("letter", str(i)): item.get("name", str(item))
@@ -285,10 +286,17 @@ def _scene_mcq_layout(scene: dict, idx: int) -> str:
     # 3b1b Sync: 60% anim, 40% wait
     entrance_t = round(duration * 0.6, 2)
     hold_t     = round(duration * 0.4, 2)
-    per_opt_t  = round(entrance_t / len(options), 2) if options else 0.5
+    per_opt_t  = round(entrance_t / (len(options) + (1 if question else 0)), 2) if options else 0.5
 
-    lines = [f"\n        # Scene {idx}: mcq_layout — draw 4 option boxes"]
+    lines = [f"\n        # Scene {idx}: mcq_layout — draw question and 4 option boxes"]
     lines.append(f"        self._clear()")
+
+    if question:
+        lines.append(f"""
+        question_{idx} = {tex(question, width=45)}
+        question_{idx}.scale(0.85).set_color(DesignTokens.YELLOW).to_edge(UP, buff=0.6)
+        self.play(Write(question_{idx}), run_time={per_opt_t})
+        """)
 
     for letter, name in options.items():
         option_text = name if (name and str(name).strip() and str(name) != "-") else f"Option {letter}"
@@ -330,6 +338,7 @@ def _scene_option_arrow(scene: dict, idx: int) -> str:
 def _scene_cross_out(scene: dict, idx: int) -> str:
     d        = scene["visual_data"]
     duration = d.get("duration", 2.0)
+    question = d.get("question", "")
 
     # Support both single "letter" and array "letters" from LLM, or string "B,C,D"
     raw = d.get("letters") or d.get("letter", "A")
@@ -341,7 +350,15 @@ def _scene_cross_out(scene: dict, idx: int) -> str:
     if not letters:
         letters = ["A"]
 
+    question_code = ""
+    if question:
+        question_code = f"""
+        question_{idx} = {tex(question, width=45)}
+        question_{idx}.scale(0.85).set_color(DesignTokens.YELLOW).to_edge(UP, buff=0.6)
+        self.add(question_{idx})"""
+
     lines = [f"\n        # Scene {idx}: cross_out — {letters}"]
+    lines.append(f"        {question_code}")
     for li, letter in enumerate(letters):
         pos = _option_position(letter)
         lines.append(f"""
@@ -371,16 +388,33 @@ def _scene_answer_reveal(scene: dict, idx: int) -> str:
         bg_{idx} = BackgroundRectangle(exp_{idx}, color=BLACK, fill_opacity=0.8, buff=0.1)
         self.play(FadeIn(bg_{idx}), Write(exp_{idx}))"""
 
+    # Continuity: Redraw question if it was in mcq_layout
+    question = d.get("question", "")
+    question_code = ""
+    if question:
+        question_code = f"""
+        question_{idx} = {tex(question, width=45)}
+        question_{idx}.scale(0.85).set_color(DesignTokens.YELLOW).to_edge(UP, buff=0.6)
+        self.add(question_{idx})"""
+
     return f"""
         # Scene {idx}: answer_reveal — correct: {letter}
+        {question_code}
         # Continuity Guard: Phantom redraw with helper
         {_render_option_box(letter, name, idx, pos, is_ghost=True)}
         self.add(opt_{letter}_{idx}_grp)
         
-        highlight_{idx} = SurroundingRectangle(opt_{letter}_{idx}_grp, color=DesignTokens.GREEN, buff=0.08, stroke_width=5)
+        # High-Fidelity Transition: White Box -> Green Box
+        success_box_{idx} = RoundedRectangle(width=5.8, height=1.5, corner_radius=0.15,
+            color=DesignTokens.GREEN, stroke_width=4, fill_color=DesignTokens.GREEN, fill_opacity=0.15).move_to({pos})
         tick_{idx} = Tex(r"$\\checkmark$", tex_template=my_template).scale(1.4).set_color(DesignTokens.GREEN)
         tick_{idx}.move_to({pos} + np.array([2.2, 0, 0]))
-        self.play(GrowFromCenter(highlight_{idx}), run_time=0.8)
+        # High-Fidelity Pulse & Transition
+        self.play(
+            ReplacementTransform(opt_{letter}_{idx}_box, success_box_{idx}),
+            Indicate(opt_{letter}_{idx}_text, color=DesignTokens.GREEN, scale_factor=1.1),
+            run_time=0.8
+        )
         self.play(Write(tick_{idx})){exp_code}
         self.wait({duration})
 """
@@ -655,6 +689,7 @@ def _scene_annotated_image(scene: dict, idx: int, global_image_path: str = None)
 
     # ── Arrow target: vision-grounded coords or fallback to region grid ──
     landmark_coords = d.get("landmark_coords")  # injected by build_manim_script
+    print(f"   🔍 DEBUG [Scene {idx}]: _scene_annotated_image received landmark_coords={landmark_coords}")
     if landmark_coords:
         # Compute Manim scene coordinates from normalized [x, y]
         # Image is scaled to width=5.5, centered at RIGHT * 3.2 (x=3.2)
@@ -793,15 +828,21 @@ def build_manim_script(
             continue
 
         # ── Inject vision-grounded landmark coords into annotated_image scenes ──
+        print(f"   🔍 DEBUG [build_manim_script loop {i}]: vtype={vtype}, str(i) in landmark_coords={str(i) in landmark_coords}")
         if vtype == "annotated_image" and str(i) in landmark_coords:
             scene_coords = landmark_coords[str(i)]
-            target_landmark = scene.get("visual_data", {}).get("target_landmark", "")
-            # Find the matching coordinate (case-insensitive)
-            for label, coords in scene_coords.items():
-                if label.lower() == target_landmark.lower() or target_landmark.lower() in label.lower():
-                    scene["visual_data"]["landmark_coords"] = coords
-                    print(f"   📍 Injected coords {coords} for scene {i} landmark '{target_landmark}'")
-                    break
+            # If there's only one grounded landmark, use it regardless of name match
+            if len(scene_coords) == 1:
+                coords = list(scene_coords.values())[0]
+                scene["visual_data"]["landmark_coords"] = coords
+                print(f"   📍 Injected sole grounded coord {coords} for scene {i}")
+            else:
+                target_landmark = scene.get("visual_data", {}).get("target_landmark", "")
+                for label, coords in scene_coords.items():
+                    if label.lower() in target_landmark.lower() or target_landmark.lower() in label.lower():
+                        scene["visual_data"]["landmark_coords"] = coords
+                        print(f"   📍 Injected matching coord {coords} for scene {i} landmark '{target_landmark}'")
+                        break
 
         try:
             if vtype == "title_card":
