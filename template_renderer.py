@@ -634,8 +634,10 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
         return _graph_axes_fallback(idx, description, duration)
 
 
-def _scene_annotated_image(scene: dict, idx: int, image_path: str = None) -> str:
+def _scene_annotated_image(scene: dict, idx: int, global_image_path: str = None) -> str:
     d = scene["visual_data"]
+    # Priority: 1. Scene-specific path | 2. Global path passed from builder
+    image_path = d.get("image_path") or global_image_path or "None"
     label = d.get("label", "")
     bullets = d.get("bullets", [])[:3]
     duration = d.get("duration", 4.0)
@@ -651,21 +653,33 @@ def _scene_annotated_image(scene: dict, idx: int, image_path: str = None) -> str
     else:
         left_grp_code = f"""left_grp_{idx} = VGroup(title_{idx})"""
 
-    region = d.get("region", "center_left")
-    
-    # Map region to image anchor points
-    region_map = {
-        "upper_left": "get_corner(UL)",
-        "upper_center": "get_top()",
-        "upper_right": "get_corner(UR)",
-        "center_left": "get_left()",
-        "center": "get_center()",
-        "center_right": "get_right()",
-        "lower_left": "get_corner(DL)",
-        "lower_center": "get_bottom()",
-        "lower_right": "get_corner(DR)"
-    }
-    anchor = region_map.get(region, "get_left()")
+    # ── Arrow target: vision-grounded coords or fallback to region grid ──
+    landmark_coords = d.get("landmark_coords")  # injected by build_manim_script
+    if landmark_coords:
+        # Compute Manim scene coordinates from normalized [x, y]
+        # Image is scaled to width=5.5, centered at RIGHT * 3.2 (x=3.2)
+        # DALL-E images are 1024x1024 (square), so height = width = 5.5
+        norm_x, norm_y = landmark_coords
+        # Convert: image coords (0,0)=top-left → Manim coords
+        target_x = 3.2 + (norm_x - 0.5) * 5.5   # center of image is at x=3.2
+        target_y = -(norm_y - 0.5) * 5.5          # Manim y is inverted vs image y
+        arrow_end_code = f"np.array([{target_x:.3f}, {target_y:.3f}, 0])"
+    else:
+        # Fallback: coarse 9-region grid
+        region = d.get("region", "center_left")
+        region_map = {
+            "upper_left": "get_corner(UL)",
+            "upper_center": "get_top()",
+            "upper_right": "get_corner(UR)",
+            "center_left": "get_left()",
+            "center": "get_center()",
+            "center_right": "get_right()",
+            "lower_left": "get_corner(DL)",
+            "lower_center": "get_bottom()",
+            "lower_right": "get_corner(DR)"
+        }
+        anchor = region_map.get(region, "get_left()")
+        arrow_end_code = f"img_{idx}.{anchor}"
 
     return f"""
         # Scene {idx}: annotated_image
@@ -679,10 +693,10 @@ def _scene_annotated_image(scene: dict, idx: int, image_path: str = None) -> str
         {left_grp_code}
         left_grp_{idx}.move_to(LEFT * 3.5)
         
-        # Arrow from text to image region
+        # Arrow from text to image landmark
         arrow_{idx} = Arrow(
             start=left_grp_{idx}.get_right() + RIGHT * 0.2,
-            end=img_{idx}.{anchor},
+            end={arrow_end_code},
             color=DesignTokens.YELLOW, buff=0.1, stroke_width=6
         )
         
@@ -752,19 +766,23 @@ def build_manim_script(
     topic: str,
     output_path: str,
     knowledge_base: dict = None,
+    landmark_coords: dict = None,
 ) -> str:
     """
     Convert a list of scene dicts into a complete Manim Python script.
 
     Args:
-        scenes      : list of scene dicts (from director_agent)
-        image_path  : abs path to Gemini-generated concept image (or None)
-        topic       : topic name (used in comments)
-        output_path : where to write the .py file
+        scenes          : list of scene dicts (from director_agent)
+        image_path      : abs path to Gemini-generated concept image (or None)
+        topic           : topic name (used in comments)
+        output_path     : where to write the .py file
+        landmark_coords : {scene_index_str: {label: [x, y]}} from vision_grounder
 
     Returns:
         Path to the written script
     """
+    landmark_coords = landmark_coords or {}
+
     scene_blocks = []
     for i, scene in enumerate(scenes):
         vtype = scene.get("visual_type", "title_card")
@@ -774,10 +792,21 @@ def build_manim_script(
             print(f"   ⚠️  Unknown visual_type '{vtype}' — skipping scene {i}")
             continue
 
+        # ── Inject vision-grounded landmark coords into annotated_image scenes ──
+        if vtype == "annotated_image" and str(i) in landmark_coords:
+            scene_coords = landmark_coords[str(i)]
+            target_landmark = scene.get("visual_data", {}).get("target_landmark", "")
+            # Find the matching coordinate (case-insensitive)
+            for label, coords in scene_coords.items():
+                if label.lower() == target_landmark.lower() or target_landmark.lower() in label.lower():
+                    scene["visual_data"]["landmark_coords"] = coords
+                    print(f"   📍 Injected coords {coords} for scene {i} landmark '{target_landmark}'")
+                    break
+
         try:
             if vtype == "title_card":
                 block = gen(scene, i, topic)
-            elif vtype in ["concept_image", "image_arrow"]:
+            elif vtype in ["concept_image", "image_arrow", "annotated_image"]:
                 block = gen(scene, i, image_path)
             else:
                 block = gen(scene, i)

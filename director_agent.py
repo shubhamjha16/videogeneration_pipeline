@@ -253,18 +253,18 @@ Structure:
     },
     {
       "visual_type": "annotated_image",
-      "visual_data": {"label": "Internal Iliac Artery", "region": "center_left", "bullets": ["Anterior division: Obturator, Uterine", "Posterior division: Iliolumbar, Lateral sacral"]},
+      "visual_data": {"label": "Internal Iliac Artery", "target_landmark": "internal iliac artery bifurcation", "region": "center_left", "bullets": ["Anterior division: Obturator, Uterine", "Posterior division: Iliolumbar, Lateral sacral"]},
       "narration_text": "Let us look at the branches of the internal iliac artery..."
     },
     {
       "visual_type": "annotated_image",
-      "visual_data": {"label": "Convex Lens Ray Diagram", "region": "center_right", "bullets": ["Parallel rays converge at focal point", "Image is real and inverted beyond 2F"]},
+      "visual_data": {"label": "Convex Lens Ray Diagram", "target_landmark": "focal point", "region": "center_right", "bullets": ["Parallel rays converge at focal point", "Image is real and inverted beyond 2F"]},
       "narration_text": "Observe how parallel rays pass through the lens and meet at the focal point..."
     }
   ]
 }
 
-IMPORTANT: Use "annotated_image" whenever you need to show an image with explanatory text. It creates a split layout (image right, bullets left, arrow pointing to region). Do NOT use "concept_image" or "image_arrow" — they are deprecated.
+IMPORTANT: Use "annotated_image" whenever you need to show an image with explanatory text. It creates a split layout (image right, bullets left, arrow pointing to the target). Always include BOTH "target_landmark" (the specific structure/concept to point at) AND "region" (fallback grid position). Do NOT use "concept_image" or "image_arrow" — they are deprecated.
 """
     system_prompt_with_hint = SYSTEM_PROMPT + "\n\n" + schema_hint
     

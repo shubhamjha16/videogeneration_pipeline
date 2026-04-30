@@ -637,30 +637,71 @@ def vision_node(state: TonyState) -> TonyState:
     # ── PATH 1: Manim (Scene-Driven Asset Generation) ────────────────
     if state.get("render_mode") in ["manim", "auto"]:
         scenes = state.get("scenes") or []
-        # Back-Pressure: Only generate if a scene actually needs a concept_image
-        needs_image = any(s.get("visual_type") == "concept_image" for s in scenes)
+        # Back-Pressure: Generate if any scene needs an image (legacy or annotated)
+        needs_image = any(s.get("visual_type") in ["concept_image", "annotated_image"] for s in scenes)
         
         if not needs_image:
-            print("   ℹ️  Vision Node: No concept_image scenes detected. Skipping diagram generation.")
+            print("   ℹ️  Vision Node: No image scenes detected. Skipping diagram generation.")
             state["image_path"] = None
+            state["landmark_coords"] = {}
             return state
 
-        pre_path = os.path.join(output_dir, "tony_diagram.png")
-        if os.path.exists(pre_path):
-            state["image_path"] = pre_path
-        else:
-            try:
-                # Find the specific prompt from the scene if available
-                target_prompt = state["topic"]
-                for s in scenes:
-                    if s.get("visual_type") == "concept_image":
-                        target_prompt = s.get("visual_data", {}).get("image_prompt") or s.get("visual_data", {}).get("title") or state["topic"]
-                        break
-                
-                state["image_path"] = generate_concept_image(target_prompt, subject, output_dir=output_dir, filename="tony_diagram.png")
-            except Exception as e:
-                state["image_path"] = None
-                _log_fallback(state, "VISION", "skip_concept_image", str(e), type(e).__name__)
+        # ── Legacy concept_image: single global diagram ──────────────
+        if any(s.get("visual_type") == "concept_image" for s in scenes):
+            pre_path = os.path.join(output_dir, "tony_diagram.png")
+            if os.path.exists(pre_path):
+                state["image_path"] = pre_path
+            else:
+                try:
+                    target_prompt = state["topic"]
+                    for s in scenes:
+                        if s.get("visual_type") == "concept_image":
+                            target_prompt = s.get("visual_data", {}).get("image_prompt") or s.get("visual_data", {}).get("title") or state["topic"]
+                            break
+                    state["image_path"] = generate_concept_image(target_prompt, subject, output_dir=output_dir, filename="tony_diagram.png")
+                except Exception as e:
+                    state["image_path"] = None
+                    _log_fallback(state, "VISION", "skip_concept_image", str(e), type(e).__name__)
+
+        # ── Annotated image: per-scene image + vision grounding ──────
+        all_landmark_coords = {}
+        for i, scene in enumerate(scenes):
+            if scene.get("visual_type") != "annotated_image":
+                continue
+
+            v_data = scene.get("visual_data", {})
+            label = v_data.get("label", state.get("topic", "diagram"))
+            img_filename = f"annotated_{i}_{label[:30].replace(' ', '_').lower()}.png"
+            img_pre_path = os.path.join(output_dir, img_filename)
+
+            # Generate the image if not already cached
+            if not os.path.exists(img_pre_path):
+                try:
+                    img_path = generate_concept_image(label, subject, output_dir=output_dir, filename=img_filename)
+                except Exception as e:
+                    print(f"   ⚠️  Annotated image generation failed for scene {i}: {e}")
+                    img_path = state.get("image_path")  # fallback to global
+            else:
+                img_path = img_pre_path
+
+            # Inject the image path into the scene data for the renderer
+            if img_path:
+                scene["visual_data"]["image_path"] = img_path
+
+            # ── Vision Grounding: get precise landmark coordinates ────
+            target_landmark = v_data.get("target_landmark", "")
+            if target_landmark and img_path:
+                try:
+                    from vision_grounder import ground_landmarks
+                    coords = ground_landmarks(img_path, [target_landmark])
+                    if coords:
+                        # Store coords keyed by scene index for the renderer
+                        all_landmark_coords[str(i)] = coords
+                        print(f"   📍 Scene {i}: Grounded '{target_landmark}' → {coords}")
+                except Exception as e:
+                    print(f"   ⚠️  Vision grounding failed for scene {i}: {e} — falling back to region grid")
+
+        state["landmark_coords"] = all_landmark_coords
 
     # ── PATH 2: Explainer (Multi-Asset) ───────────────
     elif state.get("render_mode") == "explainer":
@@ -805,7 +846,8 @@ def architect_node(state: TonyState) -> TonyState:
         image_path=state.get("image_path"),
         topic=state["topic"],
         output_path=script_path,
-        knowledge_base=state.get("knowledge_base")
+        knowledge_base=state.get("knowledge_base"),
+        landmark_coords=state.get("landmark_coords", {}),
     )
     state["manim_script_path"] = script_path
     print(f"   Script written with synced durations: {script_path}")
