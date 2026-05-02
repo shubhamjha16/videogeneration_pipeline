@@ -772,6 +772,44 @@ def _scene_key_point(scene: dict, idx: int) -> str:
     return "\n".join(lines)
 
 
+def _scene_formula_derivation(scene: dict, idx: int) -> str:
+    """Uses TransformMatchingTex for 3b1b-style smooth math derivations."""
+    d = scene["visual_data"]
+    heading = d.get("heading", "")
+    steps = d.get("steps", [])[:5]  # Cap at 5 for duration scaling
+    duration = d.get("duration", 8.0)
+    
+    if not steps:
+        return f"        # Scene {idx}: formula_derivation (Skipped — no steps provided)\n"
+    
+    # Calculate timing. Give 1 sec for heading, then distribute remainder among steps.
+    per_step_t = round(max(1.0, (duration - 1.0) / len(steps)), 2)
+    
+    lines = [f"\n        # Scene {idx}: formula_derivation"]
+    lines.append(f"        self._clear()")
+    
+    if heading:
+        lines.append(f"        heading_{idx} = {tex(heading)}")
+        lines.append(f"        heading_{idx}.scale(0.9).set_color(DesignTokens.YELLOW).to_edge(UP, buff=0.5)")
+        lines.append(f"        self.play(Write(heading_{idx}), run_time=1.0)")
+    
+    # First formula
+    lines.append(f"        formula_{idx}_0 = MathTex(r\"{steps[0]}\", tex_template=my_template).scale(1.2).move_to(ORIGIN)")
+    lines.append(f"        if formula_{idx}_0.width > DesignTokens.MAX_WIDTH: formula_{idx}_0.set_width(DesignTokens.MAX_WIDTH)")
+    lines.append(f"        self.play(Write(formula_{idx}_0), run_time={per_step_t})")
+    
+    # Subsequent transforms
+    for i, step in enumerate(steps[1:], 1):
+        lines.append(f"        formula_{idx}_{i} = MathTex(r\"{step}\", tex_template=my_template).scale(1.2).move_to(ORIGIN)")
+        lines.append(f"        if formula_{idx}_{i}.width > DesignTokens.MAX_WIDTH: formula_{idx}_{i}.set_width(DesignTokens.MAX_WIDTH)")
+        # TransformMatchingTex requires importing it, but it's typically imported by 'from manim import *'
+        lines.append(f"        self.play(TransformMatchingTex(formula_{idx}_{i-1}, formula_{idx}_{i}), run_time={per_step_t})")
+    
+    lines.append(f"        self.wait({per_step_t})")
+    lines.append(f"        self._clear()")
+    return "\n".join(lines)
+
+
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
 _GENERATORS = {
@@ -785,6 +823,7 @@ _GENERATORS = {
     "cross_out":        _scene_cross_out,
     "answer_reveal":    _scene_answer_reveal,
     "formula_display":  _scene_formula_display,
+    "formula_derivation": _scene_formula_derivation,
     "step_by_step":     _scene_step_by_step,
     "concept_bullets":  _scene_concept_bullets,
     "summary":          _scene_summary,

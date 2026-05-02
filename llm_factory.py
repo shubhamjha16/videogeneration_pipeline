@@ -28,26 +28,59 @@ class LLMFactory:
         json_mode: bool = False,
         model_override: Optional[str] = None,
         provider_override: Optional[str] = None,
-        include_usage: bool = False # NEW: Enable usage tracking
+        include_usage: bool = False,
+        cacheable: bool = True
     ) -> Any:
+        from caching.redis_client import get_cache, generate_llm_cache_key
+        
         provider = provider_override or config.LLM_PROVIDER
         
+        # Determine the effective model name for cache keying
+        model = model_override
+        if not model:
+            if provider == "groq": model = "llama-3.3-70b-versatile"
+            elif provider == "openai": model = "gpt-4o"
+            elif provider == "local": model = config.LOCAL_LLM_MODEL
+            else: model = "unknown"
+
         # Merge system prompt if provided separately
+        full_messages = messages
         if system_prompt:
-            messages = [{"role": "system", "content": system_prompt}] + messages
-            
+            full_messages = [{"role": "system", "content": system_prompt}] + messages
+
+        # ── LLM CACHE LOOKUP ──────────────────────────────────────────────────
+        cache = get_cache()
+        cache_key = None
+        if cache.available and cacheable:
+            # We use a default temperature of 0.0 for deterministic educational content
+            cache_key = generate_llm_cache_key(model, str(system_prompt or ""), str(messages), 0.0)
+            cached_res = cache.get(cache_key)
+            if cached_res:
+                print(f"💎 LLM Cache Hit: {model} (Key: {cache_key[:8]}...)")
+                content = cached_res["content"]
+                usage = cached_res["usage"]
+                usage["from_cache"] = True
+                return (content, usage) if include_usage else content
+
+        # ── CACHE MISS: Execute Completion ────────────────────────────────────
         if provider == "groq":
-            content, usage = LLMFactory._call_groq(messages, json_mode, model_override)
+            content, usage = LLMFactory._call_groq(full_messages, json_mode, model_override)
         elif provider == "openai":
-            content, usage = LLMFactory._call_openai(messages, json_mode, model_override)
+            content, usage = LLMFactory._call_openai(full_messages, json_mode, model_override)
         elif provider == "local":
-            content, usage = LLMFactory._call_local(messages, json_mode, model_override)
+            content, usage = LLMFactory._call_local(full_messages, json_mode, model_override)
         elif provider == "google":
-            content, usage = LLMFactory._call_google(messages, json_mode, model_override)
+            content, usage = LLMFactory._call_google(full_messages, json_mode, model_override)
         else:
             raise ValueError(f"Unknown LLM provider: {provider}")
-            
+
+        # ── PERSIST TO CACHE ──────────────────────────────────────────────────
+        if cache.available and cacheable and cache_key:
+            cache.set(cache_key, {"content": content, "usage": usage}, ttl_seconds=86400 * 7) # 7 Day TTL
+
+        usage["from_cache"] = False
         return (content, usage) if include_usage else content
+
 
     @staticmethod
     def _call_openai(messages, json_mode, model_override):

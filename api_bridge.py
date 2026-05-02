@@ -20,6 +20,7 @@ import os
 import uuid
 import threading
 import requests
+from pathlib import Path
 import json
 import copy
 import time
@@ -35,6 +36,7 @@ except ImportError:
 
 import shutil
 from datetime import datetime
+from caching.redis_client import get_cache, generate_idempotency_key
 
 
 _jobs_lock = threading.RLock()
@@ -119,29 +121,25 @@ RENDER_SEMAPHORE = threading.BoundedSemaphore(2)
 # jobs.json file itself.
 
 _IDEMPOTENCY_TTL_SECONDS = int(os.environ.get("IDEMPOTENCY_TTL", 3600))
-_idempotency_cache: dict[str, dict] = {}
-_idempotency_lock = threading.Lock()
 
 def _idempotency_lookup(key: str) -> str | None:
     """Return existing job_id if a non-expired entry exists for this key."""
     if not key:
         return None
-    with _idempotency_lock:
-        entry = _idempotency_cache.get(key)
-        if not entry:
-            return None
-        age = time.time() - entry["created_at"]
-        if age > _IDEMPOTENCY_TTL_SECONDS:
-            del _idempotency_cache[key]
-            return None
-        return entry["job_id"]
+    cache = get_cache()
+    if not cache.available:
+        return None # Graceful degradation
+    
+    return cache.get(f"idempotency:{key}")
 
 def _idempotency_register(key: str, job_id: str):
-    """Store a new idempotency mapping."""
+    """Store a new idempotency mapping in the persistent cache."""
     if not key:
         return
-    with _idempotency_lock:
-        _idempotency_cache[key] = {"job_id": job_id, "created_at": time.time()}
+    cache = get_cache()
+    if cache.available:
+        cache.set(f"idempotency:{key}", job_id, ttl_seconds=_IDEMPOTENCY_TTL_SECONDS)
+
 
 # ── Webhook Dead-Letter Queue (DLQ) ──────────────────────────────────────────
 # Persists failed webhook payloads to disk so they can be replayed.
@@ -421,9 +419,9 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
 
 class RenderRequest(BaseModel):
     topic:       str
-    html:        Optional[Any] = None  # Backward compatibility
-    json_data:   Optional[Any] = None  # For structured JSON input
-    markdown:    Optional[str] = None  # For Markdown input
+    html:        Optional[Any] = None  # Legacy/Composite HTML field
+    json_data:   Optional[Any] = None  # Structured JSON facts or derivation steps
+    markdown:    Optional[str] = None  # Markdown content with LaTeX support
     render_mode: Optional[Literal["manim", "presentation", "explainer", "user_generated_video", "user_generated"]] = None
     with_avatar: bool = False
     video_type:  Optional[Literal["marketing", "educational"]] = None
@@ -879,24 +877,45 @@ def start_render(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     # ── 0. Idempotency Guard ──
-    existing_job_id = _idempotency_lookup(idempotency_key)
+    # Industrial Hardening: Use payload-based hash if header is missing
+    effective_key = idempotency_key or generate_idempotency_key(request.model_dump(), request.render_mode)
+    
+    existing_job_id = _idempotency_lookup(effective_key)
     if existing_job_id:
         _load_jobs()
         with _jobs_lock:
             if existing_job_id in jobs:
-                print(f"🔁 Idempotency hit: key={idempotency_key} → job={existing_job_id}")
-                return copy.deepcopy(jobs[existing_job_id])
+                print(f"🔁 Idempotency hit: key={effective_key} → job={existing_job_id}")
+                res = copy.deepcopy(jobs[existing_job_id])
+                res["from_cache"] = True
+                return res
 
-    # ── 1. Content Resolution (Priority: json_data > markdown > html) ──
-    source_type = "html"
-    raw_content = request.html
-    if request.json_data:
-        raw_content = request.json_data
-        source_type = "json"
-    elif request.markdown:
-        raw_content = markdown.markdown(request.markdown, extensions=['extra', 'tables', 'fenced_code'])
-        source_type = "markdown"
+    # ── 1. [NEW] Polymorphic Appender (Priority & Concatenation) ──
+    # Industrial Requirement: Support mixed input schemas (JSON + HTML + Markdown) appended in order.
+    combined_inputs = []
+    source_labels = []
     
+    if request.json_data:
+        combined_inputs.append(request.json_data)
+        source_labels.append("json")
+    if request.html:
+        combined_inputs.append(request.html)
+        source_labels.append("html")
+    if request.markdown:
+        combined_inputs.append(request.markdown)
+        source_labels.append("markdown")
+
+    if not combined_inputs:
+        raise HTTPException(status_code=400, detail="topic and at least one content source (html, json_data, or markdown) are required")
+
+    # If only one input, keep original behavior for logging, otherwise use 'composite'
+    if len(combined_inputs) == 1:
+        raw_content = combined_inputs[0]
+        source_type = source_labels[0]
+    else:
+        raw_content = combined_inputs
+        source_type = "composite (" + "+".join(source_labels) + ")"
+
     if not request.topic or not raw_content:
         raise HTTPException(status_code=400, detail="topic and at least one content source (html, json_data, or markdown) are required")
 
@@ -913,6 +932,9 @@ def start_render(
         with _jobs_lock:
             if job_id not in jobs:
                 break
+    
+    # Register the job ID with the idempotency key before starting
+    _idempotency_register(effective_key, job_id)
 
 
     from datetime import datetime
@@ -1193,6 +1215,58 @@ def get_analytics():
             "avg_cost_per_video": round(total_cost / len(completed), 4) if completed else 0
         },
         "health": health_status
+    }
+
+@app.get("/analytics/kb", tags=["Analytics"], summary="Knowledge Base retrieval stats", description="Detailed audit of KB retrieval performance, usage rates, and semantic confidence scores.")
+def get_kb_analytics():
+    """Deep-dive audit into KB retrieval performance and ground-truth utilization."""
+    from pathlib import Path
+    import json
+    kb_log_path = Path("output/kb_retrievals.jsonl")
+    if not kb_log_path.exists():
+        return {"message": "No KB retrievals logged yet."}
+    
+    try:
+        with open(kb_log_path, "r") as f:
+            entries = [json.loads(line) for line in f if line.strip()]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read KB logs: {e}")
+    
+    if not entries:
+        return {"message": "KB log file is empty."}
+        
+    total = len(entries)
+    used = sum(1 for e in entries if e.get("used"))
+    
+    by_node = {}
+    by_mode = {}
+    
+    for e in entries:
+        node = e.get("node", "unknown")
+        mode = e.get("render_mode", "unknown")
+        score = e.get("top_confidence", 0.0)
+        
+        by_node.setdefault(node, []).append(score)
+        by_mode.setdefault(mode, []).append(score)
+    
+    return {
+        "total_retrievals": total,
+        "used_rate": round(used / total, 3) if total else 0,
+        "mean_top_confidence": round(sum(e.get("top_confidence", 0.0) for e in entries) / total, 3) if total else 0,
+        "by_node": {
+            node: {
+                "count": len(scores),
+                "mean_confidence": round(sum(scores) / len(scores), 3),
+            }
+            for node, scores in by_node.items()
+        },
+        "by_render_mode": {
+            mode: {
+                "count": len(scores),
+                "mean_confidence": round(sum(scores) / len(scores), 3),
+            }
+            for mode, scores in by_mode.items()
+        },
     }
 
 def _get_kb_stats() -> dict:

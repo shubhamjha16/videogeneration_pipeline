@@ -38,7 +38,9 @@
         { "name": "ELEVENLABS_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ELEVENLABS_API_KEY::" },
         { "name": "HEYGEN_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HEYGEN_API_KEY::" },
         { "name": "HIGGSFIELD_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HIGGSFIELD_API_KEY::" },
-        { "name": "FACTORY_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:FACTORY_API_KEY::" }
+        { "name": "FACTORY_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:FACTORY_API_KEY::" },
+        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:REDIS_URL::" }
+
       ],
       "mountPoints": [
         {

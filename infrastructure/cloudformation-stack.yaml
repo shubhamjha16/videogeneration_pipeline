@@ -108,6 +108,17 @@ Resources:
           ToPort: 2049
           SourceSecurityGroupId: !Ref ECSSecurityGroup
 
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow Redis access from ECS
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+
   # ── EFS Storage ──
   FileSystem:
     Type: AWS::EFS::FileSystem
@@ -130,6 +141,26 @@ Resources:
       FileSystemId: !Ref FileSystem
       SubnetId: !Ref PublicSubnet2
       SecurityGroups: [ !Ref EFSSecurityGroup ]
+
+  # ── Redis (ElastiCache) ──
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for factory Redis
+      SubnetIds: [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]
+
+  RedisCluster:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: Factory Redis with encryption
+      CacheNodeType: cache.t4g.micro
+      Engine: redis
+      EngineVersion: '7.0'
+      NumCacheClusters: 1
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds: [ !Ref RedisSecurityGroup ]
+      TransitEncryptionEnabled: true
+      AtRestEncryptionEnabled: true
 
   # ── Load Balancer ──
   LoadBalancer:
@@ -170,7 +201,8 @@ Resources:
       Name: factory-keys
       Description: 'API Keys for EaseToLearn Video Generation Service'
       GenerateSecretString:
-        SecretStringTemplate: '{"ANTHROPIC_API_KEY": "PLACEHOLDER", "GROQ_API_KEY": "PLACEHOLDER", "GEMINI_API_KEY": "PLACEHOLDER", "ELEVENLABS_API_KEY": "PLACEHOLDER", "HEYGEN_API_KEY": "PLACEHOLDER", "HIGGSFIELD_API_KEY": "PLACEHOLDER", "FACTORY_API_KEY": "PLACEHOLDER"}'
+        SecretStringTemplate: '{"ANTHROPIC_API_KEY": "PLACEHOLDER", "GROQ_API_KEY": "PLACEHOLDER", "GEMINI_API_KEY": "PLACEHOLDER", "ELEVENLABS_API_KEY": "PLACEHOLDER", "HEYGEN_API_KEY": "PLACEHOLDER", "HIGGSFIELD_API_KEY": "PLACEHOLDER", "FACTORY_API_KEY": "PLACEHOLDER", "REDIS_URL": "PLACEHOLDER"}'
+
         GenerateStringKey: 'dummy'
 
   # ── Logging ──

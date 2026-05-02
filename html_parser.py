@@ -349,78 +349,95 @@ def _extract_concept(soup: BeautifulSoup) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _item_to_html(item: Any) -> str:
+    """Industrial Sentinel: Convert any input item to a safe HTML snippet for parsing."""
+    import json
+    
+    if isinstance(item, dict):
+        # Handle structured JSON
+        t = item.get("title") or item.get("heading") or item.get("label", "")
+        d = item.get("description") or item.get("content") or item.get("body", "")
+        res = ""
+        if t: res += f"<h3>{t}</h3>\n"
+        if d:
+            # Recursively handle the content (might be markdown or nested dict)
+            res += _item_to_html(d)
+        return res
+    
+    s = str(item).strip()
+    
+    # ── 1. Detect JSON String ──
+    if (s.startswith("{") or s.startswith("[")) and (s.endswith("}") or s.endswith("]")):
+        try:
+            parsed_json = json.loads(s)
+            return _item_to_html(parsed_json)
+        except: pass
+
+    # ── 2. Detect HTML ──
+    if s.startswith("<") and ">" in s:
+        return s
+    
+    # ── 3. Detect Markdown & LaTeX ──
+    # Check for ### headers, **bold**, or $ LaTeX markers
+    if "###" in s or "**" in s or "- " in s or "$" in s:
+        # Simple Industrial Markdown-to-HTML converter with LaTeX preservation
+        html = ""
+        lines = s.split("\n")
+        for line in lines:
+            line = line.strip()
+            if line.startswith("###"):
+                html += f"<h3>{line.replace('###', '').strip()}</h3>\n"
+            elif line.startswith("##"):
+                html += f"<h2>{line.replace('##', '').strip()}</h2>\n"
+            elif line.startswith("#"):
+                html += f"<h1>{line.replace('#', '').strip()}</h1>\n"
+            elif line.startswith("- "):
+                html += f"<li>{line[2:]}</li>\n"
+            elif line:
+                # Handle bolding
+                line = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', line)
+                # Handle LaTeX: we preserve $ and $$ for the director/architect
+                html += f"<p>{line}</p>\n"
+        return html
+    
+    # ── 4. Default Text ──
+    return f"<p>{s}</p>"
+
+
 def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
     """Industrial Sentinel: Universal Input Dispatcher (Handles JSON, Markdown, HTML, or Raw Text)."""
     import json
     
     # ── 1. Input Normalization (Polymorphic Dispatcher) ──
     html = ""
+    
+    # [NEW] Handle Composite Lists (Multiple inputs appended)
     if isinstance(input_data, list):
-        # 1. SWAGGER/API JSON: List of {title, description}
         html = "<html><body>"
         for item in input_data:
-            if isinstance(item, dict):
-                t = item.get("title") or item.get("heading") or item.get("label", "")
-                d = item.get("description") or item.get("content") or item.get("body", "")
-                if t: html += f"<h3>{t}</h3>\n"
-                if d:
-                    # If description looks like an MCQ, wrap it in a div to help detection
-                    if re.search(r'[A-D][.\)]', d):
-                        # Convert A. B. C. D. into list items for the standard parser
-                        d_fixed = re.sub(r'([A-D][.\)])', r'<li>\1', d)
-                        html += f"<div>{d_fixed}</div>\n"
-                    else:
-                        html += f"<p>{d}</p>\n"
-            else:
-                html += f"<p>{str(item)}</p>"
+            html += _item_to_html(item)
+            html += "\n<hr/>\n" # Visual separator for the parser
         html += "</body></html>"
     elif isinstance(input_data, dict):
         # 2. STRUCTURED JSON: Direct curriculum object
         if "topic" in input_data and ("concept" in input_data or "options" in input_data):
             return input_data # Already structured
         
-        # Fallback: Extract from dict fields
-        html_val = input_data.get("html") or input_data.get("raw_input") or input_data.get("text") or input_data.get("content")
-        if html_val:
-            html = html_val
-        else:
-            html = f"<html><body><pre>{json.dumps(input_data, indent=2)}</pre></body></html>"
+        # Fallback: Extract from dict fields or convert to HTML
+        html = _item_to_html(input_data)
     else:
         # 3. RAW STRING: Markdown or HTML
-        raw_str = str(input_data).strip()
-        
-        # Detect JSON string
-        if raw_str.startswith("{") or raw_str.startswith("["):
-            try:
-                parsed_json = json.loads(raw_str)
-                return parse_tony_html(parsed_json, topic_hint=topic_hint) # Recursive dispatch
-            except: pass
-            
-        # Detect Markdown (contains ### headers or **bold**)
-        if "###" in raw_str or "**" in raw_str or "- " in raw_str:
-            # Simple Industrial Markdown-to-HTML converter
-            html = "<html><body>"
-            lines = raw_str.split("\n")
-            for line in lines:
-                line = line.strip()
-                if line.startswith("###"):
-                    html += f"<h3>{line.replace('###', '').strip()}</h3>\n"
-                elif line.startswith("##"):
-                    html += f"<h2>{line.replace('##', '').strip()}</h2>\n"
-                elif line.startswith("#"):
-                    html += f"<h1>{line.replace('#', '').strip()}</h1>\n"
-                elif line.startswith("- "):
-                    html += f"<li>{line[2:]}</li>\n"
-                elif line:
-                    # Handle bold
-                    line = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', line)
-                    html += f"<p>{line}</p>\n"
-            html += "</body></html>"
-        else:
-            # Assume HTML
-            html = raw_str
+        html = _item_to_html(input_data)
 
     soup = BeautifulSoup(html, 'html.parser')
+    
+    # ── [NEW] Preservation Layer: Re-inject Markdown markers into HTML for the Director ──
+    # This ensures that even after HTML parsing, bolding and headers are visible as text.
+    for tag in soup.find_all(['strong', 'b']):
+        tag.replace_with(f"**{tag.get_text()}**")
+    for tag in soup.find_all(['h1', 'h2', 'h3']):
+        tag.replace_with(f"\n### {tag.get_text()}\n")
+        
     raw_text = soup.get_text(separator='\n')
     full_text = _clean(raw_text)
 

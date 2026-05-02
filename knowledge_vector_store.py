@@ -135,8 +135,9 @@ class VectorStore:
             else:
                 print(f"ℹ️ Vector Store: Topic '{topic}' already in semantic memory.")
 
-    def search_knowledge(self, query: str, limit: int = 3, min_score: float = 0.7) -> List[Dict[str, Any]]:
-        """Perform 100% offline semantic search."""
+    def search_knowledge(self, query: str, limit: int = 3, min_score: float = 0.7, 
+                         node: str = "unknown", job_id: str = "unknown", render_mode: str = "unknown") -> List[Dict[str, Any]]:
+        """Perform 100% offline semantic search with structured telemetry."""
         if self.table is None:
             return []
 
@@ -162,6 +163,35 @@ class VectorStore:
                     "similarity": round(similarity, 3)
                 })
         
+        # ── INDUSTRIAL AUDIT: KB Telemetry ────────────────────────────────────
+        from datetime import datetime
+        from pathlib import Path
+        
+        KB_LOG_PATH = Path("output/kb_retrievals.jsonl")
+        os.makedirs("output", exist_ok=True)
+        
+        top_conf = hits[0]["similarity"] if hits else 0.0
+        mean_conf = sum(h["similarity"] for h in hits) / len(hits) if hits else 0.0
+        used = len(hits) > 0
+
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "job_id": job_id,
+            "node": node,
+            "render_mode": render_mode,
+            "query": query[:200],
+            "num_results": len(hits),
+            "top_confidence": top_conf,
+            "mean_confidence": mean_conf,
+            "used": used,
+        }
+        
+        try:
+            with open(KB_LOG_PATH, "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except Exception as e:
+            print(f"⚠️ Telemetry: Failed to log KB retrieval: {e}")
+            
         return hits
 
 # Global Helper Integration
@@ -172,10 +202,10 @@ def index_research(topic: str, fact_sheet: Dict[str, Any]):
     except Exception as e:
         print(f"⚠️ Vector Store: Failed to index research: {e}")
 
-def retrieve_related_research(query: str) -> List[Dict[str, Any]]:
+def retrieve_related_research(query: str, node: str = "unknown", job_id: str = "unknown", render_mode: str = "unknown") -> List[Dict[str, Any]]:
     try:
         vs = VectorStore.get_instance()
-        return vs.search_knowledge(query)
+        return vs.search_knowledge(query, node=node, job_id=job_id, render_mode=render_mode)
     except Exception as e:
         print(f"⚠️ Vector Store: Retrieval error: {e}")
         return []

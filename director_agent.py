@@ -58,6 +58,7 @@ _REQUIRED_FIELDS = {
     "title_card":      {"title": "Lesson", "subtitle": ""},
     "concept_bullets": {"heading": "Key Concepts", "bullets": ["Key point"]},
     "formula_display": {"formula": "x = y", "label": ""},
+    "formula_derivation": {"heading": "Derivation", "steps": ["x = y"]},
     "step_by_step":    {"heading": "Solution", "steps": ["Step 1"]},
     "mcq_layout":      {"options": {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}},
     "option_highlight": {"letter": "A", "name": "", "body": "", "color": "#FFFFFF"},
@@ -80,6 +81,7 @@ class Scene(BaseModel):
         "concept_bullets",
         "mcq_layout",
         "formula_display",
+        "formula_derivation",
         "step_by_step",
         "option_highlight",
         "cross_out",
@@ -128,6 +130,7 @@ LEVEL 1 (Hard Science/Accuracy) → Use "manim":
   - Medical MCQ (FMGE) or any content with anatomical lesions/diagrams.
   - Logic that REQUIRES motion (e.g. "blood flow", "electron movement", "formula derivation").
   - Content with graphs, step-by-step calculations, or complex equations.
+  - MATHEMATICAL DERIVATION RULE: If the input contains a series of equations or a "Step 1, Step 2" calculation, you MUST use `formula_derivation` to animate the transition between steps.
 
 LEVEL 2 (High-Impact Deep Dive) → Use "explainer":
   - Abstract conceptual deep-dives (e.g. "The Butterfly Effect", "Vastness of Space").
@@ -176,7 +179,8 @@ MANIM SCENES (8–12 scenes):
   - PEDAGOGICAL INTEGRITY: NEVER use generic placeholders like "Option A" or "Option B" if real names (e.g., "Cortical contusion") are available in the parsed_facts. You MUST use the exact names from the facts in your `visual_data`.
   - ANSWER LOCK: The "correct_answer" letter and "explanation" in the answer_reveal scene MUST match the ground truth provided in the parsed_facts. Do not hallucinate a different answer.
   - cross_out rule (SINGLE SCENE): You MUST provide exactly ONE "cross_out" scene that includes all incorrect letters in a single list (e.g., {"letters": ["A", "B", "C"]}). NEVER split cross-outs across multiple scenes.
-  - For numerical: formula_display → graph_hint (if applicable) → step_by_step (max 4 steps) → summary
+  - For numerical: title_card → formula_derivation (The core morphing animation) → graph_hint (if applicable) → summary
+  - MATHEMATICAL PRECISION: For `formula_derivation`, ensure each step is a single valid LaTeX string. The animation will morph one into the next.
   - For concept: concept_bullets → graph_hint (if applicable) → key supporting facts → summary
   - PEDAGOGICAL IMPORTANCE (CRITICAL):
       1. If a 'parsed_facts' section contains '###', use that text as the PRIMARY HEADLINE in that scene's `title` or `key_point`.
@@ -214,6 +218,10 @@ USER_GENERATED_VIDEO (1–4 long scenes):
   - formula: Use plain text or LaTeX (e.g. "e = mc^2").
   - graph_hint: MUST include specific equations and domain/ranges (e.g. 'Plot y=sin(x) from -pi to pi').
   - option_highlight: {"letter": "A", "verdict": "wrong", "reason": "why this option is incorrect"}.
+━━━ APPENDED / COMPOSITE INPUT RULE ━━━
+- You may receive inputs that were appended from multiple sources (JSON + HTML + Markdown).
+- If you see a sequence of mathematical steps or formulas across these segments that form a logical progression, you MUST group them into a single `formula_derivation` scene.
+- Do not create separate `formula_display` scenes for each segment if they are part of the same derivation. Append them to the `steps` list of a single `formula_derivation`.
 
 OUTPUT: Return valid JSON only. No extra text."""
 
@@ -260,11 +268,19 @@ Structure:
       "visual_type": "annotated_image",
       "visual_data": {"label": "Convex Lens Ray Diagram", "target_landmark": "focal point", "region": "center_right", "bullets": ["Parallel rays converge at focal point", "Image is real and inverted beyond 2F"]},
       "narration_text": "Observe how parallel rays pass through the lens and meet at the focal point..."
+    },
+    {
+      "visual_type": "formula_derivation",
+      "visual_data": {"heading": "Ejection Fraction", "steps": ["EF = \\frac{SV}{EDV}", "EF = \\frac{EDV - ESV}{EDV}", "EF = \\frac{120 - 50}{120}", "EF = \\frac{70}{120}", "EF = 0.58"]},
+      "narration_text": "By substituting the End Diastolic Volume and End Systolic Volume, we can derive the ejection fraction step by step..."
     }
   ]
 }
 
-IMPORTANT: Use "annotated_image" whenever you need to show an image with explanatory text. It creates a split layout (image right, bullets left, arrow pointing to the target). Always include BOTH "target_landmark" (the specific structure/concept to point at) AND "region" (fallback grid position). Do NOT use "concept_image" or "image_arrow" — they are deprecated.
+IMPORTANT INSTRUCTIONS:
+1. Use "annotated_image" whenever you need to show an image with explanatory text. It creates a split layout (image right, bullets left, arrow pointing to the target). Always include BOTH "target_landmark" (the specific structure/concept to point at) AND "region" (fallback grid position). Do NOT use "concept_image" or "image_arrow" — they are deprecated.
+2. Use "formula_derivation" when showing how an equation transforms over multiple steps. Use "formula_display" for a single equation. Use "step_by_step" for text-based reasoning.
+3. For "formula_derivation", write derivations as small incremental steps preserving shared structure (e.g. keeping "EF =" on the left side) so the animation morphs cleanly without jump cuts. Max 5 steps.
 """
     system_prompt_with_hint = SYSTEM_PROMPT + "\n\n" + schema_hint
     
@@ -298,11 +314,38 @@ IMPORTANT: Use "annotated_image" whenever you need to show an image with explana
         
         # Fallback for required fields (Industrial Resilience)
         if not data.get("render_mode"): data["render_mode"] = "manim"
+        
+        # INDUSTRIAL REPAIR: Fix scenes that are missing required fields
+        if "scenes" in data and isinstance(data["scenes"], list):
+            import typing
+            annotation = Scene.model_fields['visual_type'].annotation
+            # Handle Literal types in Pydantic v2
+            valid_types = set(typing.get_args(annotation))
+            repaired_scenes = []
+            for s in data["scenes"]:
+                if not isinstance(s, dict): continue
+                # Ensure visual_type is valid
+                v_type = s.get("visual_type")
+                if v_type not in valid_types:
+                    print(f"   ⚠️ Scene Repair: Fixing invalid visual_type '{v_type}' -> 'key_point'")
+                    s["visual_type"] = "key_point"
+                
+                # Ensure narration_text exists
+                if not s.get("narration_text"):
+                    s["narration_text"] = "Observe this important concept."
+                
+                # Ensure visual_data is a dict
+                if not isinstance(s.get("visual_data"), dict):
+                    s["visual_data"] = {}
+                
+                repaired_scenes.append(s)
+            data["scenes"] = repaired_scenes
+
         def _ensure_mcq_continuity(scenes):
             """Defense in Depth: Group MCQ scenes into a contiguous atomic block."""
             mcq_types = {"mcq_layout", "option_highlight", "cross_out", "answer_reveal"}
-            mcq_scenes = [s for s in scenes if s.visual_type in mcq_types]
-            other_scenes = [s for s in scenes if s.visual_type not in mcq_types]
+            mcq_scenes = [s for s in scenes if (s.get("visual_type") if isinstance(s, dict) else getattr(s, "visual_type", None)) in mcq_types]
+            other_scenes = [s for s in scenes if (s.get("visual_type") if isinstance(s, dict) else getattr(s, "visual_type", None)) not in mcq_types]
             
             if not mcq_scenes:
                 return scenes
@@ -353,7 +396,9 @@ IMPORTANT: Use "annotated_image" whenever you need to show an image with explana
         return response, usage
         
     except Exception as e:
+        import traceback
         print(f"❌ Director Parse Error: {e}")
+        traceback.print_exc()
         # INDUSTRIAL FALLBACK: Return a basic manim plan rather than crashing the pipeline
         fallback_plan = {
             "render_mode": "manim",

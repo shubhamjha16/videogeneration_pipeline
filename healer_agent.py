@@ -79,7 +79,8 @@ def run_healer(broken_script: str, error_message: str, knowledge_base: dict = No
         ],
         system_prompt=SYSTEM_PROMPT,
         json_mode=False,
-        include_usage=True
+        include_usage=True,
+        cacheable=False
     )
     fixed = content
     match = re.search(r'```(?:python)?\s*(.*?)```', fixed, re.DOTALL | re.IGNORECASE)

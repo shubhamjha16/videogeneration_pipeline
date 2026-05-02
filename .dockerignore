@@ -1,68 +1,29 @@
-# Python virtual environment — never copy into image
-venv/
-.venv/
+# Development junk
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.egg-info/
-dist/
-build/
-.eggs/
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Generated output — mounted as EFS volume in ECS
+# Local data / output (Handled by volumes)
 output/
+factory_vector_db/
+factory_knowledge/
 media/
 
-# Local audio/video files
-*.mp4
-*.m4a
-*.mp3
-*.wav
-*.aiff
-
-# Images generated during testing
-*.png
-*.jpg
-*.jpeg
-
-# Secrets — injected via ECS task definition env vars
+# Secrets
 .env
-*.env
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
 
 # Git
 .git/
 .gitignore
 
-# Test files
-test_*.py
-*_test.py
-e2e_*.py
-
-# HTML source files used for local testing
-*_source.html
-bpf_source.html
-bpf_narration.txt
-
-# Jobs persistence file — starts fresh in each container
-jobs.json
-
-# Temporary masterclass scripts (one-off test files)
-*_masterclass.py
-*_mission.py
-*_scene.py
-iliac_*.py
-calcium_*.py
-carpopedal_*.py
-merge_*.py
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -371,9 +371,50 @@ def director_node(state: TonyState) -> TonyState:
         state["knowledge_base"] = kb_facts
         _log_progress(state, "KNOWLEDGE", f"📚 KB Hit: Using verified facts for {state['topic']}")
     
-    parsed = parse_tony_html(state["raw_input"], topic_hint=state["topic"])
+    parsed = None
+    raw_input = state["raw_input"]
+    
+    # If composite list, we skip the direct JSON-to-Dict path and go to html_parser
+    if isinstance(raw_input, str):
+        input_str = raw_input.strip()
+        if input_str.startswith("{") or input_str.startswith("["):
+            try:
+                import json
+                raw_data = json.loads(input_str)
+                if isinstance(raw_data, list) and len(raw_data) > 0:
+                    raw_data = raw_data[0]
+                
+                # Standardize for DirectorAgent
+                parsed = {
+                    "topic": state["topic"],
+                    "subject": raw_data.get("subject", "unknown"),
+                    "content_type": raw_data.get("content_type", "concept"),
+                    "concept": "",
+                    "key_points": [],
+                    "options": {},
+                    "sections": {}
+                }
+                
+                # Map json_data to concept string
+                if "json_data" in raw_data:
+                    parts = []
+                    for item in raw_data["json_data"]:
+                        t = item.get("title", "")
+                        d = item.get("description", "")
+                        parts.append(f"### {t}\n{d}")
+                    parsed["concept"] = "\n\n".join(parts)
+                    if any("=" in p for p in parts):
+                        parsed["content_type"] = "numerical"
+                
+                print(f"   📦 JSON Ingestion: Successfully mapped structured data for {state['topic']}")
+            except Exception as e:
+                print(f"   ⚠️ JSON Parse Error: {e}. Falling back to HTML.")
+
+    if not parsed:
+        parsed = parse_tony_html(state["raw_input"], topic_hint=state["topic"])
+    
     state["parsed_facts"] = parsed
-    source_label = state.get("source_type", "html").upper()
+    source_label = (state.get("source_type") or "HTML").upper()
     _log_progress(state, "KNOWLEDGE", f"📚 {source_label} Source: Successfully ingested input curriculum.")
 
     print(f"   Subject: {parsed['subject']} | Type: {parsed['content_type']}")
@@ -400,6 +441,16 @@ def director_node(state: TonyState) -> TonyState:
         (s.model_dump() if hasattr(s, "model_dump") else s.dict()) 
         for s in director_output.scenes
     ]
+
+    # ── MATHEMATICAL SANITY CHECK ─────────────────────────────────────────────
+    # Prevent the LLM from hallucinating bad arithmetic in derivation steps.
+    from math_validator import check_numerical_sanity
+    for scene in scenes:
+        if scene["visual_type"] == "formula_derivation":
+            steps = scene.get("visual_data", {}).get("steps", [])
+            if not check_numerical_sanity(steps):
+                _record_error(state, "DIRECTOR", "Mathematical Hallucination Detected in formula_derivation.")
+                raise RuntimeError("Mathematical Sanity Check Failed: The LLM generated invalid arithmetic.")
 
 
     # ── MCQ correction: override LLM answer with ground truth from HTML ───────
@@ -571,10 +622,14 @@ def research_node(state: TonyState) -> TonyState:
     topic = state.get("topic", "")
     
     # INDUSTRIAL SENTINEL: Semantic Memory Recall
-    # Before hitting the web, check the Factory Brain (Vector DB) for existing related research.
     if topic:
         print(f"   🧠 Vector Brain: Consulting internal memory for '{topic}'...")
-        hits = retrieve_related_research(topic)
+        hits = retrieve_related_research(
+            topic, 
+            node="research", 
+            job_id=state.get("job_id", "unknown"),
+            render_mode=state.get("render_mode", "unknown")
+        )
         if hits and hits[0]["similarity"] > 0.85:
             match = hits[0]
             print(f"   🎯 Vector Hit! Retrieved '{match['topic']}' (Similarity: {match['similarity']})")
@@ -1028,18 +1083,25 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
     region   = os.environ.get("AWS_REGION", "ap-south-1")
 
     if not bucket:
-        # Local dev: just return local path
-        print("   ℹ️  S3_BUCKET not set — skipping upload, returning local path")
+        # Local dev: act as a local CDN fallback via FastAPI
+        print("   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/")
+        job_id_safe = job_id or "unknown"
+        filename = os.path.basename(local_path)
+        
+        # Default to localhost:8000 (FastAPI port) if LOCAL_CDN_URL is not set
+        base_url = os.environ.get("LOCAL_CDN_URL", "http://localhost:8000").rstrip("/")
+        
+        # Use the existing FastAPI streaming endpoint
+        full_url = f"{base_url}/stream/{job_id_safe}/{filename}"
+        
         _log_fallback(
             {"job_id": job_id, "rendering_errors": None},  # minimal state for structured telemetry
             "DEPLOY",
-            fallback="local_file_url",
+            fallback=full_url,
             reason="S3_BUCKET not set",
             error_class="MissingConfig",
         )
-        job_id = job_id or "unknown"
-        filename = os.path.basename(local_path)
-        return f"/stream/{job_id}/{filename}"
+        return full_url
 
     import boto3
     # Inclusion of job_id in S3 key prevents URL collision for identical topics
