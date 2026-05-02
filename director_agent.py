@@ -59,6 +59,7 @@ _REQUIRED_FIELDS = {
     "concept_bullets": {"heading": "Key Concepts", "bullets": ["Key point"]},
     "formula_display": {"formula": "x = y", "label": ""},
     "formula_derivation": {"heading": "Derivation", "steps": ["x = y"]},
+    "formula_step_list": {"heading": "Derivation", "steps": ["x = y"]},
     "step_by_step":    {"heading": "Solution", "steps": ["Step 1"]},
     "mcq_layout":      {"options": {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}},
     "option_highlight": {"letter": "A", "name": "", "body": "", "color": "#FFFFFF"},
@@ -82,6 +83,7 @@ class Scene(BaseModel):
         "mcq_layout",
         "formula_display",
         "formula_derivation",
+        "formula_step_list",
         "step_by_step",
         "option_highlight",
         "cross_out",
@@ -130,7 +132,7 @@ LEVEL 1 (Hard Science/Accuracy) → Use "manim":
   - Medical MCQ (FMGE) or any content with anatomical lesions/diagrams.
   - Logic that REQUIRES motion (e.g. "blood flow", "electron movement", "formula derivation").
   - Content with graphs, step-by-step calculations, or complex equations.
-  - MATHEMATICAL DERIVATION RULE: If the input contains a series of equations or a "Step 1, Step 2" calculation, you MUST use `formula_derivation` to animate the transition between steps.
+  - MATHEMATICAL DERIVATION RULE: If the input contains a series of equations or a "Step 1, Step 2" calculation, you MUST use `formula_step_list` to append the steps vertically on the screen.
 
 LEVEL 2 (High-Impact Deep Dive) → Use "explainer":
   - Abstract conceptual deep-dives (e.g. "The Butterfly Effect", "Vastness of Space").
@@ -179,8 +181,10 @@ MANIM SCENES (8–12 scenes):
   - PEDAGOGICAL INTEGRITY: NEVER use generic placeholders like "Option A" or "Option B" if real names (e.g., "Cortical contusion") are available in the parsed_facts. You MUST use the exact names from the facts in your `visual_data`.
   - ANSWER LOCK: The "correct_answer" letter and "explanation" in the answer_reveal scene MUST match the ground truth provided in the parsed_facts. Do not hallucinate a different answer.
   - cross_out rule (SINGLE SCENE): You MUST provide exactly ONE "cross_out" scene that includes all incorrect letters in a single list (e.g., {"letters": ["A", "B", "C"]}). NEVER split cross-outs across multiple scenes.
-  - For numerical: title_card → formula_derivation (The core morphing animation) → graph_hint (if applicable) → summary
-  - MATHEMATICAL PRECISION: For `formula_derivation`, ensure each step is a single valid LaTeX string. The animation will morph one into the next.
+  - For numerical: title_card → formula_step_list (MANDATORY: Appends steps vertically to show the whole process on one screen) → graph_hint (if applicable) → summary
+  - MATHEMATICAL PRECISION: 
+      1. formula_step_list: ALWAYS use this for mathematical derivations. It appends steps one-by-one vertically. This ensures the student can see the entire derivation history at once.
+      2. Ensure each step is a single valid LaTeX string.
   - For concept: concept_bullets → graph_hint (if applicable) → key supporting facts → summary
   - PEDAGOGICAL IMPORTANCE (CRITICAL):
       1. If a 'parsed_facts' section contains '###', use that text as the PRIMARY HEADLINE in that scene's `title` or `key_point`.
