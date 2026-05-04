@@ -29,7 +29,7 @@ def get_robust_session():
     session.mount("http://", adapter)
     return session
 
-def generate_higgsfield_video(prompt: str, output_path: str) -> str:
+def generate_higgsfield_video(prompt: str, output_path: str, job_id: str = None) -> str:
     """
     Industrialized Higgsfield/Muapi Integration.
     Tries multiple endpoints to ensure delivery even if one provider is down.
@@ -68,7 +68,7 @@ def generate_higgsfield_video(prompt: str, output_path: str) -> str:
         if response.status_code in [200, 201, 202]:
             task_id = response.json().get("request_id") or response.json().get("id")
             if task_id:
-                return _poll_and_download(task_id, output_path, headers, "https://api.muapi.ai/api/v1/predictions")
+                return _poll_and_download(task_id, output_path, headers, "https://api.muapi.ai/api/v1/predictions", job_id)
     except Exception as e:
         print(f"   ℹ️ Path A (Muapi Premium) failed: {e}")
 
@@ -90,7 +90,7 @@ def generate_higgsfield_video(prompt: str, output_path: str) -> str:
         if response.status_code in [200, 201, 202]:
             task_id = response.json().get("request_id") or response.json().get("id")
             if task_id:
-                return _poll_and_download(task_id, output_path, headers, "https://api.muapi.ai/api/v1/predictions")
+                return _poll_and_download(task_id, output_path, headers, "https://api.muapi.ai/api/v1/predictions", job_id)
     except Exception as e:
         print(f"   ℹ️ Path B (Bridge) failed: {e}")
 
@@ -98,7 +98,7 @@ def generate_higgsfield_video(prompt: str, output_path: str) -> str:
     print("   ⚠️ All AI video endpoints exhausted. Generating local cinematic placeholder...")
     return _generate_placeholder(prompt, output_path)
 
-def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base: str) -> str:
+def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base: str, job_id: str = None) -> str:
     print(f"   ⏳ Task {task_id[:8]}... created. Polling for results...")
     
     session = get_robust_session()
@@ -133,6 +133,11 @@ def _poll_and_download(task_id: str, output_path: str, headers: dict, poll_base:
                 
                 if video_url:
                     print(f"   ✅ Video ready! Downloading...")
+                    try:
+                        from cost_tracker import LedgerManager
+                        LedgerManager.record_higgsfield_call(job_id)
+                    except Exception as e:
+                        print(f"⚠️ Failed to log Higgsfield cost: {e}")
                     return _download_file(video_url, output_path)
             
             if status in ["failed", "canceled"]:

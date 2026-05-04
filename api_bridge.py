@@ -416,18 +416,28 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
 
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
+class RenderOverrides(BaseModel):
+    render_mode: Optional[str] = Field(None, description="Force a specific render path: manim | presentation | explainer | heygen")
+    has_formula: Optional[bool] = Field(None, description="Force/Hint math detection")
+    has_static_image: Optional[bool] = Field(None, description="Force/Hint image grounding")
+    has_animation: Optional[bool] = Field(None, description="Force/Hint cinematic animations")
+    with_avatar: Optional[bool] = Field(None, description="Force/Hint avatar generation")
+    language: Optional[str] = Field(None, description="Force language: en | hi")
 
 class RenderRequest(BaseModel):
     topic:       str
     html:        Optional[Any] = None  # Legacy/Composite HTML field
     json_data:   Optional[Any] = None  # Structured JSON facts or derivation steps
     markdown:    Optional[str] = None  # Markdown content with LaTeX support
-    render_mode: Optional[Literal["manim", "presentation", "explainer", "user_generated_video", "user_generated"]] = None
+    render_mode: Optional[Literal["manim", "presentation", "explainer", "heygen", "user_generated_video", "user_generated"]] = None
     with_avatar: bool = False
+    avatar_type: Optional[Literal["logo", "human", "pro", "user", "heygen"]] = None
+    avatar_id:   Optional[str] = None
     video_type:  Optional[Literal["marketing", "educational"]] = None
     image_path:  Optional[str] = None
     webhook_url: Optional[str] = None
     use_elevenlabs: bool = False # Direct per-request switch (Industrial Cost Control)
+    overrides: Optional[RenderOverrides] = Field(None, description="Manual control toggles to override autonomous logic")
 
     class Config:
         json_schema_extra = {
@@ -599,15 +609,18 @@ class CostItem(BaseModel):
     job_id: str
     topic: str
     render_mode: str
-    estimated_cost_usd: float
+    actual_cost_usd: float # Real measured cost from API responses
+    estimated_cost_usd: float # Fallback estimate for legacy jobs or redundant field for new ones
+    cost_source: str # "measured" | "estimated"
 
 
 class CostsResponse(BaseModel):
-    total_estimated_cost_usd: float
+    total_cost_usd: float
     completed_jobs: int
     avg_cost_per_video_usd: float
     breakdown: list[CostItem]
     note: str
+    total_estimated_cost_usd: float # Legacy alias for backward compatibility
 
     class Config:
         json_schema_extra = {
@@ -668,7 +681,7 @@ class VersionResponse(BaseModel):
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
 
-def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html"):
+def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html", overrides: dict = None):
     """Run the full LangGraph pipeline with Concurrency Sentinel protection."""
     global RENDER_SEMAPHORE
 
@@ -722,6 +735,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
                 "source_type":       source_type,
                 "render_mode":       job.get("render_mode"),
                 "with_avatar":       job.get("with_avatar", False),
+                "overrides":         overrides,
                 "video_type":        job.get("video_type"),
                 "no_vision":         False,
                 "scenes":            None,
@@ -741,6 +755,8 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html")
                 "heygen_video_path":  None,
                 "subtitle_style":     None,
                 "use_elevenlabs":     job.get("use_elevenlabs", False),
+                "avatar_type":        job.get("avatar_type"),
+                "avatar_id":          job.get("avatar_id"),
             })
         except ImportError as e:
             error_category = "DEPENDENCY"
@@ -878,7 +894,11 @@ def start_render(
 ):
     # ── 0. Idempotency Guard ──
     # Industrial Hardening: Use payload-based hash if header is missing
-    effective_key = idempotency_key or generate_idempotency_key(request.model_dump(), request.render_mode)
+    effective_key = idempotency_key or generate_idempotency_key(
+        request.model_dump(exclude={"overrides"}), 
+        request.render_mode, 
+        request.overrides.model_dump() if request.overrides else None
+    )
     
     existing_job_id = _idempotency_lookup(effective_key)
     if existing_job_id:
@@ -952,6 +972,8 @@ def start_render(
             "current_step": "Initializing",
             "render_mode":  request.render_mode or "auto",
             "with_avatar":  request.with_avatar,
+            "avatar_type":  request.avatar_type,
+            "avatar_id":    request.avatar_id,
             "video_type":   request.video_type,
             "use_elevenlabs": request.use_elevenlabs,
             "image_path":   request.image_path,
@@ -960,13 +982,14 @@ def start_render(
             "updated_at":   now_iso,
             "topic":        request.topic,
             "raw_html":     raw_content,
+            "overrides":    request.overrides.model_dump() if request.overrides else None,
             "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}]
         }
 
 
     thread = threading.Thread(
         target=_run_pipeline,
-        args=(job_id, request.topic, raw_content, source_type),
+        args=(job_id, request.topic, raw_content, source_type, request.overrides.model_dump() if request.overrides else None),
         daemon=True,
     )
     thread.start()
@@ -1616,52 +1639,90 @@ def get_version():
 
 # ── Tier 3: Enterprise Feel ───────────────────────────────────────────────────
 
-@app.get("/costs", response_model=CostsResponse, tags=["Analytics"], summary="API cost estimation", description="Calculates estimated third-party API costs (Groq, ElevenLabs, HeyGen) for all completed videos to provide financial visibility.")
-def estimate_costs():
-    """Estimated API costs per job and total — financial visibility for management."""
-    # Cost estimates per API call (approximate)
-    COST_PER_GROQ_CALL = 0.002       # ~$0.002 per LLM call
-    COST_PER_ELEVENLABS_CHAR = 0.00003  # ~$0.03 per 1000 chars
-    COST_PER_HEYGEN_MIN = 0.50       # ~$0.50 per minute of avatar video
-    COST_PER_HIGGSFIELD_CALL = 0.10  # ~$0.10 per B-roll generation
+@app.get("/costs", response_model=CostsResponse, tags=["Analytics"], summary="API cost tracking", description="Calculates real API costs from the ledger for measured jobs, and uses average estimates for legacy jobs.")
+def get_costs():
+    """Aggregate API costs from the ledger and fallback estimates."""
+    from cost_tracker import LedgerManager
     
+    # 1. Constants for legacy estimation (averages)
+    COST_PER_GROQ_CALL = 0.002
+    COST_PER_ELEVENLABS_CHAR = 0.00003
+    COST_PER_HEYGEN_MIN = 0.50
+    COST_PER_HIGGSFIELD_CALL = 0.10
+
     with _jobs_lock:
         all_jobs = list(jobs.values())
     
     completed = [j for j in all_jobs if j["status"] == "completed"]
     
+    # 2. Read all job totals from the ledger file
+    job_ledger_totals = {}
+    path = LedgerManager.get_ledger_path()
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                for line in f:
+                    entry = json.loads(line)
+                    jid = entry.get("job_id")
+                    if jid:
+                        job_ledger_totals[jid] = job_ledger_totals.get(jid, 0.0) + entry.get("cost_usd", 0.0)
+        except Exception as e:
+            print(f"⚠️ Error reading cost ledger: {e}")
+
     job_costs = []
-    total_cost = 0.0
+    total_measured = 0.0
+    total_estimated = 0.0
     
+    # 3. Process each completed job
     for j in completed:
+        jid = j.get("job_id")
         mode = j.get("render_mode") or "auto"
         has_avatar = j.get("with_avatar", False)
+        topic = j.get("topic", "Unknown")
         
-        # Estimate based on render mode
-        est = COST_PER_GROQ_CALL * 3  # parse + script + critic = 3 LLM calls
-        est += COST_PER_ELEVENLABS_CHAR * 2000  # ~2000 chars avg narration
-        
-        if mode == "explainer":
-            est += COST_PER_HIGGSFIELD_CALL * 3  # ~3 B-roll clips
-        if has_avatar:
-            est += COST_PER_HEYGEN_MIN * 2  # ~2 min avatar video
-        
-        est = round(est, 4)
-        total_cost += est
-        
-        job_costs.append({
-            "job_id": j.get("job_id"),
-            "topic": j.get("topic"),
-            "render_mode": mode,
-            "estimated_cost_usd": est,
-        })
+        if jid in job_ledger_totals:
+            # Measured job (New)
+            actual = round(job_ledger_totals[jid], 6)
+            total_measured += actual
+            job_costs.append({
+                "job_id": jid,
+                "topic": topic,
+                "render_mode": mode,
+                "actual_cost_usd": actual,
+                "estimated_cost_usd": actual,
+                "cost_source": "measured"
+            })
+        else:
+            # Legacy job (Fallback to average estimate)
+            est = COST_PER_GROQ_CALL * 3
+            est += COST_PER_ELEVENLABS_CHAR * 2000
+            if mode == "explainer": est += COST_PER_HIGGSFIELD_CALL * 3
+            if has_avatar: est += COST_PER_HEYGEN_MIN * 2
+            
+            est = round(est, 4)
+            total_estimated += est
+            job_costs.append({
+                "job_id": jid,
+                "topic": topic,
+                "render_mode": mode,
+                "actual_cost_usd": 0.0,
+                "estimated_cost_usd": est,
+                "cost_source": "estimated"
+            })
+    
+    # Sort by ID descending (newest first)
+    job_costs.sort(key=lambda x: x["job_id"], reverse=True)
+    
+    total_all = total_measured + total_estimated
+    count = len(completed)
     
     return {
-        "total_estimated_cost_usd": round(total_cost, 2),
-        "completed_jobs": len(completed),
-        "avg_cost_per_video_usd": round(total_cost / len(completed), 4) if completed else 0,
+        "total_cost_usd": round(total_all, 4),
+        "total_estimated_cost_usd": round(total_all, 4), # Alias
+        "completed_jobs": count,
+        "avg_cost_per_video_usd": round(total_all / count, 6) if count else 0,
         "breakdown": job_costs,
-        "note": "Estimates based on average API pricing. Actual costs may vary."
+        "note": f"Report contains {len(job_ledger_totals)} measured jobs and {count - len(job_ledger_totals)} legacy estimated jobs."
     }
 
 

@@ -44,7 +44,7 @@ def save_knowledge(topic: str, facts: Dict[str, Any]) -> str:
         print(f"❌ Failed to save knowledge for {topic}: {e}")
         return ""
 
-def distill_search_results(topic: str, raw_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+def distill_search_results(topic: str, raw_results: List[Dict[str, Any]], job_id: str = None) -> Dict[str, Any]:
     """
     Use Gemma 4 to convert raw search snippets into a structured, verified fact sheet.
     This reduces 'hallucination' by forcing the agent to stick to summarized ground truth.
@@ -81,7 +81,8 @@ Distill this into a structured JSON fact sheet for an educational video.
         content = LLMFactory.get_completion(
             messages=[{"role": "user", "content": user_prompt}],
             system_prompt=system_prompt,
-            json_mode=True
+            json_mode=True,
+            job_id=job_id
         )
         return clean_llm_json(content)
     except Exception as e:

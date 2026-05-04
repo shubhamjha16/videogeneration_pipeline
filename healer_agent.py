@@ -45,7 +45,7 @@ FIXED:
 Return ONLY the code. No chatter."""
 
 
-def run_healer(broken_script: str, error_message: str, knowledge_base: dict = None) -> tuple[str, dict]:
+def run_healer(broken_script: str, error_message: str, knowledge_base: dict = None, job_id: str = None) -> tuple[str, dict]:
     """
     Ask Groq (Llama 3.3) to fix a broken Manim script.
     Returns: (fixed_script, usage)
@@ -80,7 +80,8 @@ def run_healer(broken_script: str, error_message: str, knowledge_base: dict = No
         system_prompt=SYSTEM_PROMPT,
         json_mode=False,
         include_usage=True,
-        cacheable=False
+        cacheable=False,
+        job_id=job_id
     )
     fixed = content
     match = re.search(r'```(?:python)?\s*(.*?)```', fixed, re.DOTALL | re.IGNORECASE)

@@ -22,7 +22,7 @@ def _generate_silent_audio(output_filename: str, duration: float = 1.0) -> str:
         wf.writeframes(frames)
     return output_filename
 
-def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenlabs: bool = None) -> str:
+def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenlabs: bool = None, job_id: str = None) -> tuple[str, int]:
     """
     Generates TTS audio.
     Hierarchy: 
@@ -58,6 +58,11 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
                 json.dump(res_data.get("alignment", {}), f)
                 
             print(f"Generated ElevenLabs audio + timestamps for scene {scene_idx} -> {output_filename}")
+            try:
+                from cost_tracker import LedgerManager
+                LedgerManager.record_tts_call(job_id, "elevenlabs", len(text))
+            except Exception as e:
+                print(f"⚠️ Failed to log TTS cost: {e}")
             return output_filename, len(text)
         else:
             print(f"⚠️ ElevenLabs Error {response.status_code}: {response.text}")
@@ -81,6 +86,10 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
             output_filename = mp3_path
             print(f"Generated Mac TTS fallback audio for scene {scene_idx} -> {output_filename}")
             # Non-billable fallback
+            try:
+                from cost_tracker import LedgerManager
+                LedgerManager.record_tts_call(job_id, "macos_say", len(text), cost_per_char=0.0)
+            except: pass
             return output_filename, 0
         except Exception as e:
             print(f"❌ Mac FFmpeg conversion failed: {e}")
@@ -103,6 +112,10 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
         output_filename = mp3_path
         print(f"Generated gTTS ({lang}) audio for scene {scene_idx} -> {output_filename}")
         # Non-billable fallback
+        try:
+            from cost_tracker import LedgerManager
+            LedgerManager.record_tts_call(job_id, "gtts", len(text), cost_per_char=0.0)
+        except: pass
         return output_filename, 0
     except Exception as e:
         print(f"❌ gTTS failed: {e} — falling back to Silent Sentinel")

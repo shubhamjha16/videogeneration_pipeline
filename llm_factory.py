@@ -29,7 +29,8 @@ class LLMFactory:
         model_override: Optional[str] = None,
         provider_override: Optional[str] = None,
         include_usage: bool = False,
-        cacheable: bool = True
+        cacheable: bool = True,
+        job_id: Optional[str] = None
     ) -> Any:
         from caching.redis_client import get_cache, generate_llm_cache_key
         
@@ -60,6 +61,13 @@ class LLMFactory:
                 content = cached_res["content"]
                 usage = cached_res["usage"]
                 usage["from_cache"] = True
+                
+                try:
+                    from cost_tracker import LedgerManager
+                    LedgerManager.record_llm_call(job_id, provider, model, usage, from_cache=True)
+                except Exception as e:
+                    print(f"⚠️ Failed to record LLM cost: {e}")
+                    
                 return (content, usage) if include_usage else content
 
         # ── CACHE MISS: Execute Completion ────────────────────────────────────
@@ -79,6 +87,13 @@ class LLMFactory:
             cache.set(cache_key, {"content": content, "usage": usage}, ttl_seconds=86400 * 7) # 7 Day TTL
 
         usage["from_cache"] = False
+        
+        try:
+            from cost_tracker import LedgerManager
+            LedgerManager.record_llm_call(job_id, provider, model, usage, from_cache=False)
+        except Exception as e:
+            print(f"⚠️ Failed to record LLM cost: {e}")
+            
         return (content, usage) if include_usage else content
 
 

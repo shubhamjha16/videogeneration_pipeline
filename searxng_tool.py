@@ -9,7 +9,7 @@ import json
 from typing import List, Dict, Any
 import config
 
-def search_searxng(query: str, categories: str = "general", limit: int = None) -> List[Dict[str, Any]]:
+def search_searxng(query: str, categories: str = "general", limit: int = None, job_id: str = None) -> List[Dict[str, Any]]:
     """
     Perform a search query against the configured SearXNG instance.
     
@@ -17,6 +17,7 @@ def search_searxng(query: str, categories: str = "general", limit: int = None) -
         query: The search term
         categories: comma-separated list of categories (e.g. "general,science,it")
         limit: Max number of results to return (defaults to config.SEARXNG_RESULTS_LIMIT)
+        job_id: Optional job attribution for cost tracking
         
     Returns:
         List of result dictionaries: [{"title", "content", "url", "engine"}]
@@ -35,6 +36,13 @@ def search_searxng(query: str, categories: str = "general", limit: int = None) -
     }
     
     try:
+        # Record cost if job_id is provided
+        try:
+            from cost_tracker import LedgerManager
+            LedgerManager.record_search_call(job_id)
+        except Exception as e:
+            print(f"⚠️ Failed to log search cost: {e}")
+
         # Ensure the URL ends with /search
         base_url = config.SEARXNG_URL.rstrip("/")
         if not base_url.endswith("/search"):

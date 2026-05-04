@@ -232,17 +232,16 @@ OUTPUT: Return valid JSON only. No extra text."""
 
 # ── Director ──────────────────────────────────────────────────────────────────
 
-def run_director(parsed_facts: dict, search_results: list[dict] = None, knowledge_base: dict = None) -> tuple[DirectorOutput, dict]:
+def run_director(
+    parsed_facts: dict, 
+    search_results: list[dict] = None, 
+    knowledge_base: dict = None, 
+    job_id: str = None,
+    overrides: dict = None
+) -> tuple[DirectorOutput, dict]:
     """
-    Call Groq (Llama 3.3) to decide render mode and generate teaching scenes.
-
-    Args:
-        parsed_facts   : output from html_parser.parse_tony_html()
-        search_results : (optional) list of relevant snippets from SearXNG
-        knowledge_base : (optional) distilled verified facts from persistent storage
-
-    Returns:
-        DirectorOutput with render_mode and scenes list
+    Executes the Director Agent to determine the render path and script.
+    Respects manual overrides if provided.
     """
     from llm_factory import clean_llm_json
     
@@ -292,7 +291,8 @@ IMPORTANT INSTRUCTIONS:
         messages=[{"role": "user", "content": user_message}],
         system_prompt=system_prompt_with_hint,
         json_mode=True,
-        include_usage=True
+        include_usage=True,
+        job_id=job_id
     )
     
     try:
@@ -418,19 +418,28 @@ IMPORTANT INSTRUCTIONS:
         return DirectorOutput(**fallback_plan), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
-def _build_prompt(facts: dict, search_results: list[dict] = None, knowledge_base: dict = None) -> str:
+def _build_prompt(facts: dict, search_results: list[dict] = None, knowledge_base: dict = None, overrides: dict = None) -> str:
     """Build the user message from parsed facts, research context, and knowledge base."""
     topic = facts.get("topic", "Untitled Lesson")
     subject = facts.get("subject", "unknown")
     content_type = facts.get("content_type", "concept")
     concept = facts.get("concept") or ""
 
-    lines = [
+    lines = []
+    if overrides:
+        lines.append("--- Manual architectural overrides ---")
+        lines.append("The following constraints have been provided by the user and must take priority over your autonomous decisions:")
+        for k, v in overrides.items():
+            if v is not None:
+                lines.append(f" - {k.upper()}: {v}")
+        lines.append("")
+
+    lines.extend([
         f"TOPIC: {topic}",
         f"SUBJECT: {subject}",
         f"CONTENT TYPE: {content_type}",
         "",
-    ]
+    ])
 
     if knowledge_base:
         lines.append("━━━ PERSISTENT KNOWLEDGE BASE (GROUND TRUTH) ━━━")

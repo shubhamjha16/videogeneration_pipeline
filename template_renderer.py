@@ -621,7 +621,7 @@ def _graph_axes_fallback(idx: int, description: str, duration: float) -> str:
         self._clear()
 """
 
-def _scene_graph_hint(scene: dict, idx: int) -> str:
+def _scene_graph_hint(scene: dict, idx: int, job_id: str = None) -> str:
     d           = scene["visual_data"]
     graph_type  = d.get("graph_type", "generic")
     description = d.get("description", "")
@@ -644,7 +644,8 @@ def _scene_graph_hint(scene: dict, idx: int) -> str:
         code = LLMFactory.get_completion(
             messages=[{"role": "user", "content": prompt}],
             system_prompt=_GRAPH_SYSTEM_PROMPT.format(idx=idx, duration=duration),
-            json_mode=False
+            json_mode=False,
+            job_id=job_id
         )
         # Strip any markdown fences if the extraction in LLMFactory was too loose
         code = re.sub(r"```(?:python)?", "", code, flags=re.IGNORECASE).replace("```", "").strip()
@@ -849,6 +850,7 @@ def build_manim_script(
     output_path: str,
     knowledge_base: dict = None,
     landmark_coords: dict = None,
+    job_id: str = None,
 ) -> str:
     """
     Convert a list of scene dicts into a complete Manim Python script.
@@ -896,6 +898,8 @@ def build_manim_script(
                 block = gen(scene, i, topic)
             elif vtype in ["concept_image", "image_arrow", "annotated_image"]:
                 block = gen(scene, i, image_path)
+            elif vtype == "graph_hint":
+                block = gen(scene, i, job_id=job_id)
             else:
                 block = gen(scene, i)
             scene_blocks.append(block)

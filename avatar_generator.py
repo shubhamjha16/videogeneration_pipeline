@@ -4,12 +4,13 @@ import numpy as np
 import config
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import VideoClip, AudioFileClip, VideoFileClip
+from heygen_generator import generate_heygen_avatar
 
 # Fix for MoviePy/Pillow 10+ compatibility
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = Image.Resampling.LANCZOS
 
-def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir: str = ".", avatar_type: str = config.DEFAULT_AVATAR) -> str:
+def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir: str = ".", avatar_type: str = config.DEFAULT_AVATAR, job_id: str = None) -> str:
     """
     Generates a dynamic animated Avatar video clip.
     avatar_type: 
@@ -17,10 +18,27 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
       - "human": Static photo with logic-based mouth overlay (Local, fast)
       - "pro": Real AI Lip-Sync using ElevenLabs API (Requires tutor_face.png)
       - "user": Your real face from camera! (Requires media/user_face.mp4)
+      - "heygen": Professional AI Avatar (Requires HEYGEN_API_KEY)
     """
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     avatar_video_path = os.path.join(output_dir, f"scene_{scene_idx}_avatar.mp4")
+    
+    # --- HEYGEN MODE: HeyGen v2 API ---
+    if avatar_type == "heygen":
+        print(f"🚀 Initializing HeyGen Avatar Generation for scene {scene_idx}...")
+        try:
+            result = generate_heygen_avatar(text, audio_file, avatar_video_path, job_id=job_id)
+            if result:
+                # generate_heygen_avatar returns (path, duration)
+                return result
+            else:
+                print(f"⚠️ HeyGen API failed. Falling back to local human avatar.")
+                avatar_type = "human"
+        except Exception as e:
+            print(f"❌ HeyGen System Error: {e}")
+            avatar_type = "human"
+
     width, height = 320, 240
 
     # --- PRO / USER MODES: ElevenLabs Lip-Sync API ---
@@ -47,7 +65,7 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
                     dur = audio_clip.duration
                     audio_clip.close()
                     
-                    result = generate_lip_sync(base_video, audio_file, avatar_video_path)
+                    result = generate_lip_sync(base_video, audio_file, avatar_video_path, job_id=job_id)
                     if result:
                         return result, dur
                     else:

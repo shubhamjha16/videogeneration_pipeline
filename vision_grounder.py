@@ -47,6 +47,7 @@ def ground_landmarks(
     image_path: str,
     labels: list[str],
     model: str = "gpt-4o",
+    job_id: str = None,
 ) -> dict[str, list[float]]:
     """
     Send an image to GPT-4o vision and return normalized coordinates for each landmark.
@@ -79,6 +80,13 @@ def ground_landmarks(
     if not api_key:
         print("⚠️  [VisionGrounder] OPENAI_API_KEY not set — falling back to region grid")
         return {}
+
+    # Record cost if job_id is provided
+    try:
+        from cost_tracker import LedgerManager
+        LedgerManager.record_vision_call(job_id, model=model)
+    except Exception as e:
+        print(f"⚠️ Failed to log vision cost: {e}")
 
     from openai import OpenAI
     client = OpenAI(api_key=api_key, timeout=60.0)

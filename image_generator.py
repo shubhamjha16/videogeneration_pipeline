@@ -93,6 +93,7 @@ def generate_concept_image(
     subject: str = "default",
     output_dir: str = ".",
     filename: str = None,
+    job_id: str = None,
 ) -> str:
     """
     Generate an educational diagram using OpenAI gpt-image-2.
@@ -100,6 +101,13 @@ def generate_concept_image(
     api_key = config.OPENAI_API_KEY
     if not api_key:
         raise ValueError("OPENAI_API_KEY not set in config / environment")
+
+    # Record cost if job_id is provided
+    try:
+        from cost_tracker import LedgerManager
+        LedgerManager.record_higgsfield_call(job_id, cost_per_call=0.04) # DALL-E 3 HD price
+    except Exception as e:
+        print(f"⚠️ Failed to log image cost: {e}")
 
     client = OpenAI(api_key=api_key)
 

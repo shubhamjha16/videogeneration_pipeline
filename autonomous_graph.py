@@ -200,7 +200,8 @@ def _llm_json_with_retry(*, messages: list[dict], node_name: str, state: "TonySt
                 messages=messages,
                 system_prompt=system_prompt,
                 json_mode=True,
-                include_usage=True
+                include_usage=True,
+                job_id=state.get("job_id")
             )
             # Accumulate Ledger
             state["ledger"] = state.get("ledger", {})
@@ -284,6 +285,9 @@ class TonyState(TypedDict):
     raw_input:   str
     source_type: Optional[str] # 'html' | 'json' | 'markdown'
     use_elevenlabs: bool # Cost control switch
+    avatar_type: Optional[str] # 'logo' | 'human' | 'pro' | 'user' | 'heygen'
+    avatar_id:   Optional[str] # Specific HeyGen avatar ID
+    overrides:   Optional[dict] # Manual toggles (from RenderOverrides model)
 
     # ── After director_node ────────────────────────────
     parsed_facts:  Optional[dict]
@@ -422,19 +426,28 @@ def director_node(state: TonyState) -> TonyState:
     director_output, usage = run_director(
         parsed, 
         search_results=state.get("search_results"),
-        knowledge_base=state.get("knowledge_base")
+        knowledge_base=state.get("knowledge_base"),
+        job_id=state.get("job_id"),
+        overrides=state.get("overrides")
     )
     # INDUSTRIAL LEDGER: Capture tokens
     state["ledger"] = state.get("ledger", {})
     state["ledger"]["prompt_tokens"] = state["ledger"].get("prompt_tokens", 0) + usage.get("prompt_tokens", 0)
     state["ledger"]["completion_tokens"] = state["ledger"].get("completion_tokens", 0) + usage.get("completion_tokens", 0)
-    # Respect user-specified render_mode — only use Claude's decision as fallback
-    # Industrial Sentinel: Treat "auto" as unset to allow Director to drive the path
+    
+    # ── RENDER MODE ENFORCEMENT ──
+    # Priority: 1. Manual Overrides | 2. Top-level request | 3. Autonomous Director
+    overrides = state.get("overrides") or {}
+    forced_mode = overrides.get("render_mode")
     user_mode = (state.get("render_mode") or "auto").lower().strip()
-    if user_mode in ["auto", ""]:
-        state["render_mode"] = director_output.render_mode
-    else:
+    
+    if forced_mode:
+        print(f"   🎯 Manual Override: Forcing render_mode = {forced_mode}")
+        state["render_mode"] = forced_mode
+    elif user_mode not in ["auto", ""]:
         state["render_mode"] = user_mode
+    else:
+        state["render_mode"] = director_output.render_mode
 
     # Industrial Hardening: Pydantic v1/v2 compatibility
     scenes = [
@@ -532,72 +545,107 @@ def director_node(state: TonyState) -> TonyState:
     # MINIMUM SCENE GUARD: If Gemma gets lazy and plans < 3 scenes for a full lesson
     if len(scenes) < 3 and state.get("render_mode") == "manim":
         print(f"   ⚠️  Laziness Alert: Gemma planned only {len(scenes)} scenes. FORCING INDUSTRIAL FALLBACK...")
-        # INDUSTRIAL RECOVERY: Build a guaranteed 5-scene masterclass if the AI fails
+        # INDUSTRIAL RECOVERY: Build a subject-aware masterclass if the AI fails
         facts = state.get("parsed_facts", {})
-        topic = state.get("topic", "Medical Masterclass")
+        topic = state.get("topic", "Masterclass")
+        subject = facts.get("subject", "unknown")
         
-        # ── Recovery Content ──
-        mcq_options = facts.get("mcq_data", {}).get("options", {})
-        if not mcq_options:
-            mcq_options = {
-                "A": "Increase in Cardiac Output",
-                "B": "Decrease in Left Ventricular Pressure",
-                "C": "Pulmonary Venous Congestion",
-                "D": "Systemic Hypertension"
-            }
-            print(f"   ⚠️  Recovery: No MCQ found in source. Injecting high-yield placeholders.")
+        if subject in ["maths", "physics"] or facts.get("content_type") == "numerical":
+            # ── Mathematical Recovery ──
+            steps = facts.get("steps", [])
+            if not steps:
+                steps = ["Identify the given parameters.", "Apply the relevant formula.", "Solve for the unknown variable."]
+            
+            fallback_scenes = [
+                {
+                    "visual_type": "title_card",
+                    "visual_data": {"title": topic, "subtitle": "Mathematical Derivation"},
+                    "narration_text": f"Today we are exploring the mathematical foundations of {topic}. Let's break down the derivation step-by-step."
+                },
+                {
+                    "visual_type": "formula_derivation",
+                    "visual_data": {"heading": "Derivation Process", "steps": steps[:5]},
+                    "narration_text": "Observe how the equation transforms as we apply each step of the logic."
+                }
+            ]
+            if len(steps) > 5:
+                fallback_scenes.append({
+                    "visual_type": "formula_derivation",
+                    "visual_data": {"heading": "Conclusion", "steps": steps[5:10]},
+                    "narration_text": "Continuing the process, we reach the final result."
+                })
+            fallback_scenes.append({
+                "visual_type": "summary",
+                "visual_data": {"heading": "Key Takeaway", "points": [f"Final result for {topic} derived successfully."]},
+                "narration_text": "This concludes our derivation. Mastery of these steps is key for your exams."
+            })
+        else:
+            # ── Medical/General Recovery ──
+            mcq_options = facts.get("options", {})
+            if not mcq_options:
+                mcq_options = {
+                    "A": "Increase in Cardiac Output",
+                    "B": "Decrease in Left Ventricular Pressure",
+                    "C": "Pulmonary Venous Congestion",
+                    "D": "Systemic Hypertension"
+                }
+                print(f"   ⚠️  Recovery: No MCQ found in source. Injecting high-yield placeholders.")
 
-        fallback_scenes = [
-            {
-                "visual_type": "title_card",
-                "visual_data": {"title": topic, "subtitle": "Comprehensive Review"},
-                "narration_text": f"Welcome back. Today we are performing a deep dive into {topic}. This is essential material for your boards."
-            },
-            {
-                "visual_type": "concept_bullets",
-                "visual_data": {"heading": "Core Principles", "bullets": facts.get("key_points", ["Conceptual Overview", "Mechanism of Action"])[:3]},
-                "narration_text": "Let's begin with the core principles. Understanding the underlying mechanism is the key to mastering this topic."
-            },
-            {
-                "visual_type": "annotated_image",
-                "visual_data": {
-                    "label": f"Anatomy of {topic}", 
-                    "target_landmark": "heart",
-                    "region": "center_right",
-                    "bullets": ["Left Ventricular Dysfunction", "Pulmonary Fluid Backup"]
+            correct_letter = facts.get("correct_answer", "C")
+            correct_name = mcq_options.get(correct_letter, {}).get("name") if isinstance(mcq_options.get(correct_letter), dict) else mcq_options.get(correct_letter, "Pulmonary Venous Congestion")
+            explanation = mcq_options.get(correct_letter, {}).get("explanation") if isinstance(mcq_options.get(correct_letter), dict) else "This reflects the underlying pathophysiology discussed in the lesson."
+
+            fallback_scenes = [
+                {
+                    "visual_type": "title_card",
+                    "visual_data": {"title": topic, "subtitle": "Comprehensive Review"},
+                    "narration_text": f"Welcome back. Today we are performing a deep dive into {topic}. This is essential material for your boards."
                 },
-                "narration_text": "Observe the cardiac structures here. Identifying the specific dysfunctional regions is critical for diagnosis."
-            },
-            {
-                "visual_type": "mcq_layout",
-                "visual_data": {
-                    "question": f"What is the primary clinical feature of {topic}?",
-                    "options": mcq_options
+                {
+                    "visual_type": "concept_bullets",
+                    "visual_data": {"heading": "Core Principles", "bullets": facts.get("key_points", ["Conceptual Overview", "Mechanism of Action"])[:3]},
+                    "narration_text": "Let's begin with the core principles. Understanding the underlying mechanism is the key to mastering this topic."
                 },
-                "narration_text": "Now, let's test your knowledge with a board-style question. Study the options carefully."
-            },
-            {
-                "visual_type": "cross_out",
-                "visual_data": {
-                    "question": f"What is the primary clinical feature of {topic}?",
-                    "letters": ["A", "B", "D"]
+                {
+                    "visual_type": "annotated_image",
+                    "visual_data": {
+                        "label": f"Anatomy of {topic}", 
+                        "target_landmark": "heart",
+                        "region": "center_right",
+                        "bullets": ["Primary clinical features", "Mechanism of dysfunction"]
+                    },
+                    "narration_text": "Observe the relevant structures here. Identifying the specific dysfunctional regions is critical for diagnosis."
                 },
-                "narration_text": "We can immediately rule out several of these. Focus on the core pathophysiology we discussed."
-            },
-            {
-                "visual_type": "answer_reveal",
-                "visual_data": {
-                    "question": f"What is the primary clinical feature of {topic}?",
-                    "letter": facts.get("mcq_data", {}).get("correct_answer", "C"),
-                    "name": mcq_options.get(facts.get("mcq_data", {}).get("correct_answer", "C"), "Pulmonary Venous Congestion"),
-                    "explanation": facts.get("correct_answer_text", "This reflects the underlying pathophysiology discussed in the lesson.")
+                {
+                    "visual_type": "mcq_layout",
+                    "visual_data": {
+                        "question": f"What is the primary clinical feature of {topic}?",
+                        "options": {l: (o.get("name") if isinstance(o, dict) else str(o)) for l, o in mcq_options.items()}
+                    },
+                    "narration_text": "Now, let's test your knowledge with a board-style question. Study the options carefully."
                 },
-                "narration_text": "The correct answer is highlighted. Clinical mastery requires recognizing these specific patterns."
-            }
-        ]
+                {
+                    "visual_type": "cross_out",
+                    "visual_data": {
+                        "question": f"What is the primary clinical feature of {topic}?",
+                        "letters": [l for l in mcq_options.keys() if l != correct_letter]
+                    },
+                    "narration_text": "We can immediately rule out several of these. Focus on the core pathophysiology we discussed."
+                },
+                {
+                    "visual_type": "answer_reveal",
+                    "visual_data": {
+                        "question": f"What is the primary clinical feature of {topic}?",
+                        "letter": correct_letter,
+                        "name": correct_name,
+                        "explanation": explanation
+                    },
+                    "narration_text": "The correct answer is highlighted. Clinical mastery requires recognizing these specific patterns."
+                }
+            ]
         scenes = fallback_scenes
         state["scenes"] = scenes
-        print(f"   ✅ Industrial Recovery: Forced a high-fidelity 5-scene structure.")
+        print(f"   ✅ Industrial Recovery: Forced a subject-appropriate fallback structure.")
 
     state["scenes"] = scenes
     state["search_queries"] = director_output.search_queries
@@ -654,7 +702,7 @@ def research_node(state: TonyState) -> TonyState:
         for query in queries:
             print(f"   🔎 Searching: {query}")
             _log_progress(state, "RESEARCH", f"🔎 Metasearch: '{query}'")
-            results = search_searxng(query)
+            results = search_searxng(query, job_id=state.get("job_id"))
             all_results.extend(results)
     except Exception as e:
         # CIRCUIT BREAKER: If search fails technically, log warning and proceed with internal knowledge
@@ -679,7 +727,7 @@ def research_node(state: TonyState) -> TonyState:
     if unique_results:
         print(f"   🧠 Distilling search results into verified knowledge...")
         _log_progress(state, "KNOWLEDGE", f"🧠 Distilling {len(unique_results)} search results into verified knowledge...")
-        distilled = distill_search_results(state["topic"], unique_results)
+        distilled = distill_search_results(state["topic"], unique_results, job_id=state.get("job_id"))
         save_knowledge(state["topic"], distilled)
         state["knowledge_base"] = distilled
     
@@ -743,7 +791,7 @@ def vision_node(state: TonyState) -> TonyState:
                         if s.get("visual_type") == "concept_image":
                             target_prompt = s.get("visual_data", {}).get("image_prompt") or s.get("visual_data", {}).get("title") or state["topic"]
                             break
-                    state["image_path"] = generate_concept_image(target_prompt, subject, output_dir=output_dir, filename="tony_diagram.png")
+                    state["image_path"] = generate_concept_image(target_prompt, subject, output_dir=output_dir, filename="tony_diagram.png", job_id=state.get("job_id"))
                 except Exception as e:
                     state["image_path"] = None
                     _log_fallback(state, "VISION", "skip_concept_image", str(e), type(e).__name__)
@@ -762,7 +810,7 @@ def vision_node(state: TonyState) -> TonyState:
             # Generate the image if not already cached
             if not os.path.exists(img_pre_path):
                 try:
-                    img_path = generate_concept_image(label, subject, output_dir=output_dir, filename=img_filename)
+                    img_path = generate_concept_image(label, subject, output_dir=output_dir, filename=img_filename, job_id=state.get("job_id"))
                 except Exception as e:
                     print(f"   ⚠️  Annotated image generation failed for scene {i}: {e}")
                     img_path = state.get("image_path")  # fallback to global
@@ -778,7 +826,7 @@ def vision_node(state: TonyState) -> TonyState:
             if target_landmark and img_path:
                 try:
                     from vision_grounder import ground_landmarks
-                    coords = ground_landmarks(img_path, [target_landmark])
+                    coords = ground_landmarks(img_path, [target_landmark], job_id=state.get("job_id"))
                     if coords:
                         # Store coords keyed by scene index for the renderer
                         all_landmark_coords[str(i)] = coords
@@ -807,7 +855,7 @@ def vision_node(state: TonyState) -> TonyState:
                 else:
                     print(f"   Generating counting item: {item}...")
                     try:
-                        path = generate_concept_image(item, subject="counting_item", output_dir=output_dir, filename=f"{asset_id}.png")
+                        path = generate_concept_image(item, subject="counting_item", output_dir=output_dir, filename=f"{asset_id}.png", job_id=state.get("job_id"))
                         image_paths[asset_id] = path
                     except Exception as e:
                         print(f"   ⚠️  Counting asset failed: {e}")
@@ -822,7 +870,7 @@ def vision_node(state: TonyState) -> TonyState:
                     else:
                         print(f"   Generating thematic background for counting scene {i}: {bg_prompt}...")
                         try:
-                            bg_path = generate_concept_image(bg_prompt, subject="explainer_background", output_dir=output_dir, filename=f"{bg_id}.png")
+                            bg_path = generate_concept_image(bg_prompt, subject="explainer_background", output_dir=output_dir, filename=f"{bg_id}.png", job_id=state.get("job_id"))
                             image_paths[bg_id] = bg_path
                         except Exception as e:
                             print(f"   ⚠️  Counting background failed: {e}")
@@ -837,7 +885,7 @@ def vision_node(state: TonyState) -> TonyState:
                 else:
                     print(f"   Generating cinematic metaphor for scene {i}...")
                     try:
-                        path = generate_concept_image(prompt, subject="explainer_metaphor", output_dir=output_dir, filename=f"{asset_id}.png")
+                        path = generate_concept_image(prompt, subject="explainer_metaphor", output_dir=output_dir, filename=f"{asset_id}.png", job_id=state.get("job_id"))
                         image_paths[asset_id] = path
                     except Exception as e:
                         print(f"   ⚠️  Metaphor asset failed: {e}")
@@ -898,7 +946,7 @@ def architect_node(state: TonyState) -> TonyState:
     use_el = state.get("use_elevenlabs", False)
     for i, scene in enumerate(scenes):
         # ━━━ Audio & Alignment ━━━
-        audio_path, char_count = generate_audio(scene["narration_text"], i, output_dir=job_dir, use_elevenlabs=use_el)
+        audio_path, char_count = generate_audio(scene["narration_text"], i, output_dir=job_dir, use_elevenlabs=use_el, job_id=state.get("job_id"))
         
         # INDUSTRIAL LEDGER: Capture characters
         state["ledger"] = state.get("ledger", {})
@@ -933,6 +981,7 @@ def architect_node(state: TonyState) -> TonyState:
         output_path=script_path,
         knowledge_base=state.get("knowledge_base"),
         landmark_coords=state.get("landmark_coords", {}),
+        job_id=state.get("job_id")
     )
     state["manim_script_path"] = script_path
     print(f"   Script written with synced durations: {script_path}")
@@ -1056,7 +1105,8 @@ def healer_node(state: TonyState) -> TonyState:
     fixed_script, usage = run_healer(
         script_content, 
         state["rendering_errors"], 
-        knowledge_base=state.get("knowledge_base")
+        knowledge_base=state.get("knowledge_base"),
+        job_id=state.get("job_id")
     )
     # INDUSTRIAL LEDGER: Capture tokens
     state["ledger"] = state.get("ledger", {})
@@ -1402,6 +1452,7 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
     if _root not in sys.path:
         sys.path.insert(0, _root)
     from ppt_engine.slide_generator import generate_slide_image
+    from ppt_engine.ppt_pipeline import run_ppt_pipeline # Import to get access to job_id passing if needed
 
     job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir = os.path.join("output", job_prefix)
@@ -1419,6 +1470,7 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
             narration=narration,
             layout=layout,
             layout_data=layout_data,
+            job_id=state.get("job_id")
         )
         if path and os.path.exists(path):
             slide_paths.append(path)
@@ -1448,7 +1500,7 @@ def ppt_tts_node(state: TonyState) -> TonyState:
             data = slide.get("data", {})
             narration = data.get("heading") or data.get("title") or state["topic"]
         try:
-            path, char_count = generate_audio(narration, i, output_dir=job_dir)
+            path, char_count = generate_audio(narration, i, output_dir=job_dir, job_id=state.get("job_id"))
             # INDUSTRIAL LEDGER: Capture characters
             state["ledger"] = state.get("ledger", {})
             state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + char_count
@@ -1493,7 +1545,8 @@ def ppt_video_node(state: TonyState) -> TonyState:
             _image_to_video(slide_img, audio_path, base_path)
             avatar_path, duration_sec = generate_avatar_video(
                 state["slides"][i].get("narration", ""), audio_path, i,
-                output_dir=job_dir, avatar_type="human"
+                output_dir=job_dir, avatar_type=state.get("avatar_type") or "human",
+                job_id=state.get("job_id")
             )
             # INDUSTRIAL LEDGER: Capture duration
             state["ledger"] = state.get("ledger", {})
@@ -1624,7 +1677,8 @@ def explainer_node(state: TonyState) -> TonyState:
             state["scenes"], 
             state.get("image_paths", {}), 
             job_dir, 
-            state["topic"]
+            state["topic"],
+            job_id=state.get("job_id")
         )
         state["output_path"] = os.path.abspath(video_path)
         
@@ -1659,14 +1713,26 @@ def heygen_node(state: TonyState) -> TonyState:
     # 1. Generate audio for HeyGen to lip-sync to
     try:
         full_text = " ".join(s["narration_text"] for s in state["scenes"])
-        audio_path, char_count = generate_audio(full_text, 0, output_dir=job_dir)
+        audio_path, char_count = generate_audio(full_text, 0, output_dir=job_dir, job_id=state.get("job_id"))
         # INDUSTRIAL LEDGER: Capture characters
         state["ledger"] = state.get("ledger", {})
         state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + char_count
         state["audio_files"] = [audio_path]
 
         heygen_video_output = os.path.join(job_dir, "heygen_avatar.mp4")
-        heygen_video, duration_sec = generate_heygen_avatar(full_text, audio_path, heygen_video_output)
+        heygen_res = generate_heygen_avatar(
+            full_text, audio_path, 
+            output_dir=job_dir,
+            avatar_id=state.get("avatar_id"),
+            avatar_type=state.get("avatar_type"),
+            job_id=state.get("job_id")
+        )
+        
+        # Validate return tuple format
+        if not heygen_res or not isinstance(heygen_res, tuple) or len(heygen_res) < 2:
+             heygen_res = (None, 0)
+             
+        heygen_video, duration_sec = heygen_res
         
         # INDUSTRIAL LEDGER: Capture duration
         state["ledger"] = state.get("ledger", {})
@@ -1858,7 +1924,7 @@ def route_by_mode(state: TonyState) -> str:
         return "ppt_planner"
     elif mode == "explainer":
         return "explainer"
-    elif mode in {"user_generated_video", "user_generated", "human_face"}:
+    elif mode in {"heygen", "user_generated_video", "user_generated", "human_face"}:
         return "heygen"
     return "architect"
 

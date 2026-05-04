@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-def generate_lip_sync(video_path, audio_path, output_path):
+def generate_lip_sync(video_path, audio_path, output_path, job_id: str = None):
     """
     Calls the ElevenLabs Lip-Sync API to animate a video with a given audio file.
     """
@@ -66,6 +66,14 @@ def generate_lip_sync(video_path, audio_path, output_path):
                         if os.path.exists(tmp_path):
                             os.remove(tmp_path)
                     print(f"✅ Lip-Sync Success: {output_path}")
+                    
+                    # Record cost if job_id is provided
+                    try:
+                        from cost_tracker import LedgerManager
+                        LedgerManager.record_vision_call(job_id, model="eleven-lip-sync") # Use vision call logic for now or add specific
+                    except Exception as e:
+                        print(f"⚠️ Failed to log lip-sync cost: {e}")
+
                     return output_path
                 else:
                     print("❌ Lip-Sync finished but no video_url provided.")

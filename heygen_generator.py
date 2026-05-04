@@ -13,7 +13,7 @@ else:
     print(f"🧬 [HeyGen] Active Avatar ID: {HEYGEN_AVATAR_ID}")
 
 
-def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_id: str = None) -> str:
+def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_id: str = None, job_id: str = None) -> tuple[str, float]:
     """
     HeyGen API Integration (Production Ready).
     1. Uploads ElevenLabs generated audio to HeyGen as an Asset.
@@ -111,7 +111,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
             raise ValueError(f"Failed to get audio asset ID. Response: {res.text}")
     except Exception as e:
         print(f"❌ [HeyGen] Audio upload failed: {e}")
-        return None # Critical failure, return None to trigger fallback
+        return None, 0 # Critical failure, return None to trigger fallback
 
     # 2. Add Video Task
     print(f"   [HeyGen] Triggering Video Generation (Avatar: {avatar_id})...")
@@ -143,7 +143,7 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
             raise ValueError(f"No video_id returned: {res.text}")
     except Exception as e:
         print(f"❌ [HeyGen] Generation request failed: {e}")
-        return None
+        return None, 0
 
     # 3. Poll for Status (v2 Protocol)
     print(f"   ⏳ [HeyGen] Task {video_id[:8]}... created. Polling for results...")
@@ -186,15 +186,20 @@ def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_
                     
                     # Return path and actual duration from API
                     actual_duration = data.get("duration", 0)
+                    try:
+                        from cost_tracker import LedgerManager
+                        LedgerManager.record_heygen_call(job_id, actual_duration / 60.0)
+                    except Exception as e:
+                        print(f"⚠️ Failed to log HeyGen cost: {e}")
                     return output_path, actual_duration
             elif status in ["failed", "canceled"]:
 
                 print(f"❌ [HeyGen] Generation failed: {data.get('error', 'unknown error')}")
-                return None # Return None to trigger pipeline failure instead of corrupt output
+                return None, 0 # Return None to trigger pipeline failure instead of corrupt output
         except Exception as e:
             print(f"   [Attempt {attempt}] [HeyGen] Polling warning (Status: {getattr(res, 'status_code', 'N/A')}): {e}")
             
         time.sleep(15)
 
     print("⚠️ [HeyGen] Polling timed out after 10 mins.")
-    return None
+    return None, 0

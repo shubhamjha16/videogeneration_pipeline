@@ -142,7 +142,7 @@ Return valid JSON only — no explanation, no markdown:
 }"""
 
 
-def _split_into_slides(topic: str, text: str) -> list[dict]:
+def _split_into_slides(topic: str, text: str, job_id: str = None) -> list[dict]:
     """Use configured LLM to intelligently split text into presentation slides."""
     from llm_factory import LLMFactory, clean_llm_json
 
@@ -151,7 +151,8 @@ def _split_into_slides(topic: str, text: str) -> list[dict]:
             {"role": "user", "content": f"TOPIC: {topic}\n\nCONTENT:\n{text}"}
         ],
         system_prompt=_SPLIT_PROMPT,
-        json_mode=True
+        json_mode=True,
+        job_id=job_id
     )
 
     data = clean_llm_json(content)
@@ -291,6 +292,7 @@ def run_ppt_pipeline(
     text: str,
     output_dir: str = None,
     with_avatar: bool = False,
+    job_id: str = None,
 ) -> str:
     """
     Generate a doodle-style presentation video.
@@ -326,7 +328,7 @@ def run_ppt_pipeline(
     # ── 1. Split into slides ───────────────────────────────────────────────────
     print("   Splitting content into slides...")
     try:
-        slides = _split_into_slides(topic, text)
+        slides = _split_into_slides(topic, text, job_id=job_id)
     except Exception as e:
         print(f"   ⚠️  Groq split failed: {e} — using rule-based fallback")
         slides = _fallback_split(topic, text)
@@ -355,7 +357,7 @@ def run_ppt_pipeline(
         )
 
         # TTS audio
-        audio_path = generate_audio(narration_text, i, output_dir=job_dir)
+        audio_path = generate_audio(narration_text, i, output_dir=job_dir, job_id=job_id)
 
         # Avatar overlay (optional)
         if with_avatar:

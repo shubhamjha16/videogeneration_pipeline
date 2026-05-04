@@ -87,10 +87,14 @@ def get_cache() -> Cache:
 
 # ── Key Generators ───────────────────────────────────────────────────
 
-def generate_idempotency_key(payload: dict, render_mode: str) -> str:
-    """Create a unique key for a job request."""
+def generate_idempotency_key(payload: dict, render_mode: str, overrides: dict = None) -> str:
+    """Create a unique key for a job request. Includes overrides to prevent cache collisions."""
     # Ensure stable sorting of keys for consistent hashing
-    canonical = json.dumps({"p": payload, "m": render_mode}, sort_keys=True)
+    data = {"p": payload, "m": render_mode}
+    if overrides:
+        data["o"] = overrides
+        
+    canonical = json.dumps(data, sort_keys=True)
     h = hashlib.sha256(canonical.encode()).hexdigest()
     return f"idempotency:render:{h}"
 

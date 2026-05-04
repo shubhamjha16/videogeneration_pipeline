@@ -107,7 +107,8 @@ def _detect_content_type(soup: BeautifulSoup, full_text: str) -> str:
 
     # MCQ: has option analysis or A/B/C/D pattern or options list
     has_options_heading = any('option' in h or 'analysis' in h for h in headings)
-    has_abcd = bool(re.search(r'\b[A-D1-4]\.\s+\w', full_text))
+    # Refined: Require at least two [A-D]. markers OR four [1-4]. markers to avoid math step false positives
+    has_abcd = len(re.findall(r'\b[A-D]\.\s+\w', full_text)) >= 2 or len(re.findall(r'\b[1-4]\.\s+\w', full_text)) >= 4
     has_correct = any('correct' in h or 'answer' in h for h in headings)
     if has_options_heading or has_abcd or has_correct:
         return "mcq"
