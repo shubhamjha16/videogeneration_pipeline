@@ -389,12 +389,11 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
         return
 
     import time
-    max_retries = 3
-    last_status_code = None
-    last_error = ""
+    max_retries = 5
     for attempt in range(max_retries):
         try:
-            resp = requests.post(webhook_url, json=status_data, timeout=30)
+            # Use a longer timeout for the webhook itself
+            resp = requests.post(webhook_url, json=status_data, timeout=60)
             last_status_code = resp.status_code
 
             if resp.status_code < 300:
@@ -408,7 +407,9 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
             print(f"⚠️  Webhook Retry {attempt + 1} for job {job_id}: {e}")
         
         if attempt < max_retries - 1:
-            time.sleep(2 ** attempt)
+            # Jittered exponential backoff: 2, 4, 8, 16 seconds
+            wait_time = (2 ** attempt) + (attempt * 2)
+            time.sleep(wait_time)
 
     print(f"❌ Webhook FAILED (Job {job_id}) after {max_retries} attempts. Persisting to DLQ.")
     _dlq_persist(job_id, status_data, webhook_url=webhook_url, last_status_code=last_status_code, last_error=last_error)
@@ -767,6 +768,11 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
         except Exception as e:
             error_category = type(e).__name__
             error_detail = str(e)
+            
+            # Industrial Sentinel: Calculate sunk costs even on failure
+            from cost_tracker import LedgerManager
+            sunk_cost = LedgerManager.get_job_total_cost(job_id)
+            print(f"❌ [{error_category}] Pipeline Error for job {job_id}: {error_detail} (Sunk Cost: ${sunk_cost})")
         else:
             error_category = None
             error_detail = None
@@ -794,6 +800,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                     "error": f"[{error_category}] {error_detail}",
                     "video_url": "",
                     "progress": 0,
+                    "usd_cost": sunk_cost,
                     "webhook_url": jobs[job_id].get("webhook_url"),
                     "updated_at": datetime.utcnow().isoformat() + "Z"
                 }
