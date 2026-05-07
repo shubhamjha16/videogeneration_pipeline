@@ -409,6 +409,19 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
     """Industrial Sentinel: Universal Input Dispatcher (Handles JSON, Markdown, HTML, or Raw Text)."""
     import json
     
+    # Handle solutionV2 format from Spring Boot ask-tony-ai
+    if isinstance(input_data, list) and all(
+        isinstance(item, dict) and "title" in item and "description" in item 
+        for item in input_data
+    ):
+        # Convert solutionV2 sections to HTML
+        html_parts = []
+        for section in input_data:
+            title = section.get("title", "")
+            desc = section.get("description", "")
+            html_parts.append(f"<h2>{title}</h2><div>{desc}</div>")
+        input_data = "\n".join(html_parts)
+
     # ── 1. Input Normalization (Polymorphic Dispatcher) ──
     html = ""
     

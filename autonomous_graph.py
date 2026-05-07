@@ -375,6 +375,21 @@ def director_node(state: TonyState) -> TonyState:
         state["knowledge_base"] = kb_facts
         _log_progress(state, "KNOWLEDGE", f"📚 KB Hit: Using verified facts for {state['topic']}")
     
+    # If solutionV2 came from Spring Boot, inject it as KB ground truth
+    raw_input = state.get("raw_input")
+    if isinstance(raw_input, list) and all(
+        isinstance(item, dict) and "title" in item 
+        for item in raw_input
+    ):
+        from knowledge_manager import inject_solution_v2_as_knowledge
+        kb_facts = inject_solution_v2_as_knowledge(
+            state["topic"], 
+            raw_input
+        )
+        state["knowledge_base"] = kb_facts
+        _log_progress(state, "KNOWLEDGE", 
+            "📚 SolutionV2 injected as ground truth KB")
+    
     parsed = None
     raw_input = state["raw_input"]
     
@@ -439,6 +454,16 @@ def director_node(state: TonyState) -> TonyState:
     # Priority: 1. Manual Overrides | 2. Top-level request | 3. Autonomous Director
     overrides = state.get("overrides") or {}
     forced_mode = overrides.get("render_mode")
+
+    # Handle boolean flags from Spring Boot MySQL
+    if overrides.get("has_formula") or overrides.get("has_equation"):
+        if not forced_mode:
+            state["render_mode"] = "manim"
+            print("   🔢 Override: has_formula/has_equation → forcing manim")
+
+    if overrides.get("animation_enabled") == False:
+        state["rendering_errors"] = "Animation disabled for this question"
+        return state
     user_mode = (state.get("render_mode") or "auto").lower().strip()
     
     if forced_mode:

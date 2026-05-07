@@ -26,6 +26,35 @@ def get_knowledge(topic: str) -> Optional[Dict[str, Any]]:
             print(f"⚠️ Error reading knowledge file {path}: {e}")
     return None
 
+def inject_solution_v2_as_knowledge(topic: str, solution_v2: list) -> dict:
+    """
+    Convert Spring Boot solutionV2 directly into KB format
+    so Director uses it as ground truth instead of searching web
+    """
+    facts = {
+        "summary": "",
+        "key_facts": [],
+        "visual_metaphors": [],
+        "source": "solution_v2"
+    }
+    
+    for section in solution_v2:
+        title = section.get("title", "")
+        desc = section.get("description", "")
+        
+        if title == "Concept Explanation":
+            facts["summary"] = desc
+        elif title == "Option Analysis":
+            facts["key_facts"].append(desc)
+        elif title == "Final Answer":
+            facts["key_facts"].insert(0, f"ANSWER: {desc}")
+        elif title == "Citations":
+            facts["visual_metaphors"].append(desc)
+    
+    # Save to KB so Director finds it
+    save_knowledge(topic, facts)
+    return facts
+
 def save_knowledge(topic: str, facts: Dict[str, Any]) -> str:
     """Save verified facts to the KB."""
     os.makedirs(KNOWLEDGE_DIR, exist_ok=True)

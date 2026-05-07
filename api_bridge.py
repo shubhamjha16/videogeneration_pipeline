@@ -428,6 +428,7 @@ class RenderOverrides(BaseModel):
 class RenderRequest(BaseModel):
     topic:       str
     html:        Optional[Any] = None  # Legacy/Composite HTML field
+    solution_v2: Optional[Any] = None  # Spring Boot solutionV2 format
     json_data:   Optional[Any] = None  # Structured JSON facts or derivation steps
     markdown:    Optional[str] = None  # Markdown content with LaTeX support
     render_mode: Optional[Literal["manim", "presentation", "explainer", "heygen", "notes", "user_generated_video", "user_generated"]] = None
@@ -941,6 +942,9 @@ def start_render(
     if request.markdown:
         combined_inputs.append(request.markdown)
         source_labels.append("markdown")
+    if request.solution_v2:
+        combined_inputs.append(request.solution_v2)
+        source_labels.append("solution_v2")
 
     if not combined_inputs:
         raise HTTPException(status_code=400, detail="topic and at least one content source (html, json_data, or markdown) are required")
