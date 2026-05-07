@@ -224,67 +224,58 @@ def _apply_animated_reveal(
     # Time allocated per section
     time_per_section = audio_duration / num_sections
 
-    # Transition duration (wipe effect within each section)
-    transition_dur = min(1.2, time_per_section * 0.3)
+    # Slider transition speed (how fast the camera moves between sections)
+    pan_speed = 0.8  # seconds for a slide transition
 
     def get_reveal_mask(t):
         """
-        For a given time t, compute a per-pixel alpha mask (0.0 to 1.0)
-        indicating how much of each row is revealed.
+        For a given time t, all sections up to the current one are revealed.
+        This creates the 'pop-in' slider effect.
         """
         mask = np.zeros(scaled_h, dtype=np.float32)
-
-        for i in range(num_sections):
-            section_start_time = i * time_per_section
-            section_top = int(breakpoints[i] * scaled_h)
-            section_bot = int(breakpoints[i + 1] * scaled_h)
-            section_height = section_bot - section_top
-
-            if t >= section_start_time + transition_dur:
-                # Fully revealed
-                mask[section_top:section_bot] = 1.0
-            elif t > section_start_time:
-                # Currently revealing — wipe down
-                progress = (t - section_start_time) / transition_dur
-                # Sharper reveal for PPT style
-                smooth = progress * progress * (3 - 2 * progress)
-                reveal_rows = int(smooth * section_height)
-                mask[section_top:section_top + reveal_rows] = 1.0
-            # else: hidden (stays 0.0)
-
+        current_section = min(int(t / time_per_section), num_sections - 1)
+        
+        # Reveal all sections up to the current one
+        last_revealed_row = int(breakpoints[current_section + 1] * scaled_h)
+        mask[:last_revealed_row] = 1.0
         return mask
 
     def get_camera_y(t):
-        """Camera follows the current reveal point with smooth easing."""
-        # Which section is currently being revealed?
-        current_section = min(int(t / time_per_section), num_sections - 1)
+        """
+        Camera performs a discrete 'Slider' transition:
+        - Stationary during the majority of a section's narration.
+        - Fast, smooth slide to the next section at the scene boundary.
+        """
+        section_idx = int(t / time_per_section)
+        
+        # Current section boundaries
+        curr_idx = min(section_idx, num_sections - 1)
+        curr_mid = int((breakpoints[curr_idx] + breakpoints[curr_idx + 1]) / 2 * scaled_h)
+        curr_y = max(0, min(curr_mid - out_h // 2, scaled_h - out_h))
 
-        # Target: center the viewport on the middle of the current section
-        section_mid = int((breakpoints[current_section] + breakpoints[current_section + 1]) / 2 * scaled_h)
-        target_y = max(0, min(section_mid - out_h // 2, scaled_h - out_h))
-
-        # For smooth transitions, blend with previous target
-        if current_section > 0:
-            prev_mid = int((breakpoints[current_section - 1] + breakpoints[current_section]) / 2 * scaled_h)
-            prev_y = max(0, min(prev_mid - out_h // 2, scaled_h - out_h))
-
-            # Interpolate between previous and current target
-            section_progress = (t - current_section * time_per_section) / time_per_section
-            ease = section_progress * section_progress * (3 - 2 * section_progress)
-            target_y = int(prev_y + (target_y - prev_y) * ease)
-
-        return target_y
+        # Check if we are in the 'transition window' to the next section
+        section_t = t % time_per_section
+        if section_idx < num_sections - 1 and section_t > (time_per_section - pan_speed):
+            # Smoothly interpolate to the next section's y-offset
+            next_idx = section_idx + 1
+            next_mid = int((breakpoints[next_idx] + breakpoints[next_idx + 1]) / 2 * scaled_h)
+            next_y = max(0, min(next_mid - out_h // 2, scaled_h - out_h))
+            
+            # Progress of the pan (0.0 to 1.0)
+            progress = (section_t - (time_per_section - pan_speed)) / pan_speed
+            # Smooth ease-in-out for the 'slide'
+            ease = progress * progress * (3 - 2 * progress)
+            return int(curr_y + (next_y - curr_y) * ease)
+        
+        return curr_y
 
     def make_frame(t):
-        """Compose each video frame with reveal mask + camera pan."""
-        # Get the reveal mask
+        """Compose frames with discrete slider reveals and camera pans."""
         mask = get_reveal_mask(t)
-
-        # Blend full image and solid background using the mask
-        mask_3d = mask[:, np.newaxis, np.newaxis]  # (H, 1, 1) for broadcasting
+        mask_3d = mask[:, np.newaxis, np.newaxis]
         frame = (img_full * mask_3d + img_hidden * (1.0 - mask_3d)).astype(np.uint8)
 
-        # Camera pan: crop viewport from the full-height composed frame
+        # Camera 'Slider' pan
         cam_y = get_camera_y(t)
         viewport = frame[cam_y:cam_y + out_h, :out_w]
 
