@@ -108,7 +108,7 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
     for attempt in range(3):
         try:
             response = client.images.generate(
-                model="gpt-image-2",
+                model="dall-e-3",
                 prompt=prompt,
                 size="1024x1792",  # Portrait for vertical scroll
                 quality="hd",
@@ -127,6 +127,7 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
 
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "notes_infographic.png")
+    import base64
     image_bytes = base64.b64decode(response.data[0].b64_json)
 
     with open(output_path, "wb") as f:
@@ -210,12 +211,12 @@ def _apply_animated_reveal(
     # Pre-render: full image as numpy array
     img_full = np.array(img_pil)
 
-    # Pre-render: blurred/foggy version (unrevealed sections)
-    img_blurred_pil = img_pil.filter(ImageFilter.GaussianBlur(radius=18))
-    # Add a semi-transparent cream overlay to the blurred version
-    cream_overlay = Image.new("RGB", (scaled_w, scaled_h), (255, 253, 245))
-    img_foggy_pil = Image.blend(img_blurred_pil, cream_overlay, alpha=0.55)
-    img_foggy = np.array(img_foggy_pil)
+    # Pre-render: solid background (hides unrevealed sections)
+    # Use the color of the top-left pixel of the notes as the "hidden" color
+    # (Usually white or cream)
+    bg_color = img_pil.getpixel((0, 0))
+    img_hidden_pil = Image.new("RGB", (scaled_w, scaled_h), bg_color)
+    img_hidden = np.array(img_hidden_pil)
 
     # Section breakpoints (fractional positions on the image height)
     breakpoints = _compute_section_breakpoints(num_sections)
@@ -224,7 +225,7 @@ def _apply_animated_reveal(
     time_per_section = audio_duration / num_sections
 
     # Transition duration (wipe effect within each section)
-    transition_dur = min(1.5, time_per_section * 0.4)
+    transition_dur = min(1.2, time_per_section * 0.3)
 
     def get_reveal_mask(t):
         """
@@ -245,11 +246,11 @@ def _apply_animated_reveal(
             elif t > section_start_time:
                 # Currently revealing — wipe down
                 progress = (t - section_start_time) / transition_dur
-                # Smooth ease-in-out
+                # Sharper reveal for PPT style
                 smooth = progress * progress * (3 - 2 * progress)
                 reveal_rows = int(smooth * section_height)
                 mask[section_top:section_top + reveal_rows] = 1.0
-            # else: not yet revealed (stays 0.0)
+            # else: hidden (stays 0.0)
 
         return mask
 
@@ -274,35 +275,14 @@ def _apply_animated_reveal(
 
         return target_y
 
-    # Highlight glow color (warm golden yellow, subtle)
-    glow_color = np.array([255, 235, 130], dtype=np.uint8)
-
     def make_frame(t):
         """Compose each video frame with reveal mask + camera pan."""
         # Get the reveal mask
         mask = get_reveal_mask(t)
 
-        # Blend full image and foggy image using the mask
+        # Blend full image and solid background using the mask
         mask_3d = mask[:, np.newaxis, np.newaxis]  # (H, 1, 1) for broadcasting
-        frame = (img_full * mask_3d + img_foggy * (1.0 - mask_3d)).astype(np.uint8)
-
-        # Add subtle highlight glow at the reveal boundary
-        current_section = min(int(t / time_per_section), num_sections - 1)
-        section_start_time = current_section * time_per_section
-        if t < section_start_time + transition_dur and t >= section_start_time:
-            progress = (t - section_start_time) / transition_dur
-            smooth = progress * progress * (3 - 2 * progress)
-            section_top = int(breakpoints[current_section] * scaled_h)
-            section_height = int((breakpoints[current_section + 1] - breakpoints[current_section]) * scaled_h)
-            glow_row = section_top + int(smooth * section_height)
-            # Draw a 4px warm glow line at the reveal edge
-            glow_start = max(0, glow_row - 2)
-            glow_end = min(scaled_h, glow_row + 2)
-            glow_alpha = 0.35
-            for row in range(glow_start, glow_end):
-                frame[row, :] = (
-                    frame[row, :] * (1 - glow_alpha) + glow_color * glow_alpha
-                ).astype(np.uint8)
+        frame = (img_full * mask_3d + img_hidden * (1.0 - mask_3d)).astype(np.uint8)
 
         # Camera pan: crop viewport from the full-height composed frame
         cam_y = get_camera_y(t)
@@ -310,7 +290,7 @@ def _apply_animated_reveal(
 
         # Safety: pad if viewport is smaller than expected
         if viewport.shape[0] < out_h:
-            pad = np.ones((out_h - viewport.shape[0], out_w, 3), dtype=np.uint8) * 255
+            pad = np.ones((out_h - viewport.shape[0], out_w, 3), dtype=np.uint8) * bg_color[0]
             viewport = np.vstack([viewport, pad])
 
         return viewport
