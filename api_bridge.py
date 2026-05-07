@@ -430,7 +430,7 @@ class RenderRequest(BaseModel):
     html:        Optional[Any] = None  # Legacy/Composite HTML field
     json_data:   Optional[Any] = None  # Structured JSON facts or derivation steps
     markdown:    Optional[str] = None  # Markdown content with LaTeX support
-    render_mode: Optional[Literal["manim", "presentation", "explainer", "heygen", "user_generated_video", "user_generated"]] = None
+    render_mode: Optional[Literal["manim", "presentation", "explainer", "heygen", "notes", "user_generated_video", "user_generated"]] = None
     with_avatar: bool = False
     avatar_type: Optional[Literal["logo", "human", "pro", "user", "heygen"]] = None
     avatar_id:   Optional[str] = None

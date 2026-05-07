@@ -110,7 +110,7 @@ class Scene(BaseModel):
 
 
 class DirectorOutput(BaseModel):
-    render_mode: Literal["manim", "presentation", "explainer", "user_generated_video"]
+    render_mode: Literal["manim", "presentation", "explainer", "user_generated_video", "notes"]
     decision_reasoning: str  # Explain why this mode was chosen based on the hierarchy
     search_queries: list[str] = [] # If content is sparse, list 1-3 queries to run via SearXNG
     scenes: list[Scene]
@@ -147,6 +147,12 @@ LEVEL 4 (Efficiency / Default) → Use "presentation":
   - Factual subjects: UPSC, History, Geography (no complex diagrams), Civic lessons.
   - Humanities: English grammar, Case Studies, Essays, Reasoning.
   - Any factual or purely text-based content where static slides are sufficient.
+
+LEVEL 5 (Visual Summary / Cheat Sheet) → Use "notes":
+  - Content that benefits from a single-page visual summary (infographic / study notes style).
+  - MCQ questions with dense option analysis where a whiteboard layout helps retention.
+  - Revision or recap content where a "one-page cheat sheet" is the best format.
+  - Use this when the user explicitly requests "notes" or "summary" style output.
 
 ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" to Manim/Explainer if the content strictly warrants it.
 

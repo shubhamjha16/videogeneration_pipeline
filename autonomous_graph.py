@@ -270,7 +270,7 @@ class TonyState(TypedDict):
     # Core state
     topic: str
     video_type: str        # 'educational' | 'marketing' | 'social'
-    render_mode: str       # 'manim' | 'presentation' | 'heygen' | 'explainer' (auto)
+    render_mode: str       # 'manim' | 'presentation' | 'heygen' | 'explainer' | 'notes' (auto)
     with_avatar: bool      # Toggles HeyGen node
     
     # Financial & Audit (Phase 6)
@@ -1695,6 +1695,52 @@ def explainer_node(state: TonyState) -> TonyState:
     return state
 
 
+def notes_node(state: TonyState) -> TonyState:
+    """Pipeline 5: Generate premium handwritten infographic notes video.
+
+    Flow: LLM blueprint → DALL-E 3 infographic → ElevenLabs TTS → Ken Burns zoom → MP4
+    """
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
+    _log_progress(state, "NOTES", "Generating premium study notes video...")
+
+    from notes_generator import generate_notes_video
+
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
+    job_dir = os.path.join("output", job_prefix)
+    os.makedirs(job_dir, exist_ok=True)
+
+    try:
+        topic = state.get("topic", "Study Notes")
+        scenes = state.get("scenes", [])
+
+        output_path, notes_ledger = generate_notes_video(
+            topic=topic,
+            scenes=scenes,
+            output_dir=job_dir,
+            job_id=state.get("job_id"),
+        )
+
+        if not output_path or not os.path.exists(output_path):
+            raise RuntimeError("Notes pipeline produced no video output.")
+
+        state["output_path"] = os.path.abspath(output_path)
+
+        # Merge notes ledger into state ledger
+        state["ledger"] = state.get("ledger", {})
+        state["ledger"].update(notes_ledger)
+
+        _log_progress(state, "NOTES", f"Notes video ready ({notes_ledger.get('notes_video_duration', 0):.1f}s).", duration=time.time() - start_t)
+    except Exception as e:
+        _record_error(state, "NOTES", f"Notes pipeline failed: {e}")
+        print(f"   [NOTES] {state['rendering_errors']}")
+        return _run_presentation_fallback(state, "NOTES")
+
+    return state
+
+
 def heygen_node(state: TonyState) -> TonyState:
     """Render talking-head video via HeyGen v3 Video Agents API.
 
@@ -1918,12 +1964,14 @@ def should_research(state: TonyState) -> str:
     return "vision"
 
 def route_by_mode(state: TonyState) -> str:
-    """After vision — branch to one of the 4 paths."""
+    """After vision — branch to one of the 5 paths."""
     mode = (state.get("render_mode") or "").strip().lower()
     if mode == "presentation":
         return "ppt_planner"
     elif mode == "explainer":
         return "explainer"
+    elif mode == "notes":
+        return "notes"
     elif mode in {"heygen", "user_generated_video", "user_generated", "human_face"}:
         return "heygen"
     return "architect"
@@ -1975,6 +2023,7 @@ workflow.add_node("ppt_renderer",  ppt_renderer_node)
 workflow.add_node("ppt_tts",       ppt_tts_node)
 workflow.add_node("ppt_video",     ppt_video_node)
 workflow.add_node("explainer",     explainer_node)
+workflow.add_node("notes",         notes_node)
 workflow.add_node("heygen",        heygen_node)
 workflow.add_node("subtitles",     subtitle_node)
 workflow.add_node("fusion",        fusion_node)
@@ -1996,6 +2045,7 @@ workflow.add_conditional_edges("vision", route_by_mode, {
     "architect":   "architect",
     "ppt_planner": "ppt_planner",
     "explainer":   "explainer",
+    "notes":       "notes",
     "heygen":      "heygen",
 })
 
@@ -2019,6 +2069,9 @@ workflow.add_edge("ppt_video",     "deploy")
 
 # Path 3: Narrative Explainers (B-roll)
 workflow.add_edge("explainer",     "deploy")
+
+# Path 5: Premium Study Notes (Ken Burns Infographic)
+workflow.add_edge("notes",         "deploy")
 
 # Path 4: Personalized Human Avatars (Deep-Fake)
 workflow.add_conditional_edges("heygen", after_heygen, {
