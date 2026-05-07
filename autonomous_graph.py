@@ -1696,58 +1696,49 @@ def explainer_node(state: TonyState) -> TonyState:
 
 
 def heygen_node(state: TonyState) -> TonyState:
-    """Render high-fidelity talking head via HeyGen."""
+    """Render talking-head video via HeyGen v3 Video Agents API.
+
+    v3 handles TTS internally — no ElevenLabs audio upload needed.
+    We pass the concatenated narration text as the prompt.
+    """
     import copy
     import time
     start_t = time.time()
     state = copy.deepcopy(state)
-    _log_progress(state, "HEYGEN", "Personalization: Orchestrating avatar generation...")
-    
-    from tts_generator import generate_audio
+    _log_progress(state, "HEYGEN", "Submitting narration to HeyGen v3 Video Agents...")
+
     from heygen_generator import generate_heygen_avatar
 
     job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
     job_dir = os.path.join("output", job_prefix)
     os.makedirs(job_dir, exist_ok=True)
 
-    # 1. Generate audio for HeyGen to lip-sync to
     try:
+        # Concatenate all scene narrations into a single prompt
         full_text = " ".join(s["narration_text"] for s in state["scenes"])
-        audio_path, char_count = generate_audio(full_text, 0, output_dir=job_dir, job_id=state.get("job_id"))
-        # INDUSTRIAL LEDGER: Capture characters
-        state["ledger"] = state.get("ledger", {})
-        state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + char_count
-        state["audio_files"] = [audio_path]
 
-        heygen_video_output = os.path.join(job_dir, "heygen_avatar.mp4")
-        heygen_res = generate_heygen_avatar(
-            full_text, audio_path, 
-            output_dir=job_dir,
+        heygen_output = os.path.join(job_dir, "heygen_avatar.mp4")
+        heygen_video, duration_sec = generate_heygen_avatar(
+            prompt=full_text,
+            output_path=heygen_output,
             avatar_id=state.get("avatar_id"),
-            avatar_type=state.get("avatar_type"),
-            job_id=state.get("job_id")
+            job_id=state.get("job_id"),
         )
-        
-        # Validate return tuple format
-        if not heygen_res or not isinstance(heygen_res, tuple) or len(heygen_res) < 2:
-             heygen_res = (None, 0)
-             
-        heygen_video, duration_sec = heygen_res
-        
-        # INDUSTRIAL LEDGER: Capture duration
+
+        if not heygen_video or not os.path.exists(heygen_video):
+            raise RuntimeError("HeyGen v3 API produced no video output.")
+
+        # Update state
+        state["heygen_video_path"] = heygen_video
         state["ledger"] = state.get("ledger", {})
         state["ledger"]["heygen_seconds"] = state["ledger"].get("heygen_seconds", 0) + duration_sec
-        
-        if not heygen_video or not os.path.exists(heygen_video):
-             raise RuntimeError("HeyGen API produced no video output.")
 
-        state["heygen_video_path"] = heygen_video
-        _log_progress(state, "HEYGEN", "Avatar assets generated successfully.", duration=time.time() - start_t)
+        _log_progress(state, "HEYGEN", f"Avatar video ready ({duration_sec}s).", duration=time.time() - start_t)
     except Exception as e:
-        _record_error(state, "HEYGEN", f"HeyGen path failed: {e}")
-        print(f"   ❌ {state['rendering_errors']}")
+        _record_error(state, "HEYGEN", f"HeyGen v3 failed: {e}")
+        print(f"   [HEYGEN] {state['rendering_errors']}")
         return _run_presentation_fallback(state, "HEYGEN")
-    
+
     return state
 
 
@@ -1774,18 +1765,27 @@ def subtitle_node(state: TonyState) -> TonyState:
     video_clip = None
     try:
         video_clip = VideoFileClip(video_path)
-        audio_path = state["audio_files"][0]
+        video_dur = video_clip.duration
 
-        tmp_aud = AudioFileClip(audio_path)
-        try:
-            audio_dur = tmp_aud.duration
-        finally:
-            tmp_aud.close()
+        # With HeyGen v3, audio is embedded in the video.
+        # Use separate audio_files for alignment if available (non-HeyGen paths),
+        # otherwise fall back to video duration.
+        audio_path = None
+        alignment_path = None
+        audio_dur = video_dur
 
-        # Determine alignment path (sidecar JSON)
-        alignment_path = audio_path.replace(".m4a", ".json").replace(".mp3", ".json")
-        if not os.path.exists(alignment_path):
-            alignment_path = None
+        audio_files = state.get("audio_files") or []
+        if audio_files and os.path.exists(audio_files[0]):
+            audio_path = audio_files[0]
+            tmp_aud = AudioFileClip(audio_path)
+            try:
+                audio_dur = tmp_aud.duration
+            finally:
+                tmp_aud.close()
+
+            alignment_path = audio_path.replace(".m4a", ".json").replace(".mp3", ".json")
+            if not os.path.exists(alignment_path):
+                alignment_path = None
 
         full_text  = " ".join(s["narration_text"] for s in state["scenes"])
 
@@ -1796,7 +1796,7 @@ def subtitle_node(state: TonyState) -> TonyState:
             audio_dur,
             style="insta_reels",
             alignment_path=alignment_path,
-            audio_path=audio_path  # Enable High-Fidelity Sync
+            audio_path=audio_path
         )
 
         try:

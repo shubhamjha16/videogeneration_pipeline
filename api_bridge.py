@@ -1190,27 +1190,25 @@ def get_analytics():
     # Cost constants (sync with estimate_costs)
     COST_PER_GROQ_CALL = 0.002
     COST_PER_ELEVENLABS_CHAR = 0.00003
-    COST_PER_HEYGEN_MIN = 0.50
+    COST_PER_HEYGEN_SEC = 0.0333
     COST_PER_HIGGSFIELD_CALL = 0.10
 
     for j in completed:
         mode = j.get("render_mode") or "auto"
         render_modes[mode] = render_modes.get(mode, 0) + 1
         
-        # ── Financial Aggregation (Industrial Grounding) ──
+        # ── Financial Aggregation ──
         ledger = j.get("ledger", {})
         if ledger:
-            # Precise Usage Tracking
             prompt_tokens = ledger.get("prompt_tokens", 0)
             completion_tokens = ledger.get("completion_tokens", 0)
             elevenlabs_chars = ledger.get("elevenlabs_chars", 0)
             heygen_seconds = ledger.get("heygen_seconds", 0)
             higgsfield_calls = ledger.get("higgsfield_calls", 0)
 
-            # Industry-standard blended rates
-            llm_cost = (prompt_tokens + completion_tokens) / 1_000_000 * 0.50 # $0.50 per 1M tokens
+            llm_cost = (prompt_tokens + completion_tokens) / 1_000_000 * 0.50
             voice_cost = elevenlabs_chars * COST_PER_ELEVENLABS_CHAR
-            avatar_cost = (heygen_seconds / 60) * COST_PER_HEYGEN_MIN
+            avatar_cost = heygen_seconds * COST_PER_HEYGEN_SEC
             explainer_cost = higgsfield_calls * COST_PER_HIGGSFIELD_CALL
             
             total_cost += llm_cost + voice_cost + avatar_cost + explainer_cost
@@ -1220,7 +1218,7 @@ def get_analytics():
             est = COST_PER_GROQ_CALL * 3 
             est += COST_PER_ELEVENLABS_CHAR * 2000
             if mode == "explainer": est += COST_PER_HIGGSFIELD_CALL * 3
-            if has_avatar: est += COST_PER_HEYGEN_MIN * 2
+            if has_avatar: est += COST_PER_HEYGEN_SEC * 60  # ~60s average avatar video
             total_cost += est
         
     durations = [j.get("metrics", {}).get("total_duration_sec", 0) for j in completed]
@@ -1654,7 +1652,7 @@ def get_costs():
     # 1. Constants for legacy estimation (averages)
     COST_PER_GROQ_CALL = 0.002
     COST_PER_ELEVENLABS_CHAR = 0.00003
-    COST_PER_HEYGEN_MIN = 0.50
+    COST_PER_HEYGEN_SEC = 0.0333
     COST_PER_HIGGSFIELD_CALL = 0.10
 
     with _jobs_lock:
@@ -1704,7 +1702,7 @@ def get_costs():
             est = COST_PER_GROQ_CALL * 3
             est += COST_PER_ELEVENLABS_CHAR * 2000
             if mode == "explainer": est += COST_PER_HIGGSFIELD_CALL * 3
-            if has_avatar: est += COST_PER_HEYGEN_MIN * 2
+            if has_avatar: est += COST_PER_HEYGEN_SEC * 60  # ~60s average avatar video
             
             est = round(est, 4)
             total_estimated += est

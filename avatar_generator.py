@@ -24,20 +24,20 @@ def generate_avatar_video(text: str, audio_file: str, scene_idx: int, output_dir
         os.makedirs(output_dir, exist_ok=True)
     avatar_video_path = os.path.join(output_dir, f"scene_{scene_idx}_avatar.mp4")
     
-    # --- HEYGEN MODE: HeyGen v2 API ---
+    # --- HEYGEN MODE: HeyGen v3 Video Agents API ---
     if avatar_type == "heygen":
-        print(f"🚀 Initializing HeyGen Avatar Generation for scene {scene_idx}...")
+        print(f"Initializing HeyGen v3 Avatar Generation for scene {scene_idx}...")
         try:
-            result = generate_heygen_avatar(text, audio_file, avatar_video_path, job_id=job_id)
-            if result:
-                # generate_heygen_avatar returns (path, duration)
+            result = generate_heygen_avatar(prompt=text, output_path=avatar_video_path, job_id=job_id)
+            if result and result[0]:
                 return result
             else:
-                print(f"⚠️ HeyGen API failed. Falling back to local human avatar.")
+                print(f"HeyGen v3 returned no output. Falling back to local avatar.")
                 avatar_type = "human"
         except Exception as e:
-            print(f"❌ HeyGen System Error: {e}")
+            print(f"HeyGen v3 error: {e}. Falling back to local avatar.")
             avatar_type = "human"
+
 
     width, height = 320, 240
 

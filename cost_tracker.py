@@ -159,13 +159,14 @@ class LedgerManager:
         })
 
     @classmethod
-    def record_heygen_call(cls, job_id: Optional[str], duration_minutes: float, cost_per_minute: float = 0.50):
+    def record_heygen_call(cls, job_id: Optional[str], duration_seconds: float, cost_per_second: float = 0.0333):
+        """Record HeyGen v3 Video Agents cost. Pricing: $0.0333/sec of output."""
         cls._log_entry({
             "job_id": job_id,
             "provider": "heygen",
-            "model": "avatar",
+            "model": "avatar-v3",
             "call_type": "video",
-            "api_cost_usd": duration_minutes * cost_per_minute
+            "api_cost_usd": duration_seconds * cost_per_second
         })
         
     @classmethod

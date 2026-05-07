@@ -1,205 +1,165 @@
 import os
 import time
-import subprocess
 import requests
 import config
 
 
-# Industrial Sentinel: Startup Validation
+# Startup validation
 HEYGEN_AVATAR_ID = os.environ.get("HEYGEN_AVATAR_ID") or config.HEYGEN_AVATAR_ID
 if not os.environ.get("HEYGEN_AVATAR_ID"):
-    print(f"⚠️  [HeyGen] HEYGEN_AVATAR_ID not set in env. Using config default: {HEYGEN_AVATAR_ID}")
+    print(f"[HeyGen] HEYGEN_AVATAR_ID not set in env. Using config default: {HEYGEN_AVATAR_ID}")
 else:
-    print(f"🧬 [HeyGen] Active Avatar ID: {HEYGEN_AVATAR_ID}")
+    print(f"[HeyGen] Active Avatar ID: {HEYGEN_AVATAR_ID}")
 
 
-def generate_heygen_avatar(text: str, audio_path: str, output_path: str, avatar_id: str = None, job_id: str = None) -> tuple[str, float]:
+def generate_heygen_avatar(
+    prompt: str,
+    output_path: str,
+    avatar_id: str = None,
+    voice_id: str = None,
+    job_id: str = None,
+) -> tuple[str | None, float]:
     """
-    HeyGen API Integration (Production Ready).
-    1. Uploads ElevenLabs generated audio to HeyGen as an Asset.
-    2. Submits Video Generation task to HeyGen v2.
-    3. Polls until completion and downloads mp4.
+    HeyGen v3 Video Agents API.
+
+    Sends the narration text directly to HeyGen. HeyGen handles
+    TTS, lip-sync, and avatar rendering internally. No audio upload needed.
+
+    Args:
+        prompt:      Full narration script for the video.
+        output_path: Local path to save the downloaded .mp4.
+        avatar_id:   Optional HeyGen avatar ID (falls back to env/config).
+        voice_id:    Optional HeyGen voice ID.
+        job_id:      Pipeline job ID for cost ledgering.
+
+    Returns:
+        (output_path, duration_seconds) on success, (None, 0) on failure.
     """
     api_key = os.environ.get("HEYGEN_API_KEY")
-
-    # Industrial Hardening: avatar_id from environment variable (set in ECS)
     avatar_id = avatar_id or HEYGEN_AVATAR_ID
 
-
-
-
     if not api_key:
-        print(f"❌ [HeyGen] HEYGEN_API_KEY not found! Returning high-fidelity mock: {output_path}")
-        if not os.path.exists(output_path):
-            from moviepy.editor import ColorClip, AudioFileClip, ImageClip, CompositeVideoClip
-            aud = AudioFileClip(audio_path)
-            # Create a more useful mock with a logo/static image
-            bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=aud.duration)
-            
-            # Try to add logo if it exists
-            final_clip = bg
-            logo_path = os.path.join(config.BASE_DIR, "factory_portal", "control_panel", "assets", "logo.png")
-            if os.path.exists(logo_path):
-                logo = ImageClip(logo_path).set_duration(aud.duration).resize(height=200).set_position(('center', 'center'))
-                final_clip = CompositeVideoClip([bg, logo])
-            
-            final_clip = final_clip.set_audio(aud)
-            try:
-                final_clip.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
-            finally:
-                final_clip.close()
-                duration = aud.duration
-                aud.close()
-        # Return path and duration for financial ledger
-        from moviepy.editor import VideoFileClip
-        try:
-            with VideoFileClip(output_path) as clip:
-                duration = clip.duration
-        except:
-            duration = 1.0 # fallback
-        return output_path, duration
+        print(f"[HeyGen] HEYGEN_API_KEY not found. Generating local mock: {output_path}")
+        return _generate_mock_video(prompt, output_path)
 
-    print(f"🚀 [HeyGen Gen] Initializing HeyGen avatar workflow for: {text[:30]}...")
+    print(f"[HeyGen v3] Submitting prompt ({len(prompt)} chars) to Video Agents API...")
+
     headers = {
         "x-api-key": api_key,
-        "Accept": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json",
     }
 
-    # 1. Upload Audio Asset
-    print(f"   [HeyGen] Uploading audio asset...")
-    upload_url = "https://upload.heygen.com/v1/asset"
-
-    # HeyGen only supports audio/mpeg (MP3). Convert m4a/wav to mp3 first.
-    actual_audio_path = audio_path
-    ext = os.path.splitext(audio_path)[1].lower()
-    if ext in (".m4a", ".aac", ".wav", ".aiff"):
-        mp3_path = audio_path.rsplit(".", 1)[0] + "_heygen.mp3"
-        try:
-            import imageio_ffmpeg
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-            subprocess.run(
-                [ffmpeg_exe, "-y", "-i", audio_path, "-ar", "44100", "-ab", "128k", mp3_path],
-                capture_output=True, check=True, timeout=60
-            )
-            actual_audio_path = mp3_path
-            print(f"   [HeyGen] Converted {ext} → MP3 for upload: {os.path.basename(mp3_path)}")
-        except Exception as conv_err:
-            print(f"   ⚠️ [HeyGen] Audio conversion to MP3 failed ({conv_err}), uploading original {ext}")
-
-    # Detect MIME type based on file extension
-    upload_ext = os.path.splitext(actual_audio_path)[1].lower()
-    mime_map = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".aac": "audio/aac"}
-    content_type = mime_map.get(upload_ext, "audio/mpeg")
-
-    try:
-        with open(actual_audio_path, 'rb') as f:
-            audio_binary = f.read()
-            # Raw binary upload: data-binary instead of multipart
-            res = requests.post(
-                upload_url, 
-                headers={
-                    "x-api-key": api_key,
-                    "Content-Type": content_type
-                }, 
-                data=audio_binary, 
-                timeout=60
-            )
-        print(f"   [HeyGen] Upload response: {res.status_code} {res.reason}")
-        res.raise_for_status()
-        audio_asset_id = res.json().get("data", {}).get("id")
-        if not audio_asset_id:
-            raise ValueError(f"Failed to get audio asset ID. Response: {res.text}")
-    except Exception as e:
-        print(f"❌ [HeyGen] Audio upload failed: {e}")
-        return None, 0 # Critical failure, return None to trigger fallback
-
-    # 2. Add Video Task
-    print(f"   [HeyGen] Triggering Video Generation (Avatar: {avatar_id})...")
-    generate_url = "https://api.heygen.com/v2/video/generate"
+    # --- Step 1: Submit generation request ---
     payload = {
-        "video_inputs": [
-            {
-                "character": {
-                    "type": "avatar", 
-                    "avatar_id": avatar_id, 
-                    "avatar_style": "normal"
-                },
-                "voice": {
-                    "type": "audio",
-                    "audio_asset_id": audio_asset_id
-                }
-            }
-        ],
-        "dimension": {"width": 1280, "height": 720},
-        "caption": True
+        "prompt": prompt,
+        "avatar_id": avatar_id,
     }
-    header_json = {**headers, "Content-Type": "application/json"}
-    
+    if voice_id:
+        payload["voice_id"] = voice_id
+
     try:
-        res = requests.post(generate_url, json=payload, headers=header_json, timeout=30)
+        res = requests.post(
+            "https://api.heygen.com/v3/video-agents",
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
         res.raise_for_status()
         video_id = res.json().get("data", {}).get("video_id")
         if not video_id:
-            raise ValueError(f"No video_id returned: {res.text}")
+            raise ValueError(f"No video_id in response: {res.text[:200]}")
     except Exception as e:
-        print(f"❌ [HeyGen] Generation request failed: {e}")
+        print(f"[HeyGen v3] Submission failed: {e}")
         return None, 0
 
-    # 3. Poll for Status (v2 Protocol)
-    print(f"   ⏳ [HeyGen] Task {video_id[:8]}... created. Polling for results...")
+    # --- Step 2: Poll for completion ---
+    print(f"[HeyGen v3] Task {video_id[:12]}... created. Polling...")
     poll_url = f"https://api.heygen.com/v1/video_status.get?video_id={video_id}"
-    
+
     import urllib3
     session = requests.Session()
-    retry = urllib3.util.retry.Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
-    adapter = requests.adapters.HTTPAdapter(max_retries=retry)
-    session.mount("https://", adapter)
+    retry = urllib3.util.retry.Retry(
+        total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504]
+    )
+    session.mount("https://", requests.adapters.HTTPAdapter(max_retries=retry))
 
-    for attempt in range(40): # Poll for up to 10 minutes
+    for attempt in range(40):  # Up to ~10 minutes
         try:
-            res = session.get(poll_url, headers=header_json, timeout=10)
+            res = session.get(poll_url, headers=headers, timeout=15)
             if not res.text:
-                print(f"   [Attempt {attempt}] [HeyGen] Warning: Empty API response (Status: {res.status_code}). Retrying...")
+                print(f"  [Attempt {attempt}] Empty response (HTTP {res.status_code}). Retrying...")
                 time.sleep(15)
                 continue
 
-            try:
-                data = res.json().get("data", {})
-            except Exception as j:
-                print(f"   [Attempt {attempt}] [HeyGen] JSON Error (Status: {res.status_code}): {j}. Body: {res.text[:100]}")
-                time.sleep(15)
-                continue
-
+            data = res.json().get("data", {})
             status = data.get("status")
-            print(f"   [Attempt {attempt}] [HeyGen] Task Status: {status}")
-            
-            if status in ["completed", "success"]:
-                # v2 status response has video_url at top level of data
-                video_url = data.get("video_url")
-                if video_url:
-                    print(f"   ✅ [HeyGen] Video ready! Downloading...")
-                    with requests.get(video_url, stream=True, timeout=60) as r:
-                         r.raise_for_status()
-                         with open(output_path, 'wb') as f:
-                             for chunk in r.iter_content(chunk_size=8192):
-                                 f.write(chunk)
-                    
-                    # Return path and actual duration from API
-                    actual_duration = data.get("duration", 0)
-                    try:
-                        from cost_tracker import LedgerManager
-                        LedgerManager.record_heygen_call(job_id, actual_duration / 60.0)
-                    except Exception as e:
-                        print(f"⚠️ Failed to log HeyGen cost: {e}")
-                    return output_path, actual_duration
-            elif status in ["failed", "canceled"]:
+            print(f"  [Attempt {attempt}] Status: {status}")
 
-                print(f"❌ [HeyGen] Generation failed: {data.get('error', 'unknown error')}")
-                return None, 0 # Return None to trigger pipeline failure instead of corrupt output
+            if status in ("completed", "success"):
+                video_url = data.get("video_url")
+                if not video_url:
+                    print(f"  [HeyGen v3] Completed but no video_url in response.")
+                    return None, 0
+
+                # Download the MP4
+                print(f"  [HeyGen v3] Downloading video...")
+                with requests.get(video_url, stream=True, timeout=120) as dl:
+                    dl.raise_for_status()
+                    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+                    with open(output_path, "wb") as f:
+                        for chunk in dl.iter_content(chunk_size=8192):
+                            f.write(chunk)
+
+                duration_sec = data.get("duration", 0)
+
+                # Ledger: $0.0333/sec
+                try:
+                    from cost_tracker import LedgerManager
+                    LedgerManager.record_heygen_call(job_id, duration_sec)
+                except Exception as le:
+                    print(f"  Failed to log HeyGen cost: {le}")
+
+                print(f"  [HeyGen v3] Done. Duration: {duration_sec}s -> {output_path}")
+                return output_path, duration_sec
+
+            elif status in ("failed", "canceled"):
+                error = data.get("error", "unknown")
+                print(f"  [HeyGen v3] Generation failed: {error}")
+                return None, 0
+
         except Exception as e:
-            print(f"   [Attempt {attempt}] [HeyGen] Polling warning (Status: {getattr(res, 'status_code', 'N/A')}): {e}")
-            
+            print(f"  [Attempt {attempt}] Polling error: {e}")
+
         time.sleep(15)
 
-    print("⚠️ [HeyGen] Polling timed out after 10 mins.")
+    print("[HeyGen v3] Polling timed out after ~10 minutes.")
     return None, 0
+
+
+def _generate_mock_video(prompt: str, output_path: str) -> tuple[str, float]:
+    """Generate a placeholder video when no API key is available."""
+    try:
+        from moviepy.editor import ColorClip, TextClip, CompositeVideoClip
+
+        duration = max(5.0, len(prompt) / 15.0)  # Rough estimate
+        duration = min(duration, 30.0)
+
+        bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
+
+        try:
+            label = TextClip(
+                "HeyGen Mock (No API Key)",
+                fontsize=36, color="white", font="Helvetica",
+            ).set_duration(duration).set_position("center")
+            final = CompositeVideoClip([bg, label])
+        except Exception:
+            final = bg
+
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        final.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
+        final.close()
+        return output_path, duration
+    except Exception as e:
+        print(f"  Mock generation failed: {e}")
+        return None, 0
