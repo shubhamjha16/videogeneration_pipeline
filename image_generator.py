@@ -122,7 +122,7 @@ def generate_concept_image(
     for attempt in range(3):
         try:
             response = client.images.generate(
-                model="gpt-image-2",
+                model="dall-e-3",
                 prompt=prompt,
                 size="1024x1024",
                 quality="hd",
@@ -133,11 +133,11 @@ def generate_concept_image(
         except Exception as e:
             if attempt == 2:
                 raise
-            print(f"   ⚠️ gpt-image-2 rate limit. Retrying in {2**attempt}s...")
+            print(f"   ⚠️ DALL-E 3 rate limit. Retrying in {2**attempt}s...")
             time.sleep(2**attempt)
 
     if not response.data:
-        raise RuntimeError(f"gpt-image-2 returned no images for: {topic}")
+        raise RuntimeError(f"DALL-E 3 returned no images for: {topic}")
 
     # Save the image
     os.makedirs(output_dir, exist_ok=True)
@@ -147,6 +147,7 @@ def generate_concept_image(
     )
 
     output_path = os.path.join(output_dir, safe_name)
+    import base64
     image_bytes = base64.b64decode(response.data[0].b64_json)
 
     with open(output_path, "wb") as f:

@@ -173,6 +173,7 @@ def _apply_animated_reveal(
     output_path: str,
     audio_duration: float,
     num_sections: int = 5,
+    manual_breakpoints: list[float] = None,
 ) -> str:
     """
     Apply a 'Sequential Reveal' animation to the notes infographic.
@@ -218,8 +219,12 @@ def _apply_animated_reveal(
     img_hidden_pil = Image.new("RGB", (scaled_w, scaled_h), bg_color)
     img_hidden = np.array(img_hidden_pil)
 
-    # Section breakpoints (fractional positions on the image height)
-    breakpoints = _compute_section_breakpoints(num_sections)
+    # Section breakpoints
+    if manual_breakpoints:
+        breakpoints = manual_breakpoints
+        num_sections = len(breakpoints) - 1
+    else:
+        breakpoints = _compute_section_breakpoints(num_sections)
 
     # Time allocated per section
     time_per_section = audio_duration / num_sections
