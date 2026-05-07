@@ -122,7 +122,7 @@ def generate_concept_image(
     for attempt in range(3):
         try:
             response = client.images.generate(
-                model="dall-e-3",
+                model="gpt-image-2",
                 prompt=prompt,
                 size="1024x1024",
                 quality="hd",

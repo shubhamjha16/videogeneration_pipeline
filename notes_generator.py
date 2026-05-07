@@ -108,7 +108,7 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
     for attempt in range(3):
         try:
             response = client.images.generate(
-                model="dall-e-3",
+                model="gpt-image-2",
                 prompt=prompt,
                 size="1024x1792",  # Portrait for vertical scroll
                 quality="hd",
