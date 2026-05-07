@@ -647,6 +647,21 @@ def director_node(state: TonyState) -> TonyState:
         state["scenes"] = scenes
         print(f"   ✅ Industrial Recovery: Forced a subject-appropriate fallback structure.")
 
+    # If image was injected, ensure at least one annotated_image scene exists
+    if state.get("image_path") or os.path.exists(os.path.join(get_job_dir(state), "tony_diagram.png")):
+        has_annotated = any(s.get("visual_type") == "annotated_image" for s in scenes)
+        if not has_annotated:
+            # Insert annotated_image as second scene (after title_card)
+            scenes.insert(1, {
+                "visual_type": "annotated_image",
+                "visual_data": {
+                    "label": state.get("topic", "Clinical Image"),
+                    "region": "center_right",
+                    "bullets": ["Observe the key clinical features", "Note the characteristic pattern"]
+                },
+                "narration_text": f"Observe this clinical image carefully. The key features shown here are central to understanding {state.get('topic', 'this topic')}."
+            })
+
     state["scenes"] = scenes
     state["search_queries"] = director_output.search_queries
     

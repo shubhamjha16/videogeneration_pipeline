@@ -171,6 +171,11 @@ Do NOT skip these scenes if options are provided in the input.
 - Example: Topic "History of AI" but no dates. Query: ["first artificial intelligence conference date", "early AI pioneers timeline"].
 - If you request search, your `scenes` can be a preliminary "stub" — the system will re-run you with the search results.
 
+━━━ IMAGE INJECTION RULE ━━━
+If overrides contain has_static_image=true, you MUST plan at least one 
+annotated_image scene using the provided question image. The arrow should 
+point at the clinically relevant feature being discussed in the narration.
+
 ━━━ SCENE RULES BY RENDER MODE ━━━
 
 MANIM SCENES (8–12 scenes):

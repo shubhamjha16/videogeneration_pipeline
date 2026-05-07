@@ -718,10 +718,20 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
 
         # If caller provided an image, copy it to the job folder as tony_diagram.png
         injected_image = job.get("image_path")
-        if injected_image and os.path.exists(injected_image):
-            import shutil
-            dest = os.path.join(job_dir, "tony_diagram.png")
-            shutil.copy2(injected_image, dest)
+        if injected_image:
+            if injected_image.startswith(("http://", "https://")):
+                import requests, shutil
+                try:
+                    resp = requests.get(injected_image, timeout=30)
+                    dest = os.path.join(job_dir, "tony_diagram.png")
+                    with open(dest, 'wb') as f:
+                        f.write(resp.content)
+                except Exception as e:
+                    print(f"⚠️ Failed to download image: {e}")
+            elif os.path.exists(injected_image):
+                import shutil
+                dest = os.path.join(job_dir, "tony_diagram.png")
+                shutil.copy2(injected_image, dest)
             print(f"📸 Using injected image in isolated dir: {dest}")
 
         try:
