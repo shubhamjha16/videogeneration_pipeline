@@ -1954,7 +1954,7 @@ def deploy_node(state: TonyState) -> TonyState:
         
     video_url = _upload_to_s3(output_path, topic, job_id)
     state["video_url"] = video_url
-    
+
     if video_url:
         _log_progress(state, "DEPLOY", f"Masterclass published successfully: {video_url}", duration=time.time() - start_t)
     else:
@@ -1962,6 +1962,16 @@ def deploy_node(state: TonyState) -> TonyState:
 
     # Thumbnail generation
     job_dir = get_job_dir(state)
+
+    # Pipeline 6: Persist narration scripts for dub pipeline
+    try:
+        scenes_path = os.path.join(job_dir, "scenes.json")
+        with open(scenes_path, "w") as f:
+            import json
+            json.dump(state.get("scenes", []), f, indent=2)
+        print(f"📝 Scenes persisted for dub pipeline: {scenes_path}")
+    except Exception as e:
+        print(f"⚠️ Failed to persist scenes.json: {e}")
     try:
         from thumbnail_generator import generate_thumbnail
         thumbnail_path = generate_thumbnail(

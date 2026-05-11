@@ -35,6 +35,7 @@ except ImportError:
     fcntl = None
 
 import shutil
+from dub_pipeline import run_dub_pipeline
 from datetime import datetime
 from caching.redis_client import get_cache, generate_idempotency_key
 
@@ -421,7 +422,7 @@ class RenderOverrides(BaseModel):
     render_mode: Optional[str] = Field(None, description="Force a specific render path: manim | presentation | explainer | heygen")
     has_formula: Optional[bool] = Field(None, description="Force/Hint math detection")
     has_static_image: Optional[bool] = Field(None, description="Force/Hint image grounding")
-    has_animation: Optional[bool] = Field(None, description="Force/Hint cinematic animations")
+    animation_enabled: Optional[bool] = Field(None, description="Force/Hint cinematic animations")
     with_avatar: Optional[bool] = Field(None, description="Force/Hint avatar generation")
     language: Optional[str] = Field(None, description="Force language: en | hi")
 
@@ -679,6 +680,22 @@ class VersionResponse(BaseModel):
             }
         }
 
+class DubResponse(BaseModel):
+    job_id: str
+    language: str
+    dubbed_video_url: str
+    status: str = "completed"
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_id": "3193cfab",
+                "language": "hindi",
+                "dubbed_video_url": "http://localhost:8000/stream/3193cfab/video_hindi.mp4",
+                "status": "completed"
+            }
+        }
+
 
 
 # ── Pipeline runner ───────────────────────────────────────────────────────────
@@ -723,17 +740,28 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
             if injected_image.startswith(("http://", "https://")):
                 import requests, shutil
                 try:
-                    resp = requests.get(injected_image, timeout=30)
+                    # Industrial Sentinel: Robust URL Encoding for special characters/spaces
+                    import urllib.parse
+                    parsed_url = urllib.parse.urlparse(injected_image)
+                    encoded_path = urllib.parse.quote(parsed_url.path)
+                    safe_url = urllib.parse.urlunparse(parsed_url._replace(path=encoded_path))
+                    
+                    # Wikipedia/CDN protection: Send a browser User-Agent
+                    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"}
+                    resp = requests.get(safe_url, headers=headers, timeout=30)
+                    resp.raise_for_status()
+                    
                     dest = os.path.join(job_dir, "tony_diagram.png")
                     with open(dest, 'wb') as f:
                         f.write(resp.content)
+                    print(f"📸 Downloaded injected image: {dest} ({len(resp.content)} bytes) | Original: {injected_image}")
                 except Exception as e:
                     print(f"⚠️ Failed to download image: {e}")
             elif os.path.exists(injected_image):
                 import shutil
                 dest = os.path.join(job_dir, "tony_diagram.png")
                 shutil.copy2(injected_image, dest)
-            print(f"📸 Using injected image in isolated dir: {dest}")
+                print(f"📸 Using injected local image: {dest}")
 
         try:
             from autonomous_graph import app as graph
@@ -1415,6 +1443,26 @@ def retry_job(job_id: str):
     )
     thread.start()
     return {"job_id": job_id, "status": "retrying"}
+
+
+@app.post("/dub/{job_id}", response_model=DubResponse, dependencies=[SecurityDep], tags=["Operational"], summary="Dub completed job", description="Translates and re-dubs an existing completed job into a target language (hindi, tamil, etc.) using Pipeline 6.")
+def dub_job(job_id: str, language: str = "hindi"):
+    """Dub a completed job into a target language."""
+    try:
+        # Run the dubbing pipeline (Groq + ElevenLabs + FFmpeg)
+        result = run_dub_pipeline(job_id, language)
+        
+        # Convert local file path to accessible streaming URL
+        video_filename = os.path.basename(result["dubbed_video_path"])
+        result["dubbed_video_url"] = f"/stream/{job_id}/{video_filename}"
+        
+        return result
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        # Industrial Sentinel: Log the full error to stdout for debugging
+        print(f"❌ Dubbing Pipeline Error for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/health/detailed", response_model=dict, tags=["Enterprise"], summary="System dependency health", description="Performs a deep check of all third-party dependencies (Groq, S3, ElevenLabs) to ensure the factory is fully operational.")

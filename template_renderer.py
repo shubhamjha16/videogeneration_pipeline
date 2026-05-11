@@ -184,6 +184,7 @@ def _scene_title_card(scene: dict, idx: int, topic: str = "EaseToLearn") -> str:
 
     return f"""
         # Scene {idx}: title_card
+        self._clear()
         title_{idx} = {tex(title)}
         title_{idx}.scale(DesignTokens.TITLE_SIZE).set_color(DesignTokens.YELLOW).move_to(UP * 0.5)
         if title_{idx}.width > DesignTokens.MAX_WIDTH: title_{idx}.set_width(DesignTokens.MAX_WIDTH)
@@ -208,6 +209,7 @@ def _scene_concept_image(scene: dict, idx: int, image_path: str) -> str:
 
     return f"""
         # Scene {idx}: concept_image (Premium Framed)
+        self._clear()
         {img_line}
         img_{idx}.move_to(ORIGIN)
         # Add a subtle glow frame
@@ -233,6 +235,7 @@ def _scene_image_arrow(scene: dict, idx: int, image_path: str = None) -> str:
 
     return f"""
         # Scene {idx}: image_arrow — pointing to {region}
+        self._clear()
         target_{idx} = {target}
         # Premium Arrow Styling
         arrow_{idx} = Arrow(
@@ -321,12 +324,13 @@ def _scene_option_arrow(scene: dict, idx: int) -> str:
     # 3b1b Sync: 50% highlight, 50% hold
     anim_t = round(duration * 0.5, 2)
     hold_t = round(duration * 0.5, 2)
+    name   = d.get("name", "")
 
     return f"""
         # Scene {idx}: option_arrow — highlight {letter}
         box_pos_{idx} = {_option_position(letter)}
         # Continuity Guard: Phantom redraw with helper
-        {_render_option_box(letter, "", idx, f"box_pos_{idx}", is_ghost=True)}
+        {_render_option_box(letter, name, idx, f"box_pos_{idx}", is_ghost=True)}
         self.add(opt_{letter}_{idx}_grp)
         
         focus_ring_{idx} = RoundedRectangle(width=6.0, height=1.7, color={color}, stroke_width=4, corner_radius=0.15).move_to(box_pos_{idx})
@@ -361,9 +365,13 @@ def _scene_cross_out(scene: dict, idx: int) -> str:
     lines.append(f"        {question_code}")
     for li, letter in enumerate(letters):
         pos = _option_position(letter)
+        # 3b1b Continuity: Retrieve name from injected options dict if available
+        options_map = d.get("options", {})
+        name = options_map.get(letter, "") or d.get("name", "")
+        
         lines.append(f"""
         # Continuity Guard: Phantom redraw with helper
-        {_render_option_box(letter, "", idx, pos, is_ghost=True)}
+        {_render_option_box(letter, name, idx, pos, is_ghost=True)}
         self.add(opt_{letter}_{idx}_grp)
         cross_{idx}_{li} = Cross(opt_{letter}_{idx}_grp, color=DesignTokens.RED, stroke_width=6)
         self.play(Create(cross_{idx}_{li}), run_time=0.4)""")
@@ -400,6 +408,10 @@ def _scene_answer_reveal(scene: dict, idx: int) -> str:
     return f"""
         # Scene {idx}: answer_reveal — correct: {letter}
         {question_code}
+        # 3b1b Continuity: Retrieve name from injected options dict if available
+        options_map = d.get("options", {{}})
+        name = name or options_map.get(letter, "")
+        
         # Continuity Guard: Phantom redraw with helper
         {_render_option_box(letter, name, idx, pos, is_ghost=True)}
         self.add(opt_{letter}_{idx}_grp)
@@ -456,6 +468,7 @@ def _scene_step_by_step(scene: dict, idx: int) -> str:
 
     lines = [f"\n        # Scene {idx}: step_by_step"]
     lines.append(f"        self._clear()")
+    lines.append(f"        self._clear()")
     lines.append(f"        heading_{idx} = {tex(heading)}")
     lines.append(f"        heading_{idx}.scale(1.0).set_color(YELLOW).to_edge(UP, buff=0.4)")
     lines.append(f"        self.play(Write(heading_{idx}))")
@@ -486,6 +499,7 @@ def _scene_concept_bullets(scene: dict, idx: int) -> str:
     duration = d.get("duration", 4.0)
 
     lines = [f"\n        # Scene {idx}: concept_bullets"]
+    lines.append(f"        self._clear()")
     lines.append(f"        heading_{idx} = {tex(heading)}")
     lines.append(f"        heading_{idx}.scale(1.0).set_color(YELLOW).move_to(UP * 2.5)")
     lines.append(f"        self.play(Write(heading_{idx}))")
@@ -517,6 +531,7 @@ def _scene_summary(scene: dict, idx: int) -> str:
     per_point_t = round(duration / (len(points) + 1), 2)
 
     lines = [f"\n        # Scene {idx}: summary"]
+    lines.append(f"        self._clear()")
     lines.append(f"        self._clear()")
     lines.append(f"        heading_{idx} = {tex(heading)}")
     lines.append(f"        heading_{idx}.scale(1.1).set_color(DesignTokens.GREEN).move_to(UP * 2.8)")
@@ -740,6 +755,7 @@ def _scene_annotated_image(scene: dict, idx: int, global_image_path: str = None)
         self.play(Write(left_grp_{idx}))
         self.play(GrowArrow(arrow_{idx}))
         self.wait({duration})
+        self._clear()
     """
 
 
@@ -754,6 +770,7 @@ def _scene_key_point(scene: dict, idx: int) -> str:
     wrapped = textwrap.wrap(body, 45)
 
     lines = [f"\n        # Scene {idx}: key_point (presentation)"]
+    lines.append(f"        self._clear()")
     lines.append(f"        self._clear()")
     lines.append(f"        heading_{idx} = {tex(heading)}")
     lines.append(f"        heading_{idx}.scale(1.0).set_color(YELLOW).move_to(UP * 2.8)")
@@ -793,6 +810,7 @@ def _scene_formula_step_list(scene: dict, idx: int) -> str:
     lines.append(f"        self._clear()")
     
     if heading:
+        lines.append(f"        self._clear()")
         lines.append(f"        heading_{idx} = {tex(heading)}")
         lines.append(f"        heading_{idx}.scale(0.9).set_color(DesignTokens.YELLOW).to_edge(UP, buff=0.5)")
         lines.append(f"        self.play(Write(heading_{idx}), run_time=1.0)")

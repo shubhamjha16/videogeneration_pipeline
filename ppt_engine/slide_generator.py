@@ -1075,6 +1075,7 @@ def generate_slide_image(
     narration: str = None,
     layout: str = "bullets",
     layout_data: dict = None,
+    job_id: str = None,
 ) -> str:
     """
     Generate a doodle-style 1920x1080 slide PNG.
