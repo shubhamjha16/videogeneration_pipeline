@@ -204,6 +204,17 @@ class LedgerManager:
         })
 
     @classmethod
+    def record_dalle_call(cls, job_id: Optional[str], model: str = "dall-e-3", cost: float = 0.04):
+        """Record DALL-E 3 image generation cost. Pricing depends on size/quality."""
+        cls._log_entry({
+            "job_id": job_id,
+            "provider": "openai",
+            "model": model,
+            "call_type": "image",
+            "api_cost_usd": cost
+        })
+
+    @classmethod
     def get_job_total_cost(cls, job_id: str) -> float:
         total = 0.0
         path = cls.get_ledger_path()

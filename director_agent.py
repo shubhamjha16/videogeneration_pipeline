@@ -383,26 +383,31 @@ IMPORTANT INSTRUCTIONS:
                 return t if t != "-" else ""
 
             real_options = parsed_facts.get("options", {})
+            print(f"   🔍 DEBUG: real_options type={type(real_options)} content={real_options}")
             if isinstance(real_options, dict):
                 for scene in response.scenes:
-                    if scene.visual_type == "mcq_layout":
+                    # Inject full options dict into ALL MCQ-related scenes for continuity
+                    if scene.visual_type in ["mcq_layout", "option_highlight", "answer_reveal", "cross_out", "option_arrow"]:
+                        if not isinstance(scene.visual_data.get("options"), dict):
+                            scene.visual_data["options"] = {}
+                        
                         for letter, real_data in real_options.items():
-                            if "options" not in scene.visual_data:
-                                scene.visual_data["options"] = {}
-                            
-                            # Handle both dict and string forms of real_data
                             raw_text = real_data.get("name") if isinstance(real_data, dict) else str(real_data)
                             option_text = sanitize(raw_text)
                             scene.visual_data["options"][letter] = option_text or f"Option {letter}"
-                    
-                    elif scene.visual_type in ["option_highlight", "answer_reveal", "cross_out", "option_arrow"]:
+
+                    # Specific scene hardening
+                    if scene.visual_type in ["option_highlight", "answer_reveal", "cross_out", "option_arrow"]:
                         letter = str(scene.visual_data.get("letter", "A")).upper()
                         if letter in real_options:
                             real_data = real_options[letter]
                             raw_text = real_data.get("name", "") if isinstance(real_data, dict) else str(real_data)
                             scene.visual_data["name"] = sanitize(raw_text)
+                            
+                            if scene.visual_type == "cross_out" and not scene.visual_data.get("letters"):
+                                scene.visual_data["letters"] = [letter]
+
                             if scene.visual_type == "answer_reveal":
-                                 # If LLM didn't provide a good explanation, use the one from parsed_facts
                                  if not scene.visual_data.get("explanation") and isinstance(real_data, dict):
                                      scene.visual_data["explanation"] = real_data.get("explanation", "")
         except Exception as e:
@@ -443,6 +448,14 @@ def _build_prompt(facts: dict, search_results: list[dict] = None, knowledge_base
         for k, v in overrides.items():
             if v is not None:
                 lines.append(f" - {k.upper()}: {v}")
+        
+        # 🌐 LANGUAGE RULE: Handle Hinglish (Hindi-English Mix)
+        if overrides.get("language") == "hi":
+            lines.append("\nCRITICAL LANGUAGE INSTRUCTION: The user has requested Hinglish.")
+            lines.append("- Write the `narration_text` in a natural, conversational mix of Hindi and English (Hinglish).")
+            lines.append("- Use Hindi for common connective tissue and emphasis (e.g., 'Dosto, aaj hum baat karenge...', 'Notice kijiye ki...', 'Ye bahut important point hai').")
+            lines.append("- Keep technical terms, definitions, and proper nouns in English (e.g., 'Corrosion', 'Oxidation', 'Electrolyte').")
+            lines.append("- The goal is the style used by top Indian educators on YouTube: approachable, clear, and bilingual.")
         lines.append("")
 
     lines.extend([

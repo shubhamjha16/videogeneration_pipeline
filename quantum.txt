@@ -1,0 +1,1 @@
+Explain the basics of quantum computing, qubits, and superposition for a presentation.

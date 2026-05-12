@@ -29,6 +29,12 @@ import os
 import re
 import math
 import random
+from utils.image_compositing import (
+    composite_atmospheric,
+    composite_accent,
+    find_empty_corner,
+    should_apply_atmospheric,
+)
 
 W, H = 1920, 1080
 
@@ -1076,6 +1082,8 @@ def generate_slide_image(
     layout: str = "bullets",
     layout_data: dict = None,
     job_id: str = None,
+    atmospheric_path: str = None,
+    accent_path: str = None,
 ) -> str:
     """
     Generate a doodle-style 1920x1080 slide PNG.
@@ -1101,6 +1109,19 @@ def generate_slide_image(
         layout_data = {"heading": title, "bullets": bullets}
         layout = "bullets"
 
+    # ─── AMBIENT: atmospheric background layer ───────────────────
+    # Apply only for the 4 prioritized layouts AND only if path provided.
+    # Chaos chapter uses a yellow background, NOT cream — skip atmospheric 
+    # for it to avoid muddying the yellow.
+    if atmospheric_path and should_apply_atmospheric(layout) and layout != "chaos_chapter":
+        try:
+            img = composite_atmospheric(img, atmospheric_path, opacity=0.12, blur_radius=5.0)
+            # Recreate draw object since img was replaced
+            draw = ImageDraw.Draw(img)
+            print(f"[ambient] atmospheric composited for layout={layout}")
+        except Exception as e:
+            print(f"[ambient] atmospheric compositing failed (non-fatal): {e}")
+
     # Render layout
     renderer = _LAYOUTS.get(layout, _layout_bullets)
     try:
@@ -1108,6 +1129,19 @@ def generate_slide_image(
     except Exception as e:
         print(f"   ⚠️  Layout '{layout}' failed: {e} — falling back to bullets")
         img, draw = _layout_bullets(draw, img, layout_data)
+
+    # ─── AMBIENT: accent overlay (sharp, full opacity) ───────────
+    if accent_path:
+        accent_rule = find_empty_corner(layout)
+        if accent_rule is not None:
+            position, size = accent_rule
+            try:
+                img = composite_accent(img, accent_path, position, size)
+                # Recreate draw object since img was replaced
+                draw = ImageDraw.Draw(img)
+                print(f"[ambient] accent composited for layout={layout} at {position}")
+            except Exception as e:
+                print(f"[ambient] accent compositing failed (non-fatal): {e}")
 
     # Narration strip
     img, draw = _narration_strip(img, draw, narration)

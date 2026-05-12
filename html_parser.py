@@ -71,7 +71,9 @@ _SUBJECT_KEYWORDS = {
     "medical":   ["anatomy", "physiology", "pharmacology", "pathology", "artery", "vein",
                   "surgery", "clinical", "fmge", "usmle", "disease", "syndrome", "drug",
                   "calcium", "cardiac", "pulmonary", "hepatic", "renal", "fistula",
-                  "forensic", "skull", "fracture", "trauma", "orthopedics", "bone"],
+                  "forensic", "skull", "fracture", "trauma", "orthopedics", "bone",
+                  "cardiovascular", "ventricular", "atrial", "septal", "stenosis",
+                  "tetralogy", "fallot", "congenital", "heart", "defect", "cyanotic"],
     "physics":   ["velocity", "acceleration", "force", "momentum", "kinetic", "potential",
                   "newton", "thermodynamics", "wave", "optics", "circuit", "magnetic",
                   "electric", "jee", "kinematics", "displacement", "torque"],
@@ -204,36 +206,31 @@ def _extract_options(soup: BeautifulSoup) -> dict:
 
 
 def _extract_correct_answer(soup: BeautifulSoup) -> tuple:
-    # 1. Look for dedicated headings
+    # 1. High Priority: Look for dedicated headings (Final Answer, etc.)
     for h in soup.find_all(['h2', 'h3']):
         ht = _heading_text(h)
-        if any(k in ht for k in ['conclusion', 'final answer', 'answer', 'correct']):
-            for sib in h.next_siblings:
-                if getattr(sib, 'name', None) in ['h2', 'h3']:
-                    break
-                if hasattr(sib, 'get_text'):
-                    raw = _clean(sib.get_text(separator=' '))
-                    if raw:
-                        # Improved: Look for [A-D] following "answer"
-                        nm = re.search(r'(?:answer|correct|is)\s+([A-D])\b', raw, re.IGNORECASE)
-                        letter = nm.group(1).upper() if nm else _extract_letter(raw)
-                        nm_name = re.search(r'\b[A-D][.:\s]+(.+?)(?:\.|$)', raw, re.IGNORECASE)
-                        name = _clean(nm_name.group(1)) if nm_name else ""
-                        if letter:
-                            return letter, name
+        if any(k in ht for k in ['final answer', 'conclusion', 'master answer', 'correct answer']):
+            # Robustly find the next content block (skipping whitespace)
+            ans_tag = h.find_next_sibling(['p', 'div', 'li', 'span'])
+            if ans_tag:
+                raw = _clean(ans_tag.get_text(separator=' '))
+                letter = _extract_letter(raw)
+                if letter:
+                    # Try to get the name that follows
+                    nm_name = re.search(rf'{letter}[.:\s]+(.+?)(?:\.|$)', raw, re.IGNORECASE)
+                    name = _clean(nm_name.group(1)) if nm_name else ""
+                    return letter, name
 
-    # 2. Look for "Correct answer is X" patterns in any paragraph or div
+    # 2. Medium Priority: Look for "Correct answer is X" patterns anywhere
     for p in soup.find_all(['p', 'div', 'li']):
         raw = _clean(p.get_text(separator=' '))
-        if 'correct' in raw.lower() or 'answer' in raw.lower():
-            # Specifically target the letter after the word "answer" or "correct" or "is"
-            nm = re.search(r'(?:answer|correct|is)\s+([A-D])\b', raw, re.IGNORECASE)
-            letter = nm.group(1).upper() if nm else _extract_letter(raw)
-            # Try to get the name that follows the letter
+        # Target specific patterns: "Answer is C", "Correct: B", "Ans: D"
+        nm = re.search(r'\b(?:answer|correct|ans|is)\s+([A-D])\b', raw, re.IGNORECASE)
+        if nm:
+            letter = nm.group(1).upper()
             nm_name = re.search(rf'{letter}[.:\s]+(.+?)(?:\.|$)', raw, re.IGNORECASE)
             name = _clean(nm_name.group(1)) if nm_name else ""
-            if letter:
-                return letter, name
+            return letter, name
 
     return "", ""
 
@@ -358,11 +355,39 @@ def _item_to_html(item: Any) -> str:
         # Handle structured JSON
         t = item.get("title") or item.get("heading") or item.get("label", "")
         d = item.get("description") or item.get("content") or item.get("body", "")
+        
+        # ── MCQ Support: question, options, answer, explanation ──
+        q = item.get("question")
+        o = item.get("options")
+        a = item.get("answer")
+        e = item.get("explanation")
+        
         res = ""
         if t: res += f"<h3>{t}</h3>\n"
         if d:
-            # Recursively handle the content (might be markdown or nested dict)
             res += _item_to_html(d)
+            
+        if q: res += f"<div class='question'><h3>Question</h3><p>{q}</p></div>\n"
+        if isinstance(o, list):
+            res += "<h3>Options</h3><ul>\n"
+            for opt in o:
+                if isinstance(opt, dict):
+                    letter = opt.get("letter", "")
+                    name = opt.get("name", "")
+                    res += f"<li><strong>Option {letter}: {name}</strong></li>\n"
+                else:
+                    res += f"<li>{opt}</li>\n"
+            res += "</ul>\n"
+        elif isinstance(o, dict):
+            res += "<h3>Options</h3><ul>\n"
+            for letter, val in o.items():
+                name = val.get("name") if isinstance(val, dict) else str(val)
+                res += f"<li><strong>Option {letter}: {name}</strong></li>\n"
+            res += "</ul>\n"
+            
+        if a: res += f"<h3>Final Answer</h3><p>Option {a}</p>\n"
+        if e: res += f"<h3>Explanation</h3><p>{e}</p>\n"
+        
         return res
     
     s = str(item).strip()
@@ -410,6 +435,7 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
     import json
     
     # Handle solutionV2 format from Spring Boot ask-tony-ai
+    options_from_v2 = {}
     if isinstance(input_data, list) and all(
         isinstance(item, dict) and "title" in item and "description" in item 
         for item in input_data
@@ -420,6 +446,33 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
             title = section.get("title", "")
             desc = section.get("description", "")
             html_parts.append(f"<h2>{title}</h2><div>{desc}</div>")
+            
+            # Greedy Option Extraction for MCQ
+            if "Option Analysis" in title:
+                # Use a robust split approach: find all [A-D]. or [A-D]) markers
+                # We use ([A-D]) to capture the letter and keep it in the parts list
+                parts = re.split(r'\s*([A-D])[.\)]\s*', desc)
+                # parts will be [pre-text, 'A', 'text', 'B', 'text'...]
+                for i in range(1, len(parts), 2):
+                    if i + 1 < len(parts):
+                        letter = parts[i].upper()
+                        content = parts[i+1].strip()
+                        
+                        # Name extraction: Take text before first dash, colon or period
+                        name = content
+                        # Industrial refinement: Check for multiple separators and take the shortest name candidate
+                        candidates = [content]
+                        for sep in [" - ", ": ", ". "]:
+                            if sep in content:
+                                candidates.append(content.split(sep, 1)[0].strip())
+                        
+                        # Filter out single-character candidates that might be literal dashes
+                        valid_candidates = [c for c in candidates if len(c) > 1 or c.isalnum()]
+                        name = min(valid_candidates, key=len) if valid_candidates else content
+                        
+                        if len(name) > 40: name = name[:37] + "..."
+                        options_from_v2[letter] = {"name": name, "explanation": content}
+
         input_data = "\n".join(html_parts)
 
     # ── 1. Input Normalization (Polymorphic Dispatcher) ──
@@ -445,23 +498,23 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
 
     soup = BeautifulSoup(html, 'html.parser')
     
-    # ── [NEW] Preservation Layer: Re-inject Markdown markers into HTML for the Director ──
-    # This ensures that even after HTML parsing, bolding and headers are visible as text.
-    for tag in soup.find_all(['strong', 'b']):
-        tag.replace_with(f"**{tag.get_text()}**")
-    for tag in soup.find_all(['h1', 'h2', 'h3']):
-        tag.replace_with(f"\n### {tag.get_text()}\n")
-        
     raw_text = soup.get_text(separator='\n')
     full_text = _clean(raw_text)
 
+    # Extraction phase (Structure must be intact)
     topic        = _infer_topic(soup, topic_hint)
     subject      = _detect_subject(full_text)
     content_type = _detect_content_type(soup, full_text)
     
+    # 🚨 INDUSTRIAL OVERRIDE: If we have options, it IS an MCQ.
+    if options_from_v2 or _extract_options(soup):
+        content_type = "mcq"
+
+
+    
     # ── 2. Structural Slicing ──
     detected_options = {}
-    if content_type == "mcq":
+    if content_type == "mcq" and not options_from_v2:
         all_markers = []
         for m in re.finditer(r'###', raw_text):
             all_markers.append({"pos": m.start(), "end": m.end(), "type": "header", "val": "###"})
@@ -505,7 +558,10 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
     if content_type == "mcq":
         options = _extract_options(soup)
         
-        # INDUSTRIAL OVERRIDE: If standard extraction is empty or lazy, use early detected labels
+        # INDUSTRIAL OVERRIDE: Prioritize solutionV2 extraction absolutely
+        if options_from_v2:
+            options = options_from_v2
+
         if not options:
             options = detected_options
         else:
@@ -534,7 +590,18 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
             "final_answer": _extract_final_answer(soup, full_text),
         })
 
+    # ── [NEW] Preservation Layer: Re-inject Markdown markers into HTML for the Director ──
+    # This ensures that even after HTML parsing, bolding and headers are visible as text.
+    for tag in soup.find_all(['strong', 'b']):
+        tag.replace_with(f"**{tag.get_text()}**")
+    for tag in soup.find_all(['h1', 'h2', 'h3']):
+        tag.replace_with(f"\n### {tag.get_text()}\n")
+    
+    # Final metadata assembly
+    result["html_content"] = str(soup)
+
     return result
+
 
 
 # ── CLI test ──────────────────────────────────────────────────────────────────

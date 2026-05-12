@@ -41,6 +41,7 @@ from langgraph.graph import StateGraph, END
 import config
 from healer_agent import run_healer
 from knowledge_vector_store import retrieve_related_research
+from nodes.ambient_visual_node import ambient_visual_node
 
 
 # ── Industrial Helpers ───────────────────────────────────────────────────────
@@ -298,6 +299,7 @@ class TonyState(TypedDict):
     image_path:  Optional[str]
     image_paths: Optional[dict[str, str]] # Map of scene_id or asset_id to local path
     landmark_coords: Optional[dict]       # Map of scene_id -> {label: [x, y]}
+    ambient_assets: Dict[str, Any]
 
     # ── After architect_node ───────────────────────────
     manim_script_path: Optional[str]
@@ -454,6 +456,15 @@ def director_node(state: TonyState) -> TonyState:
     # Priority: 1. Manual Overrides | 2. Top-level request | 3. Autonomous Director
     overrides = state.get("overrides") or {}
     forced_mode = overrides.get("render_mode")
+    
+    # INDUSTRIAL OVERRIDES: Extract language and TTS flags
+    if "language" in overrides:
+        state["language"] = overrides["language"]
+        print(f"   🌐 Language Override: {overrides['language']}")
+    
+    if "use_elevenlabs" in overrides:
+        state["use_elevenlabs"] = overrides["use_elevenlabs"]
+        print(f"   🎙️ ElevenLabs Override: {overrides['use_elevenlabs']}")
 
     # Handle boolean flags from Spring Boot MySQL
     if overrides.get("has_formula") or overrides.get("has_equation"):
@@ -1416,6 +1427,8 @@ def ppt_critic_node(state: TonyState) -> TonyState:
     start_t = time.time()
     video_type = state.get("video_type") or "educational"
     print(f"🔍 [PPT Critic] Reviewing slide plan (mode: {video_type})...")
+    approved = True # Default for fail-safe
+
 
     from groq import Groq
     import json
@@ -1505,12 +1518,22 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
         narration   = slide.get("narration", "")
         slide_text  = layout_data.get("heading") or layout_data.get("title") or layout_data.get("statement") or state["topic"]
 
+        # ─── AMBIENT: Select assets for this slide ───
+        ambient = state.get("ambient_assets", {})
+        atmo_list = ambient.get("atmospheric", [])
+        acct_list = ambient.get("accents", [])
+        
+        atmo_path = atmo_list[i % len(atmo_list)] if atmo_list else None
+        acct_path = acct_list[i % len(acct_list)] if acct_list else None
+
         path = generate_slide_image(
             slide_text, i, output_dir=job_dir,
             narration=narration,
             layout=layout,
             layout_data=layout_data,
-            job_id=state.get("job_id")
+            job_id=state.get("job_id"),
+            atmospheric_path=atmo_path,
+            accent_path=acct_path
         )
         if path and os.path.exists(path):
             slide_paths.append(path)
@@ -1539,8 +1562,9 @@ def ppt_tts_node(state: TonyState) -> TonyState:
         if not narration:
             data = slide.get("data", {})
             narration = data.get("heading") or data.get("title") or state["topic"]
+        use_el = state.get("use_elevenlabs", False)
         try:
-            path, char_count = generate_audio(narration, i, output_dir=job_dir, job_id=state.get("job_id"))
+            path, char_count = generate_audio(narration, i, output_dir=job_dir, use_elevenlabs=use_el, job_id=state.get("job_id"))
             # INDUSTRIAL LEDGER: Capture characters
             state["ledger"] = state.get("ledger", {})
             state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + char_count
@@ -2063,6 +2087,7 @@ workflow = StateGraph(TonyState)
 # Universal Node Definitions
 workflow.add_node("director",      director_node)
 workflow.add_node("vision",        vision_node)
+workflow.add_node("ambient_visual", ambient_visual_node)
 workflow.add_node("architect",     architect_node)
 workflow.add_node("supervisor",    supervisor_node)
 workflow.add_node("healer",        healer_node)
@@ -2091,7 +2116,8 @@ workflow.add_conditional_edges("director", should_research, {
     "vision": "vision"
 })
 
-workflow.add_conditional_edges("vision", route_by_mode, {
+workflow.add_edge("vision", "ambient_visual")
+workflow.add_conditional_edges("ambient_visual", route_by_mode, {
     "architect":   "architect",
     "ppt_planner": "ppt_planner",
     "explainer":   "explainer",

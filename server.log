@@ -2083,3 +2083,837 @@ INFO:     127.0.0.1:61034 - "GET /jobs HTTP/1.1" 403 Forbidden
 INFO:     127.0.0.1:61489 - "GET /openapi.json HTTP/1.1" 200 OK
 INFO:     127.0.0.1:63219 - "GET /docs HTTP/1.1" 200 OK
 INFO:     127.0.0.1:63219 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60536 - "POST /render HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:58239 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58239 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61954 - "POST /render HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:62437 - "POST /render HTTP/1.1" 400 Bad Request
+🚀 Job 5a1375dc-19c queued for: Dicot embryo development
+INFO:     127.0.0.1:62628 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+📡 [2026-05-08T13:28:51.077830Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Dicot embryo development...
+🎬 [Director] Parsing HTML and writing scene script for: Dicot embryo development
+📡 [2026-05-08T13:28:51.338195Z] [KNOWLEDGE] 📚 JSON Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+   Render mode: PRESENTATION | Scenes: 4
+   💡 Reasoning: The topic of Dicot embryo development is a biological concept that can be effectively conveyed with factual and text-based content using static slides. There are no complex equations, anatomical lesions, or motion-requiring logic listed in the input that necessitates using 'manim'. Hence, 'presentation' mode is appropriate to efficiently convey the concept.
+📡 [2026-05-08T13:28:57.142575Z] [DIRECTOR] Planned 4 scenes for presentation path. (6.1s)
+📡 [2026-05-08T13:28:57.182087Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Dicot embryo development
+   ℹ️  Vision Node: Skipping Imagen calls for presentation path.
+📋 [PPT Planner] Planning slides for: Dicot embryo development (attempt 1)
+   Planned 8 slides:
+     1. [chaos_chapter] The Beginning of Life
+     2. [big_statement] From Zygote to Pro-Embryo!
+     3. [bullets] Stages of Development
+     4. [chaos_chapter] Distinctive Stages
+     5. [key_highlight] 
+     6. [steps] Progression Towards Maturity
+     7. [chaos_chapter] Concluding the Journey
+     8. [summary] Key Takeaways
+📡 [2026-05-08T13:29:05.388092Z] [PPT_PLANNER] Planned 8 slides. (8.2s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+   Score: 3/10 | ❌ Rejected
+   Feedback: Slide 1: Narration starts with a generic phrase, violating E1. Slide 3: Narration just restates bullet points, violating E5. Slide 3: 'Globular Stage: The groundwork is laid.' is vague, violating E3. Slide 3: 'Heart Stage: Cotyledons make an appearance.' is vague, violating E3. Slide 3: 'Torpedo Stage: The structure elongates and becomes more defined.' is vague, violating E3. Slide 4: Subtitle is generic and too similar to others, violating V4. Slides 4 and 7: Identical layout in sequence, violating V2. Slide 6: Narration is vague without adding substantial insight, violating E5. Slide 8: Signs of repetition with prior slides, risking V1.
+📡 [2026-05-08T13:29:10.917097Z] [PPT_CRITIC] Critic review complete (Approved: False). (5.5s)
+   ↩️  Sending back to planner (attempt 1)
+📋 [PPT Planner] Planning slides for: Dicot embryo development (attempt 2)
+   Planned 7 slides:
+     1. [chaos_chapter] The Magical Beginning
+     2. [big_statement] From a Single Zygote, Complexity Arises!
+     3. [chaos_chapter] Stages of Transformation
+     4. [bullets] The Transformative Journey
+     5. [key_highlight] 
+     6. [chaos_chapter] Completion of the Journey
+     7. [summary] Key Takeaways
+📡 [2026-05-08T13:29:19.122936Z] [PPT_PLANNER] Planned 7 slides. (8.1s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+   Score: 3/10 | ❌ Rejected
+   Feedback: Slide 1 violates E1 with generic narration start. Slide 3 has a repeated "Let's" phrase, similar to Slide 1, violating V4 with repetitive phrasing. Slides 4 and 7 use bullet points, violating V1 with similar layouts. Slide 6 has generic chaos_chapter subtitle violating E2. Narration on Slide 4 restates bullet points with no additional insight, violating E5.
+📡 [2026-05-08T13:29:21.798905Z] [PPT_CRITIC] Critic review complete (Approved: False). (2.6s)
+🖼️  [PPT Renderer] Rendering 7 slides...
+   Slide 0 [chaos_chapter] → output/job_5a1375dc-19c/scene_0_slide.png
+   Slide 1 [big_statement] → output/job_5a1375dc-19c/scene_1_slide.png
+   Slide 2 [chaos_chapter] → output/job_5a1375dc-19c/scene_2_slide.png
+   Slide 3 [bullets] → output/job_5a1375dc-19c/scene_3_slide.png
+   Slide 4 [key_highlight] → output/job_5a1375dc-19c/scene_4_slide.png
+   Slide 5 [chaos_chapter] → output/job_5a1375dc-19c/scene_5_slide.png
+   Slide 6 [summary] → output/job_5a1375dc-19c/scene_6_slide.png
+📡 [2026-05-08T13:29:26.427826Z] [PPT_RENDERER] Visual presentation layer rendered. (4.6s)
+🔊 [PPT TTS] Generating audio for 7 slides...
+Generated Mac TTS fallback audio for scene 0 -> output/job_5a1375dc-19c/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_5a1375dc-19c/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_5a1375dc-19c/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_5a1375dc-19c/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_5a1375dc-19c/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_5a1375dc-19c/scene_5.mp3
+Generated Mac TTS fallback audio for scene 6 -> output/job_5a1375dc-19c/scene_6.mp3
+📡 [2026-05-08T13:29:32.150890Z] [PPT_TTS] Narration synthesis complete. (5.7s)
+🎬 [PPT Video] Building video from 7 slides...
+   ✅ Clip 1/7
+   ✅ Clip 2/7
+   ✅ Clip 3/7
+   ✅ Clip 4/7
+   ✅ Clip 5/7
+   ✅ Clip 6/7
+   ✅ Clip 7/7
+   ✅ PPT video: output/job_5a1375dc-19c/dicot_embryo_development_presentation.mp4
+📡 [2026-05-08T13:29:59.051628Z] [PPT_VIDEO] Presentation video production complete. (26.9s)
+📡 [2026-05-08T13:29:59.104319Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-08T13:29:59.141882Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/5a1375dc-19c/dicot_embryo_development_presentation.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "5a1375dc-19c"}
+📡 [2026-05-08T13:29:59.181403Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/5a1375dc-19c/dicot_embryo_development_presentation.mp4 (0.1s)
+🎬 [Thumbnail] Dicot embryo development [unknown]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: MASTER / MASTERY
+   ✅ Thumbnail: output/job_5a1375dc-19c/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-08T13:29:59.656605Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/5a1375dc-19c/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "5a1375dc-19c"}
+📡 [2026-05-08T13:29:59.718168Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/5a1375dc-19c/thumbnail.png
+✅ Job 5a1375dc-19c completed: http://localhost:8000/stream/5a1375dc-19c/dicot_embryo_development_presentation.mp4
+INFO:     127.0.0.1:63089 - "GET /status/5a1375dc-19c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55739 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59457 - "POST /render HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:59504 - "POST /render HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:59554 - "POST /render HTTP/1.1" 400 Bad Request
+🚀 Job a114e97b-8cf queued for: Tetralogy of Fallot Masterclass
+INFO:     127.0.0.1:59645 - "POST /render HTTP/1.1" 200 OK
+📡 [2026-05-09T07:42:00.361131Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Masterclass...
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Masterclass
+📡 [2026-05-09T07:42:00.560194Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+INFO:     127.0.0.1:59668 - "GET /status/a114e97b-8cf HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+   Render mode: MANIM | Scenes: 5
+   🔎 Research Requested: 2 queries
+   💡 Reasoning: The topic 'Tetralogy of Fallot' involves medical concepts, specifically heart anatomy and physiological implications, which benefits from accurate visual representation. Manim is suitable for illustrating anatomical diagrams and explaining heart defects in a dynamic way, particularly as these concepts often require motion to show effects like blood flow or structural deficiencies.
+📡 [2026-05-09T07:42:07.343252Z] [DIRECTOR] Planned 5 scenes for manim path. (7.0s)
+   🧠 Vector Brain: Consulting internal memory for 'Tetralogy of Fallot Masterclass'...
+⚠️ Vector Store: fastembed library missing. pip install fastembed
+   🎯 Vector Hit! Retrieved 'Erythema Multiforme' (Similarity: 1.0)
+📡 [2026-05-09T07:42:08.281095Z] [KNOWLEDGE] 💎 KNOWLEDGE ACQUIRED: Reusing grounded research for 'Erythema Multiforme'
+📡 [2026-05-09T07:42:08.317427Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Masterclass...
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Masterclass
+📡 [2026-05-09T07:42:08.348563Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+   Render mode: MANIM | Scenes: 5
+   💡 Reasoning: The topic of 'Tetralogy of Fallot Masterclass' appears to be a factual and concept-based area that likely involves explanation of a medical condition but without specific diagrams, equations, or cinematic metaphors in the input or persistent knowledge base. Therefore, 'presentation' is suitable for an efficient and clear explanation of the conceptual material.
+📡 [2026-05-09T07:42:13.578236Z] [DIRECTOR] Planned 5 scenes for manim path. (5.3s)
+📡 [2026-05-09T07:42:13.609822Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Masterclass
+   ℹ️  Vision Node: No image scenes detected. Skipping diagram generation.
+📡 [2026-05-09T07:42:13.662344Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Masterclass
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_a114e97b-8cf/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_a114e97b-8cf/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_a114e97b-8cf/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_a114e97b-8cf/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_a114e97b-8cf/scene_4.mp3
+📡 [2026-05-09T07:42:17.951109Z] [ARCHITECT] Provenance Trace: Script labels anchored in KNOWLEDGE_BASE.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 2]: vtype=key_point, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 3]: vtype=key_point, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 4]: vtype=summary, str(i) in landmark_coords=False
+✅ Manim script written: output/job_a114e97b-8cf/scene_script.py (5 scenes)
+   Script written with synced durations: output/job_a114e97b-8cf/scene_script.py
+📡 [2026-05-09T07:42:18.022093Z] [ARCHITECT] Manim script generated successfully. (4.4s)
+📡 [2026-05-09T07:42:18.063192Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+INFO:     127.0.0.1:59833 - "GET /status/a114e97b-8cf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59872 - "GET /status/a114e97b-8cf HTTP/1.1" 200 OK
+   ✅ Manim video: output/job_a114e97b-8cf/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_a114e97b-8cf/tetralogy_of_fallot_masterclass_masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T07:43:25.835889Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/a114e97b-8cf/tetralogy_of_fallot_masterclass_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "a114e97b-8cf"}
+📡 [2026-05-09T07:43:25.878673Z] [SUPERVISOR] Manim production lifecycle complete. (67.8s)
+📡 [2026-05-09T07:43:25.944671Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T07:43:25.972484Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/a114e97b-8cf/tetralogy_of_fallot_masterclass_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "a114e97b-8cf"}
+📡 [2026-05-09T07:43:26.007554Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/a114e97b-8cf/tetralogy_of_fallot_masterclass_masterclass.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Masterclass [unknown]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: MASTER / MASTERY
+   ✅ Thumbnail: output/job_a114e97b-8cf/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T07:43:26.617913Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/a114e97b-8cf/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "a114e97b-8cf"}
+📡 [2026-05-09T07:43:26.647262Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/a114e97b-8cf/thumbnail.png
+✅ Job a114e97b-8cf completed: http://localhost:8000/stream/a114e97b-8cf/tetralogy_of_fallot_masterclass_masterclass.mp4
+INFO:     127.0.0.1:60069 - "GET /status/a114e97b-8cf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60091 - "GET /status/a114e97b-8cf HTTP/1.1" 200 OK
+🚀 Job c4460df4-f37 queued for: Tetralogy of Fallot Masterclass
+📡 [2026-05-09T08:07:04.140354Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Masterclass...
+INFO:     127.0.0.1:62328 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Masterclass
+📡 [2026-05-09T08:07:04.285319Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+   Render mode: MANIM | Scenes: 6
+   💡 Reasoning: Tetralogy of Fallot is a complex medical concept involving anatomy and physiological mechanisms that would benefit from detailed diagrams and explanations highlighting blood flow and anatomical structures.
+📡 [2026-05-09T08:07:10.268703Z] [DIRECTOR] Planned 6 scenes for manim path. (6.1s)
+📡 [2026-05-09T08:07:10.363842Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Masterclass
+🎨 Generating image for: Tetralogy of Fallot Diagram [unknown] via gpt-image-2...
+INFO:     127.0.0.1:62356 - "GET /status/c4460df4-f37 HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+✅ Image saved: output/job_c4460df4-f37/annotated_1_tetralogy_of_fallot_diagram.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 1: Grounded 'right ventricular outflow tract' → {'right ventricular outflow tract': [0.53, 0.52]}
+🎨 Generating image for: Blood Flow Pathway in Tetralogy of Fallot [unknown] via gpt-image-2...
+✅ Image saved: output/job_c4460df4-f37/annotated_4_blood_flow_pathway_in_tetralog.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 4: Grounded 'mixing of blood' → {'mixing of blood': [0.47, 0.54]}
+📡 [2026-05-09T08:08:09.577719Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Masterclass
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_c4460df4-f37/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_c4460df4-f37/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_c4460df4-f37/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_c4460df4-f37/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_c4460df4-f37/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_c4460df4-f37/scene_5.mp3
+INFO:     127.0.0.1:62682 - "GET /status/c4460df4-f37 HTTP/1.1" 200 OK
+📡 [2026-05-09T08:08:16.751139Z] [ARCHITECT] Provenance Trace: Script labels anchored in PARSED_FACTS.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.53, 0.52] for scene 1
+   🔍 DEBUG [Scene 1]: _scene_annotated_image received landmark_coords=[0.53, 0.52]
+   🔍 DEBUG [build_manim_script loop 2]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 3]: vtype=key_point, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 4]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.47, 0.54] for scene 4
+   🔍 DEBUG [Scene 4]: _scene_annotated_image received landmark_coords=[0.47, 0.54]
+   🔍 DEBUG [build_manim_script loop 5]: vtype=summary, str(i) in landmark_coords=False
+✅ Manim script written: output/job_c4460df4-f37/scene_script.py (6 scenes)
+   Script written with synced durations: output/job_c4460df4-f37/scene_script.py
+📡 [2026-05-09T08:08:17.084060Z] [ARCHITECT] Manim script generated successfully. (7.5s)
+📡 [2026-05-09T08:08:17.256922Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+INFO:     127.0.0.1:62708 - "GET /status/c4460df4-f37 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62983 - "GET /status/c4460df4-f37 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63009 - "GET /status/c4460df4-f37 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63573 - "GET /status/c4460df4-f37 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63603 - "GET /status/c4460df4-f37 HTTP/1.1" 200 OK
+   ✅ Manim video: output/job_c4460df4-f37/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_c4460df4-f37/tetralogy_of_fallot_masterclass_masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:12:34.801947Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/c4460df4-f37/tetralogy_of_fallot_masterclass_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "c4460df4-f37"}
+📡 [2026-05-09T08:12:36.357943Z] [SUPERVISOR] Manim production lifecycle complete. (259.1s)
+📡 [2026-05-09T08:12:36.488755Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:12:36.543564Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/c4460df4-f37/tetralogy_of_fallot_masterclass_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "c4460df4-f37"}
+📡 [2026-05-09T08:12:36.587310Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/c4460df4-f37/tetralogy_of_fallot_masterclass_masterclass.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Masterclass [unknown]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: MASTER / MASTERY
+   ✅ Thumbnail: output/job_c4460df4-f37/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:12:37.720344Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/c4460df4-f37/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "c4460df4-f37"}
+📡 [2026-05-09T08:12:37.757056Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/c4460df4-f37/thumbnail.png
+✅ Job c4460df4-f37 completed: http://localhost:8000/stream/c4460df4-f37/tetralogy_of_fallot_masterclass_masterclass.mp4
+🚀 Job 4159d336-a7a queued for: Tetralogy of Fallot Masterclass
+INFO:     127.0.0.1:64395 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+📡 [2026-05-09T08:17:19.015888Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Masterclass...
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Masterclass
+📡 [2026-05-09T08:17:19.227771Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+   Render mode: PRESENTATION | Scenes: 4
+   💡 Reasoning: The topic 'Tetralogy of Fallot' involves explaining a medical concept. However, without complex diagrams or step-by-step calculations specified in the input, the 'presentation' mode is appropriate for effectively conveying this medical concept in a factual, slide-based manner.
+📡 [2026-05-09T08:17:23.484363Z] [DIRECTOR] Planned 4 scenes for presentation path. (4.5s)
+📡 [2026-05-09T08:17:23.519378Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+INFO:     127.0.0.1:64398 - "GET /status/4159d336-a7a HTTP/1.1" 200 OK
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Masterclass
+   ℹ️  Vision Node: Skipping Imagen calls for presentation path.
+📋 [PPT Planner] Planning slides for: Tetralogy of Fallot Masterclass (attempt 1)
+INFO:     127.0.0.1:64402 - "GET /status/4159d336-a7a HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+   Planned 8 slides:
+     1. [chaos_chapter] Unveiling Tetralogy of Fallot
+     2. [bullets] The Four Anomalies
+     3. [big_statement] Tetralogy of Fallot accounts for 10% of 
+     4. [key_highlight] 
+     5. [steps] Management Strategies
+     6. [chaos_chapter] Life After Diagnosis
+     7. [quote_card] 
+     8. [summary] Key Takeaways
+📡 [2026-05-09T08:17:34.742696Z] [PPT_PLANNER] Planned 8 slides. (7.4s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+   Score: 4/10 | ❌ Rejected
+   Feedback: 1. Slide 1 narration starts with 'Let's dive into...' which violates E1. 
+2. Slide 2 uses a 'bullets' layout, and Slide 5 also uses a 'steps' layout which is purely bullet/step content, constituting more than 30% of the slides as similar content presentation, thus violating V1.
+3. Slide 6 subtitle 'Navigating the Path Towards Health' is somewhat generic and could potentially violate E2 and weaken the clarity, as it lacks specificity.
+4. 'Early Detection' as the key highlight on Slide 4 is somewhat vague and not very memorable; it could be more impactful with specific statistics or a striking fact about detection success rates, which is against E7.
+
+Overall, this slide plan contains multiple E1 and V1 violations resulting in rejection.
+📡 [2026-05-09T08:17:36.990406Z] [PPT_CRITIC] Critic review complete (Approved: False). (2.2s)
+   ↩️  Sending back to planner (attempt 1)
+📋 [PPT Planner] Planning slides for: Tetralogy of Fallot Masterclass (attempt 2)
+   Planned 7 slides:
+     1. [chaos_chapter] Cracking the Code of the Heart
+     2. [bullets] The Four Components of Tetralogy of Fallot
+     3. [chaos_chapter] A Race Against Time
+     4. [key_highlight] 
+     5. [big_statement] Approximately 1 in 2,500 newborns are af
+     6. [chaos_chapter] Understanding the Impact
+     7. [summary] Key Takeaways
+📡 [2026-05-09T08:17:43.190916Z] [PPT_PLANNER] Planned 7 slides. (6.2s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+   Score: 5/10 | ❌ Rejected
+   Feedback: E1: Slide 1 narration starts with 'Let's unlock its secrets'. E2: Slide 1 subtitle 'Exploring the Complexity of Tetralogy of Fallot' is generic. E2: Slide 3 subtitle 'Why Early Detection Matters' is also generic. V4: All chaos_chapter subtitles follow a similar sentence pattern. V3: There are both a key_highlight (slide 4) and a big_statement (slide 5), which is good, but the repetition of 'chaos_chapter' without more varied phrases in subtitles can make the content feel repetitive. Ensure more varied layouts in narration and subtitles. Consider more dynamic transition or impact moments beyond statistical facts.
+📡 [2026-05-09T08:17:46.074614Z] [PPT_CRITIC] Critic review complete (Approved: False). (2.8s)
+🖼️  [PPT Renderer] Rendering 7 slides...
+   Slide 0 [chaos_chapter] → output/job_4159d336-a7a/scene_0_slide.png
+   Slide 1 [bullets] → output/job_4159d336-a7a/scene_1_slide.png
+   Slide 2 [chaos_chapter] → output/job_4159d336-a7a/scene_2_slide.png
+   Slide 3 [key_highlight] → output/job_4159d336-a7a/scene_3_slide.png
+   Slide 4 [big_statement] → output/job_4159d336-a7a/scene_4_slide.png
+   Slide 5 [chaos_chapter] → output/job_4159d336-a7a/scene_5_slide.png
+   Slide 6 [summary] → output/job_4159d336-a7a/scene_6_slide.png
+📡 [2026-05-09T08:17:49.250827Z] [PPT_RENDERER] Visual presentation layer rendered. (3.1s)
+🔊 [PPT TTS] Generating audio for 7 slides...
+Generated Mac TTS fallback audio for scene 0 -> output/job_4159d336-a7a/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_4159d336-a7a/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_4159d336-a7a/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_4159d336-a7a/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_4159d336-a7a/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_4159d336-a7a/scene_5.mp3
+Generated Mac TTS fallback audio for scene 6 -> output/job_4159d336-a7a/scene_6.mp3
+📡 [2026-05-09T08:17:53.635227Z] [PPT_TTS] Narration synthesis complete. (4.3s)
+🎬 [PPT Video] Building video from 7 slides...
+   ✅ Clip 1/7
+   ✅ Clip 2/7
+   ✅ Clip 3/7
+   ✅ Clip 4/7
+   ✅ Clip 5/7
+   ✅ Clip 6/7
+   ✅ Clip 7/7
+   ✅ PPT video: output/job_4159d336-a7a/tetralogy_of_fallot_masterclass_presentation.mp4
+📡 [2026-05-09T08:18:29.840280Z] [PPT_VIDEO] Presentation video production complete. (36.2s)
+📡 [2026-05-09T08:18:29.890063Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:18:29.918789Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/4159d336-a7a/tetralogy_of_fallot_masterclass_presentation.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "4159d336-a7a"}
+📡 [2026-05-09T08:18:29.945360Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/4159d336-a7a/tetralogy_of_fallot_masterclass_presentation.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Masterclass [unknown]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: MASTER / MASTERY
+   ✅ Thumbnail: output/job_4159d336-a7a/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:18:30.389863Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/4159d336-a7a/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "4159d336-a7a"}
+📡 [2026-05-09T08:18:30.420042Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/4159d336-a7a/thumbnail.png
+✅ Job 4159d336-a7a completed: http://localhost:8000/stream/4159d336-a7a/tetralogy_of_fallot_masterclass_presentation.mp4
+INFO:     127.0.0.1:64409 - "GET /status/4159d336-a7a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64411 - "GET /status/4159d336-a7a HTTP/1.1" 200 OK
+📡 [2026-05-09T08:19:04.260209Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Masterclass (Manim)...
+🚀 Job c931a3d5-6a0 queued for: Tetralogy of Fallot Masterclass (Manim)
+INFO:     127.0.0.1:64414 - "POST /render HTTP/1.1" 200 OK
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Masterclass (Manim)
+📡 [2026-05-09T08:19:04.332575Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: physics | Type: concept
+INFO:     127.0.0.1:64417 - "GET /status/c931a3d5-6a0 HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+   Render mode: MANIM | Scenes: 6
+   💡 Reasoning: The topic is Tetralogy of Fallot, which involves anatomical diagrams and complex concepts related to the heart's structure and blood flow that require accurate visual representation.
+📡 [2026-05-09T08:19:10.055595Z] [DIRECTOR] Planned 6 scenes for manim path. (5.8s)
+📡 [2026-05-09T08:19:10.154726Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Masterclass (Manim)
+🎨 Generating image for: Heart Anatomy in Tetralogy of Fallot [physics] via gpt-image-2...
+✅ Image saved: output/job_c931a3d5-6a0/annotated_1_heart_anatomy_in_tetralogy_of_.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 0/1 landmarks
+🎨 Generating image for: Blood Flow Disruption [physics] via gpt-image-2...
+✅ Image saved: output/job_c931a3d5-6a0/annotated_3_blood_flow_disruption.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 3: Grounded 'directional blood flow' → {'directional blood flow': [0.5, 0.5]}
+📡 [2026-05-09T08:19:58.958746Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Masterclass (Manim)
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_c931a3d5-6a0/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_c931a3d5-6a0/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_c931a3d5-6a0/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_c931a3d5-6a0/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_c931a3d5-6a0/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_c931a3d5-6a0/scene_5.mp3
+📡 [2026-05-09T08:20:02.791798Z] [ARCHITECT] Provenance Trace: Script labels anchored in PARSED_FACTS.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=annotated_image, str(i) in landmark_coords=False
+   🔍 DEBUG [Scene 1]: _scene_annotated_image received landmark_coords=None
+   🔍 DEBUG [build_manim_script loop 2]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 3]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.5, 0.5] for scene 3
+   🔍 DEBUG [Scene 3]: _scene_annotated_image received landmark_coords=[0.5, 0.5]
+   🔍 DEBUG [build_manim_script loop 4]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 5]: vtype=summary, str(i) in landmark_coords=False
+✅ Manim script written: output/job_c931a3d5-6a0/scene_script.py (6 scenes)
+   Script written with synced durations: output/job_c931a3d5-6a0/scene_script.py
+📡 [2026-05-09T08:20:03.022012Z] [ARCHITECT] Manim script generated successfully. (4.1s)
+📡 [2026-05-09T08:20:03.659359Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+INFO:     127.0.0.1:64434 - "GET /status/c931a3d5-6a0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64436 - "GET /status/c931a3d5-6a0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64454 - "GET /status/c931a3d5-6a0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64457 - "GET /status/c931a3d5-6a0 HTTP/1.1" 200 OK
+   ✅ Manim video: output/job_c931a3d5-6a0/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_c931a3d5-6a0/tetralogy_of_fallot_masterclass_manim__masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:22:53.908126Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/c931a3d5-6a0/tetralogy_of_fallot_masterclass_manim__masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "c931a3d5-6a0"}
+📡 [2026-05-09T08:22:54.228831Z] [SUPERVISOR] Manim production lifecycle complete. (170.6s)
+📡 [2026-05-09T08:22:54.700998Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:22:56.458494Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/c931a3d5-6a0/tetralogy_of_fallot_masterclass_manim__masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "c931a3d5-6a0"}
+📡 [2026-05-09T08:23:00.421952Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/c931a3d5-6a0/tetralogy_of_fallot_masterclass_manim__masterclass.mp4 (5.7s)
+🎬 [Thumbnail] Tetralogy of Fallot Masterclass (Manim) [physics]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: JEE / PHYSICS
+   ✅ Thumbnail: output/job_c931a3d5-6a0/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T08:23:01.568814Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/c931a3d5-6a0/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "c931a3d5-6a0"}
+📡 [2026-05-09T08:23:01.627691Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/c931a3d5-6a0/thumbnail.png
+✅ Job c931a3d5-6a0 completed: http://localhost:8000/stream/c931a3d5-6a0/tetralogy_of_fallot_masterclass_manim__masterclass.mp4
+INFO:     127.0.0.1:64465 - "GET /status/c931a3d5-6a0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64467 - "GET /status/c931a3d5-6a0 HTTP/1.1" 200 OK
+🚀 Job 79494355-a1f queued for: Tetralogy of Fallot Final Masterclass
+INFO:     127.0.0.1:49379 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+📡 [2026-05-09T10:54:24.816348Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Final Masterclass...
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Final Masterclass
+📡 [2026-05-09T10:54:25.162480Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: physics | Type: concept
+   Render mode: MANIM | Scenes: 8
+   💡 Reasoning: The topic 'Tetralogy of Fallot' involves medical content with anatomical diagrams and clinical reasoning, warranting the use of the manim engine, particularly for visually illustrating complex anatomical concepts and pathophysiological processes.
+📡 [2026-05-09T10:54:34.422623Z] [DIRECTOR] Planned 8 scenes for manim path. (9.6s)
+📡 [2026-05-09T10:54:34.515554Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Final Masterclass
+🎨 Generating image for: Tetralogy of Fallot [physics] via gpt-image-2...
+✅ Image saved: output/job_79494355-a1f/annotated_1_tetralogy_of_fallot.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 1: Grounded 'right ventricular hypertrophy' → {'right ventricular hypertrophy': [0.53, 0.52]}
+🎨 Generating image for: Heart Defects Overview [physics] via gpt-image-2...
+INFO:     127.0.0.1:49408 - "GET /status/f1729b1e-0cf HTTP/1.1" 404 Not Found
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+✅ Image saved: output/job_79494355-a1f/annotated_3_heart_defects_overview.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 3: Grounded 'ventricular septal defect' → {'ventricular septal defect': [0.47, 0.5]}
+📡 [2026-05-09T10:55:25.457820Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Final Masterclass
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_79494355-a1f/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_79494355-a1f/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_79494355-a1f/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_79494355-a1f/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_79494355-a1f/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_79494355-a1f/scene_5.mp3
+Generated Mac TTS fallback audio for scene 6 -> output/job_79494355-a1f/scene_6.mp3
+Generated Mac TTS fallback audio for scene 7 -> output/job_79494355-a1f/scene_7.mp3
+📡 [2026-05-09T10:55:42.127328Z] [ARCHITECT] Provenance Trace: Script labels anchored in PARSED_FACTS.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.53, 0.52] for scene 1
+   🔍 DEBUG [Scene 1]: _scene_annotated_image received landmark_coords=[0.53, 0.52]
+   🔍 DEBUG [build_manim_script loop 2]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 3]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.47, 0.5] for scene 3
+   🔍 DEBUG [Scene 3]: _scene_annotated_image received landmark_coords=[0.47, 0.5]
+   🔍 DEBUG [build_manim_script loop 4]: vtype=mcq_layout, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 5]: vtype=option_highlight, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 6]: vtype=cross_out, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 7]: vtype=answer_reveal, str(i) in landmark_coords=False
+✅ Manim script written: output/job_79494355-a1f/scene_script.py (8 scenes)
+   Script written with synced durations: output/job_79494355-a1f/scene_script.py
+📡 [2026-05-09T10:55:42.343862Z] [ARCHITECT] Manim script generated successfully. (16.9s)
+📡 [2026-05-09T10:55:42.899475Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+INFO:     127.0.0.1:49450 - "GET /status/79494355-a1f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49452 - "GET /status/79494355-a1f HTTP/1.1" 200 OK
+   ✅ Manim video: output/job_79494355-a1f/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_79494355-a1f/tetralogy_of_fallot_final_masterclass_masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T10:59:13.376875Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/79494355-a1f/tetralogy_of_fallot_final_masterclass_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "79494355-a1f"}
+📡 [2026-05-09T10:59:13.486264Z] [SUPERVISOR] Manim production lifecycle complete. (210.6s)
+📡 [2026-05-09T10:59:13.574047Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T10:59:13.610436Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/79494355-a1f/tetralogy_of_fallot_final_masterclass_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "79494355-a1f"}
+📡 [2026-05-09T10:59:13.641991Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/79494355-a1f/tetralogy_of_fallot_final_masterclass_masterclass.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Final Masterclass [physics]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: JEE / PHYSICS
+   ✅ Thumbnail: output/job_79494355-a1f/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T10:59:14.360704Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/79494355-a1f/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "79494355-a1f"}
+📡 [2026-05-09T10:59:14.401216Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/79494355-a1f/thumbnail.png
+✅ Job 79494355-a1f completed: http://localhost:8000/stream/79494355-a1f/tetralogy_of_fallot_final_masterclass_masterclass.mp4
+INFO:     127.0.0.1:49494 - "GET /status/79494355-a1f HTTP/1.1" 200 OK
+📡 [2026-05-09T11:18:08.984232Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Final Masterclass v2...
+🚀 Job 4ddfe8a0-0b5 queued for: Tetralogy of Fallot Final Masterclass v2
+INFO:     127.0.0.1:49567 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Final Masterclass v2
+📡 [2026-05-09T11:18:09.081773Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: physics | Type: concept
+   Render mode: MANIM | Scenes: 6
+   💡 Reasoning: The topic 'Tetralogy of Fallot' involves anatomical concepts and diagrams that require accurate and dynamic visual representations. Even though it's listed under physics, the mention of medical content implies a deep dive into anatomy, necessitating the use of Manim for its precision and ability to render complex visual and computational elements.
+📡 [2026-05-09T11:18:15.486211Z] [DIRECTOR] Planned 6 scenes for manim path. (6.5s)
+INFO:     127.0.0.1:49570 - "GET /status/4ddfe8a0-0b5 HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+📡 [2026-05-09T11:18:15.767321Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Final Masterclass v2
+🎨 Generating image for: Tetralogy of Fallot Overview [physics] via gpt-image-2...
+✅ Image saved: output/job_4ddfe8a0-0b5/annotated_1_tetralogy_of_fallot_overview.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 1: Grounded 'heart and major blood vessels' → {'heart and major blood vessels': [0.5, 0.5]}
+🎨 Generating image for: Heart Blood Flow [physics] via gpt-image-2...
+📡 [2026-05-09T11:18:53.659993Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Final Masterclass v3...
+🚀 Job 2f8f840e-cd7 queued for: Tetralogy of Fallot Final Masterclass v3
+INFO:     127.0.0.1:49580 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Final Masterclass v3
+📡 [2026-05-09T11:18:53.776406Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: physics | Type: concept
+✅ Image saved: output/job_4ddfe8a0-0b5/annotated_3_heart_blood_flow.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   Render mode: MANIM | Scenes: 6
+   💡 Reasoning: Even though the topic is traditionally medical, the 'Tetralogy of Fallot' can include important physiological dynamics, diagrams, and flow explanations that warrant using 'manim' for accurate depiction.
+📡 [2026-05-09T11:18:58.805064Z] [DIRECTOR] Planned 6 scenes for manim path. (5.1s)
+📡 [2026-05-09T11:18:58.865581Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Final Masterclass v3
+🎨 Generating image for: Heart Overview [physics] via gpt-image-2...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 3: Grounded 'blood flow pathways' → {'blood flow pathways': [0.59, 0.58]}
+📡 [2026-05-09T11:19:02.548278Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Final Masterclass v2
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_4ddfe8a0-0b5/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_4ddfe8a0-0b5/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_4ddfe8a0-0b5/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_4ddfe8a0-0b5/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_4ddfe8a0-0b5/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_4ddfe8a0-0b5/scene_5.mp3
+📡 [2026-05-09T11:19:09.075894Z] [ARCHITECT] Provenance Trace: Script labels anchored in PARSED_FACTS.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.5, 0.5] for scene 1
+   🔍 DEBUG [Scene 1]: _scene_annotated_image received landmark_coords=[0.5, 0.5]
+   🔍 DEBUG [build_manim_script loop 2]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 3]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.59, 0.58] for scene 3
+   🔍 DEBUG [Scene 3]: _scene_annotated_image received landmark_coords=[0.59, 0.58]
+   🔍 DEBUG [build_manim_script loop 4]: vtype=key_point, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 5]: vtype=summary, str(i) in landmark_coords=False
+✅ Manim script written: output/job_4ddfe8a0-0b5/scene_script.py (6 scenes)
+   Script written with synced durations: output/job_4ddfe8a0-0b5/scene_script.py
+📡 [2026-05-09T11:19:09.193229Z] [ARCHITECT] Manim script generated successfully. (6.6s)
+📡 [2026-05-09T11:19:09.259430Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+✅ Image saved: output/job_2f8f840e-cd7/annotated_2_heart_overview.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 2: Grounded 'right ventricular outflow tract' → {'right ventricular outflow tract': [0.55, 0.35]}
+🎨 Generating image for: Blood Flow Dynamics [physics] via gpt-image-2...
+INFO:     127.0.0.1:49588 - "GET /status/2f8f840e-cd7 HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+✅ Image saved: output/job_2f8f840e-cd7/annotated_4_blood_flow_dynamics.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 4: Grounded 'blood flow direction' → {'blood flow direction': [0.53, 0.43]}
+📡 [2026-05-09T11:19:45.953581Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Final Masterclass v3
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_2f8f840e-cd7/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_2f8f840e-cd7/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_2f8f840e-cd7/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_2f8f840e-cd7/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_2f8f840e-cd7/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_2f8f840e-cd7/scene_5.mp3
+📡 [2026-05-09T11:19:52.067883Z] [ARCHITECT] Provenance Trace: Script labels anchored in PARSED_FACTS.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 2]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.55, 0.35] for scene 2
+   🔍 DEBUG [Scene 2]: _scene_annotated_image received landmark_coords=[0.55, 0.35]
+   🔍 DEBUG [build_manim_script loop 3]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 4]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.53, 0.43] for scene 4
+   🔍 DEBUG [Scene 4]: _scene_annotated_image received landmark_coords=[0.53, 0.43]
+   🔍 DEBUG [build_manim_script loop 5]: vtype=summary, str(i) in landmark_coords=False
+✅ Manim script written: output/job_2f8f840e-cd7/scene_script.py (6 scenes)
+   Script written with synced durations: output/job_2f8f840e-cd7/scene_script.py
+📡 [2026-05-09T11:19:52.127280Z] [ARCHITECT] Manim script generated successfully. (6.2s)
+📡 [2026-05-09T11:19:52.186567Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+   ✅ Manim video: output/job_4ddfe8a0-0b5/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_4ddfe8a0-0b5/tetralogy_of_fallot_final_masterclass_v2_masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:22:14.579545Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/4ddfe8a0-0b5/tetralogy_of_fallot_final_masterclass_v2_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "4ddfe8a0-0b5"}
+📡 [2026-05-09T11:22:14.642607Z] [SUPERVISOR] Manim production lifecycle complete. (185.4s)
+📡 [2026-05-09T11:22:14.727561Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:22:14.785695Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/4ddfe8a0-0b5/tetralogy_of_fallot_final_masterclass_v2_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "4ddfe8a0-0b5"}
+📡 [2026-05-09T11:22:14.836848Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/4ddfe8a0-0b5/tetralogy_of_fallot_final_masterclass_v2_masterclass.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Final Masterclass v2 [physics]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: JEE / PHYSICS
+   ✅ Thumbnail: output/job_4ddfe8a0-0b5/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:22:15.530227Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/4ddfe8a0-0b5/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "4ddfe8a0-0b5"}
+📡 [2026-05-09T11:22:15.577242Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/4ddfe8a0-0b5/thumbnail.png
+✅ Job 4ddfe8a0-0b5 completed: http://localhost:8000/stream/4ddfe8a0-0b5/tetralogy_of_fallot_final_masterclass_v2_masterclass.mp4
+   ✅ Manim video: output/job_2f8f840e-cd7/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_2f8f840e-cd7/tetralogy_of_fallot_final_masterclass_v3_masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:26:47.084294Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/2f8f840e-cd7/tetralogy_of_fallot_final_masterclass_v3_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "2f8f840e-cd7"}
+📡 [2026-05-09T11:26:47.222085Z] [SUPERVISOR] Manim production lifecycle complete. (415.0s)
+📡 [2026-05-09T11:26:47.348323Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:26:47.404464Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/2f8f840e-cd7/tetralogy_of_fallot_final_masterclass_v3_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "2f8f840e-cd7"}
+📡 [2026-05-09T11:26:47.474064Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/2f8f840e-cd7/tetralogy_of_fallot_final_masterclass_v3_masterclass.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Final Masterclass v3 [physics]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: JEE / PHYSICS
+   ✅ Thumbnail: output/job_2f8f840e-cd7/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:26:48.121228Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/2f8f840e-cd7/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "2f8f840e-cd7"}
+📡 [2026-05-09T11:26:48.225331Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/2f8f840e-cd7/thumbnail.png
+✅ Job 2f8f840e-cd7 completed: http://localhost:8000/stream/2f8f840e-cd7/tetralogy_of_fallot_final_masterclass_v3_masterclass.mp4
+INFO:     127.0.0.1:49625 - "GET /status/2f8f840e-cd7 HTTP/1.1" 200 OK
+📡 [2026-05-09T11:49:05.143497Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Final Masterclass v4...
+🚀 Job 092d1cac-b6d queued for: Tetralogy of Fallot Final Masterclass v4
+INFO:     127.0.0.1:50044 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Final Masterclass v4
+📡 [2026-05-09T11:49:05.397712Z] [KNOWLEDGE] 📚 HTML Source: Successfully ingested input curriculum.
+   Subject: physics | Type: concept
+   Render mode: MANIM | Scenes: 8
+   💡 Reasoning: The content involves a physics concept that may require motion for effective understanding, and there is an aggressive MCQ detection requirement. Manim will allow for dynamic teaching scenes and the handling of MCQ phases.
+📡 [2026-05-09T11:49:14.165831Z] [DIRECTOR] Planned 8 scenes for manim path. (9.0s)
+📡 [2026-05-09T11:49:14.234791Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Final Masterclass v4
+🎨 Generating image for: Heart Defect Illustration [physics] via gpt-image-2...
+✅ Image saved: output/job_092d1cac-b6d/annotated_2_heart_defect_illustration.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 2: Grounded 'ventricular septal defect' → {'ventricular septal defect': [0.5, 0.55]}
+📡 [2026-05-09T11:49:35.966195Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Final Masterclass v4
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_092d1cac-b6d/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_092d1cac-b6d/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_092d1cac-b6d/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_092d1cac-b6d/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_092d1cac-b6d/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_092d1cac-b6d/scene_5.mp3
+Generated Mac TTS fallback audio for scene 6 -> output/job_092d1cac-b6d/scene_6.mp3
+Generated Mac TTS fallback audio for scene 7 -> output/job_092d1cac-b6d/scene_7.mp3
+📡 [2026-05-09T11:49:44.865584Z] [ARCHITECT] Provenance Trace: Script labels anchored in PARSED_FACTS.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 2]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.5, 0.55] for scene 2
+   🔍 DEBUG [Scene 2]: _scene_annotated_image received landmark_coords=[0.5, 0.55]
+   🔍 DEBUG [build_manim_script loop 3]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 4]: vtype=mcq_layout, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 5]: vtype=option_highlight, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 6]: vtype=cross_out, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 7]: vtype=answer_reveal, str(i) in landmark_coords=False
+✅ Manim script written: output/job_092d1cac-b6d/scene_script.py (8 scenes)
+   Script written with synced durations: output/job_092d1cac-b6d/scene_script.py
+📡 [2026-05-09T11:49:44.945312Z] [ARCHITECT] Manim script generated successfully. (9.0s)
+📡 [2026-05-09T11:49:45.034490Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+INFO:     127.0.0.1:50051 - "GET /status/e7403487-111 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50054 - "GET /status/092d1cac-b6d HTTP/1.1" 200 OK
+   ✅ Manim video: output/job_092d1cac-b6d/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_092d1cac-b6d/tetralogy_of_fallot_final_masterclass_v4_masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:53:10.016502Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/092d1cac-b6d/tetralogy_of_fallot_final_masterclass_v4_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "092d1cac-b6d"}
+📡 [2026-05-09T11:53:10.085720Z] [SUPERVISOR] Manim production lifecycle complete. (205.1s)
+📡 [2026-05-09T11:53:10.165202Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:53:10.217629Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/092d1cac-b6d/tetralogy_of_fallot_final_masterclass_v4_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "092d1cac-b6d"}
+📡 [2026-05-09T11:53:10.256271Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/092d1cac-b6d/tetralogy_of_fallot_final_masterclass_v4_masterclass.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Final Masterclass v4 [physics]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: JEE / PHYSICS
+   ✅ Thumbnail: output/job_092d1cac-b6d/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T11:53:10.777483Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/092d1cac-b6d/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "092d1cac-b6d"}
+📡 [2026-05-09T11:53:10.831420Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/092d1cac-b6d/thumbnail.png
+✅ Job 092d1cac-b6d completed: http://localhost:8000/stream/092d1cac-b6d/tetralogy_of_fallot_final_masterclass_v4_masterclass.mp4
+INFO:     127.0.0.1:50428 - "GET /status/092d1cac-b6d HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50481 - "POST /render HTTP/1.1" 403 Forbidden
+📡 [2026-05-09T12:40:36.781036Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot Final Masterclass v5...
+🚀 Job 0aa506c9-17e queued for: Tetralogy of Fallot Final Masterclass v5
+INFO:     127.0.0.1:50541 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/images/generations "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot Final Masterclass v5
+📡 [2026-05-09T12:40:37.356820Z] [KNOWLEDGE] 📚 JSON Source: Successfully ingested input curriculum.
+   Subject: medical | Type: mcq
+   ⚠️ Label Injection failed: list indices must be integers or slices, not str
+   Correct answer locked: A. ASD - not part of ToF
+   Render mode: MANIM | Scenes: 9
+   💡 Reasoning: The topic involves anatomical diagrams and requires detailed conceptual explanation of Tetralogy of Fallot which fits Manim's capabilities. Additionally, since the content is an MCQ about a specific medical condition with anatomical references, Manim's visual flow will be ideal.
+📡 [2026-05-09T12:40:46.177456Z] [DIRECTOR] Planned 9 scenes for manim path. (9.4s)
+📡 [2026-05-09T12:40:46.341605Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+🎨 [Vision] Generating assets for: Tetralogy of Fallot Final Masterclass v5
+🎨 Generating image for: Tetralogy of Fallot Overview [medical] via gpt-image-2...
+✅ Image saved: output/job_0aa506c9-17e/annotated_1_tetralogy_of_fallot_overview.png
+🔍 [VisionGrounder] Grounding 1 landmarks via gpt-4o...
+   ✅ [VisionGrounder] Grounded 1/1 landmarks
+   📍 Scene 1: Grounded 'Venticular Septal Defect' → {'venticular septal defect': [0.48, 0.55]}
+📡 [2026-05-09T12:41:13.427394Z] [ARCHITECT] Orchestration: Building mathematical animation blueprint...
+📐 [Architect] Building Manim script for: Tetralogy of Fallot Final Masterclass v5
+   Generating TTS audio for sync...
+Generated Mac TTS fallback audio for scene 0 -> output/job_0aa506c9-17e/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_0aa506c9-17e/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_0aa506c9-17e/scene_2.mp3
+Generated Mac TTS fallback audio for scene 3 -> output/job_0aa506c9-17e/scene_3.mp3
+Generated Mac TTS fallback audio for scene 4 -> output/job_0aa506c9-17e/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_0aa506c9-17e/scene_5.mp3
+Generated Mac TTS fallback audio for scene 6 -> output/job_0aa506c9-17e/scene_6.mp3
+Generated Mac TTS fallback audio for scene 7 -> output/job_0aa506c9-17e/scene_7.mp3
+Generated Mac TTS fallback audio for scene 8 -> output/job_0aa506c9-17e/scene_8.mp3
+📡 [2026-05-09T12:41:31.951172Z] [ARCHITECT] Provenance Trace: Script labels anchored in PARSED_FACTS.
+   🔍 DEBUG [build_manim_script loop 0]: vtype=title_card, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 1]: vtype=annotated_image, str(i) in landmark_coords=True
+   📍 Injected sole grounded coord [0.48, 0.55] for scene 1
+   🔍 DEBUG [Scene 1]: _scene_annotated_image received landmark_coords=[0.48, 0.55]
+   🔍 DEBUG [build_manim_script loop 2]: vtype=concept_bullets, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 3]: vtype=mcq_layout, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 4]: vtype=option_highlight, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 5]: vtype=option_highlight, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 6]: vtype=option_highlight, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 7]: vtype=cross_out, str(i) in landmark_coords=False
+   🔍 DEBUG [build_manim_script loop 8]: vtype=answer_reveal, str(i) in landmark_coords=False
+✅ Manim script written: output/job_0aa506c9-17e/scene_script.py (9 scenes)
+   Script written with synced durations: output/job_0aa506c9-17e/scene_script.py
+📡 [2026-05-09T12:41:32.048309Z] [ARCHITECT] Manim script generated successfully. (18.6s)
+📡 [2026-05-09T12:41:32.226581Z] [SUPERVISOR] Production: Rendering Manim mathematics animation...
+🔍 [Supervisor] Rendering — attempt 1
+   Rendering Manim animation with cache isolation...
+   ✅ Manim video: output/job_0aa506c9-17e/manim_media/videos/scene_script/1080p15/EaseToLearnScene.mp4
+   Concatenating narration audio...
+   Stitching video + audio...
+   ✅ Final video: output/job_0aa506c9-17e/tetralogy_of_fallot_final_masterclass_v5_masterclass.mp4
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T12:45:29.351188Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/0aa506c9-17e/tetralogy_of_fallot_final_masterclass_v5_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "0aa506c9-17e"}
+📡 [2026-05-09T12:45:29.428252Z] [SUPERVISOR] Manim production lifecycle complete. (237.2s)
+📡 [2026-05-09T12:45:29.544823Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T12:45:29.588795Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/0aa506c9-17e/tetralogy_of_fallot_final_masterclass_v5_masterclass.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "0aa506c9-17e"}
+📡 [2026-05-09T12:45:29.633532Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/0aa506c9-17e/tetralogy_of_fallot_final_masterclass_v5_masterclass.mp4 (0.1s)
+🎬 [Thumbnail] Tetralogy of Fallot Final Masterclass v5 [medical]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: FMGE / MEDICAL
+   ✅ Thumbnail: output/job_0aa506c9-17e/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-09T12:45:30.361869Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/0aa506c9-17e/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "0aa506c9-17e"}
+📡 [2026-05-09T12:45:30.420970Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/0aa506c9-17e/thumbnail.png
+✅ Job 0aa506c9-17e completed: http://localhost:8000/stream/0aa506c9-17e/tetralogy_of_fallot_final_masterclass_v5_masterclass.mp4
+INFO:     127.0.0.1:50720 - "POST /render HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:50732 - "POST /render HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:50737 - "POST /render HTTP/1.1" 400 Bad Request
+📡 [2026-05-11T07:14:11.523338Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot...
+🚀 Job 2859b180-7ea queued for: Tetralogy of Fallot
+INFO:     127.0.0.1:51165 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:openai._base_client:Retrying request to /chat/completions in 0.499353 seconds
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:openai._base_client:Retrying request to /chat/completions in 0.908459 seconds
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot
+   📚 Knowledge Cache Hit: Using verified facts for Tetralogy of Fallot
+📡 [2026-05-11T07:14:11.672191Z] [KNOWLEDGE] 📚 KB Hit: Using verified facts for Tetralogy of Fallot
+📡 [2026-05-11T07:14:11.793166Z] [KNOWLEDGE] 📚 JSON Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+❌ [RateLimitError] Pipeline Error for job 2859b180-7ea: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+INFO:     127.0.0.1:51178 - "GET /status/2859b180-7ea HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:51180 - "GET /status/2859b180-7ea HTTP/1.1" 200 OK
+📡 [2026-05-11T07:23:15.036282Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot...
+🚀 Job 28287454-b14 queued for: Tetralogy of Fallot
+INFO:     127.0.0.1:51252 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:openai._base_client:Retrying request to /chat/completions in 0.477111 seconds
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:openai._base_client:Retrying request to /chat/completions in 0.983570 seconds
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot
+   📚 Knowledge Cache Hit: Using verified facts for Tetralogy of Fallot
+📡 [2026-05-11T07:23:15.100815Z] [KNOWLEDGE] 📚 KB Hit: Using verified facts for Tetralogy of Fallot
+📡 [2026-05-11T07:23:15.157931Z] [KNOWLEDGE] 📚 JSON Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+❌ [RateLimitError] Pipeline Error for job 28287454-b14: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+INFO:     127.0.0.1:51262 - "GET /status/28287454-b14 HTTP/1.1" 200 OK
+📡 [2026-05-11T07:24:20.104992Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Tetralogy of Fallot...
+🚀 Job 207d9ea2-802 queued for: Tetralogy of Fallot
+INFO:     127.0.0.1:51276 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:openai._base_client:Retrying request to /chat/completions in 0.464556 seconds
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+INFO:openai._base_client:Retrying request to /chat/completions in 0.772514 seconds
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+🎬 [Director] Parsing HTML and writing scene script for: Tetralogy of Fallot
+   📚 Knowledge Cache Hit: Using verified facts for Tetralogy of Fallot
+📡 [2026-05-11T07:24:20.184936Z] [KNOWLEDGE] 📚 KB Hit: Using verified facts for Tetralogy of Fallot
+📡 [2026-05-11T07:24:20.263140Z] [KNOWLEDGE] 📚 JSON Source: Successfully ingested input curriculum.
+   Subject: unknown | Type: concept
+❌ [RateLimitError] Pipeline Error for job 207d9ea2-802: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+INFO:     127.0.0.1:51280 - "GET /status/207d9ea2-802 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11043]

@@ -422,8 +422,10 @@ class RenderOverrides(BaseModel):
     render_mode: Optional[str] = Field(None, description="Force a specific render path: manim | presentation | explainer | heygen")
     has_formula: Optional[bool] = Field(None, description="Force/Hint math detection")
     has_static_image: Optional[bool] = Field(None, description="Force/Hint image grounding")
+    enable_ambient: Optional[bool] = None
     animation_enabled: Optional[bool] = Field(None, description="Force/Hint cinematic animations")
     with_avatar: Optional[bool] = Field(None, description="Force/Hint avatar generation")
+    use_elevenlabs: Optional[bool] = Field(None, description="Force ElevenLabs high-fidelity TTS")
     language: Optional[str] = Field(None, description="Force language: en | hi")
 
 class RenderRequest(BaseModel):

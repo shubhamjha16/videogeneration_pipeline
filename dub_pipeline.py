@@ -13,6 +13,7 @@ HINDI_VOICE_ID = os.environ.get("HINDI_VOICE_ID", "QTKSa2Iyv0yoxvXY2V8a")  # ove
 
 SUPPORTED_LANGUAGES = {
     "hindi": "hi",
+    "hinglish": "hi",  # Uses Hindi voice but Hinglish script
     "tamil": "ta",
     "telugu": "te",
     "bengali": "bn",
@@ -32,7 +33,17 @@ def translate_text(text: str, target_language: str) -> str:
     
     client = Groq(api_key=GROQ_API_KEY)
     
-    prompt = f"""Translate the following English educational text to {target_language}.
+    if target_language.lower() == "hinglish":
+        prompt = f"""Convert the following English educational text to Hinglish — a natural mix of Hindi and English commonly used by Indian students.
+Rules:
+- Keep all medical/scientific/technical terms in English (e.g. hypertension, mmHg, bronchoscopy)
+- Use Hindi for connecting words, explanations, and transitions (e.g. "iska matlab hai", "yeh important hai", "dhyan rakhein")
+- Sound like a friendly Indian teacher explaining to a student
+- Return ONLY the Hinglish text, nothing else
+
+Text: {text}"""
+    else:
+        prompt = f"""Translate the following English educational text to {target_language}.
 Keep medical/scientific terms accurate. Keep the same tone — clear, educational, exam-focused.
 Return ONLY the translated text, nothing else.
 

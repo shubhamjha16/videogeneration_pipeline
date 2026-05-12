@@ -1,0 +1,151 @@
+INFO:     Started server process [47436]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+WARNING:FactoryCache:⚠️ Cache: 'redis' library not installed. Operating in pass-through mode.
+🚀 Job f072e10b-a83 queued for: Metals, Non-metals and Metallurgy
+INFO:     127.0.0.1:55705 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+🎬 Starting Pipeline 6: Dubbing 6c7cf2e7-7da → hinglish (10 scenes)
+   🌐 Translating scene 0...
+   ✅ Scene 0: Aaj hum internal combustion engine basics ke baare mein baat...
+📡 [2026-05-12T07:56:58.258010Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Metals, Non-metals and Metallurgy...
+🎬 [Director] Parsing HTML and writing scene script for: Metals, Non-metals and Metallurgy
+📡 [2026-05-12T07:57:00.589693Z] [KNOWLEDGE] 📚 MARKDOWN Source: Successfully ingested input curriculum.
+   Subject: chemistry | Type: mcq
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_0_dubbed.mp3
+   🌐 Translating scene 1...
+   ✅ Scene 1: Ab hum iske overall process ko dekhte hain. Yeh 4-stroke cyc...
+   🔍 DEBUG: real_options type=<class 'dict'> content={'1': {'name': 'Crushing and Grinding', 'explanation': ''}, '2': {'name': 'Concentration of Ore', 'explanation': ''}, '3': {'name': 'Extraction of Metal', 'explanation': ''}, '4': {'name': 'Refining', 'explanation': ''}}
+   Render mode: PRESENTATION | Scenes: 10
+   💡 Reasoning: The subject is Chemistry and the content involves metallurgy steps and metal properties, requiring motion and diagrams, thus fitting the criteria for using Manim.
+📡 [2026-05-12T07:57:04.516911Z] [DIRECTOR] Planned 10 scenes for presentation path. (6.3s)
+📡 [2026-05-12T07:57:04.575662Z] [VISION] AI Vision Engine: Initializing high-fidelity asset generation...
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_1_dubbed.mp3
+   🌐 Translating scene 2...
+🎨 [Vision] Generating assets for: Metals, Non-metals and Metallurgy
+   ℹ️  Vision Node: Skipping Imagen calls for presentation path.
+📋 [PPT Planner] Planning slides for: Metals, Non-metals and Metallurgy (attempt 1)
+   ✅ Scene 2: Piston ka role combustion process se pressure ko motion mein...
+   Planned 7 slides:
+     1. [chaos_chapter] Introduction to Metallurgy
+     2. [bullets] Key Steps in Metallurgy
+     3. [chaos_chapter] The Metallurgy Process
+     4. [big_statement] 'All of the Above' is the correct answer
+     5. [two_column] Metallurgy Process
+     6. [chaos_chapter] Conclusion
+     7. [summary] Key Takeaways
+📡 [2026-05-12T07:57:06.477706Z] [PPT_PLANNER] Planned 7 slides. (1.8s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+   Score: 4/10 | ❌ Rejected
+   Feedback: Slide 1: narration starts with generic phrase 'Welcome to our discussion' (E1). Slide 1: subtitle 'Introduction to Metallurgy' is generic (E2). Slide 2: bullets are not specific and lack numbers or dates (E3). Slide 3: subtitle 'A Comprehensive Overview' is generic (E2). Slide 7: summary points are vague and lack specific facts or numbers (E3).
+📡 [2026-05-12T07:57:07.363686Z] [PPT_CRITIC] Critic review complete (Approved: False). (0.8s)
+   ↩️  Sending back to planner (attempt 1)
+📋 [PPT Planner] Planning slides for: Metals, Non-metals and Metallurgy (attempt 2)
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_2_dubbed.mp3
+   🌐 Translating scene 3...
+   ✅ Scene 3: Valves ka role yeh hai ki ve cylinder mein air aur fuel ka f...
+   Planned 6 slides:
+     1. [chaos_chapter] Metals, Non-metals, and Metallurgy
+     2. [bullets] Key Steps in the Metallurgy Process
+     3. [chaos_chapter] Breaking Down the Metallurgy Process
+     4. [big_statement] Metallurgy encompasses all steps from cr
+     5. [key_highlight] 
+     6. [summary] Key Takeaways
+📡 [2026-05-12T07:57:09.254757Z] [PPT_PLANNER] Planned 6 slides. (1.8s)
+🔍 [PPT Critic] Reviewing slide plan (mode: educational)...
+   Score: 4/10 | ❌ Rejected
+   Feedback: Slide 2: The narration just restates the bullet points instead of adding insight (E5). Slide 3: The subtitle 'Breaking Down the Metallurgy Process' is not specific enough and the narration could appear in a different video without changing (V5). Slides 1, 3, and 6 do not introduce specific terms or dates, making the content vague (E3, E6, E7). Additionally, the layout of slides 2 and 6 is similar, which could lead to a repetitive visual pattern if not balanced with more diverse layouts (V1).
+📡 [2026-05-12T07:57:10.332713Z] [PPT_CRITIC] Critic review complete (Approved: False). (1.0s)
+🖼️  [PPT Renderer] Rendering 6 slides...
+   Slide 0 [chaos_chapter] → output/job_f072e10b-a83/scene_0_slide.png
+   Slide 1 [bullets] → output/job_f072e10b-a83/scene_1_slide.png
+   Slide 2 [chaos_chapter] → output/job_f072e10b-a83/scene_2_slide.png
+   Slide 3 [big_statement] → output/job_f072e10b-a83/scene_3_slide.png
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_3_dubbed.mp3
+   🌐 Translating scene 4...
+   Slide 4 [key_highlight] → output/job_f072e10b-a83/scene_4_slide.png
+   Slide 5 [summary] → output/job_f072e10b-a83/scene_5_slide.png
+📡 [2026-05-12T07:57:13.282391Z] [PPT_RENDERER] Visual presentation layer rendered. (2.9s)
+   ✅ Scene 4: Ab hum apne understanding ko test karte hain ek question ke ...
+🔊 [PPT TTS] Generating audio for 6 slides...
+Generated Mac TTS fallback audio for scene 0 -> output/job_f072e10b-a83/scene_0.mp3
+Generated Mac TTS fallback audio for scene 1 -> output/job_f072e10b-a83/scene_1.mp3
+Generated Mac TTS fallback audio for scene 2 -> output/job_f072e10b-a83/scene_2.mp3
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_4_dubbed.mp3
+   🌐 Translating scene 5...
+Generated Mac TTS fallback audio for scene 3 -> output/job_f072e10b-a83/scene_3.mp3
+   ✅ Scene 5: Option B galat hai kyunki power stroke compression se pehle ...
+Generated Mac TTS fallback audio for scene 4 -> output/job_f072e10b-a83/scene_4.mp3
+Generated Mac TTS fallback audio for scene 5 -> output/job_f072e10b-a83/scene_5.mp3
+📡 [2026-05-12T07:57:18.375043Z] [PPT_TTS] Narration synthesis complete. (5.0s)
+🎬 [PPT Video] Building video from 6 slides...
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_5_dubbed.mp3
+   🌐 Translating scene 6...
+   ✅ Scene 6: Option C bhi galat hai, kyunki sequence mein compression ko ...
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_6_dubbed.mp3
+   🌐 Translating scene 7...
+   ✅ Scene 7: Option D galat hai kyunki exhaust ko sequence ka pehla kadam...
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_7_dubbed.mp3
+   🌐 Translating scene 8...
+   ✅ Scene 8: Toh, hum options B, C, aur D ko eliminate kar sakte hain, ji...
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_8_dubbed.mp3
+   🌐 Translating scene 9...
+   ✅ Scene 9: Sahi sequence hai, Intake, Compression, Power, aur Exhaust. ...
+   ✅ Clip 1/6
+✅ ElevenLabs Hindi audio: output/job_6c7cf2e7-7da/dub_hinglish/scene_9_dubbed.mp3
+   ✅ Clip 2/6
+   ✅ Clip 3/6
+✅ Audio swapped: output/job_6c7cf2e7-7da/internal_combustion_engine_basics_presentation_hinglish_hinglish.mp4
+🏆 Pipeline 6 Complete: output/job_6c7cf2e7-7da/internal_combustion_engine_basics_presentation_hinglish_hinglish.mp4
+INFO:     127.0.0.1:55707 - "POST /dub/6c7cf2e7-7da?language=hinglish HTTP/1.1" 200 OK
+   ✅ Clip 4/6
+   ✅ Clip 5/6
+INFO:     127.0.0.1:55737 - "GET /status/f072e10b-a83 HTTP/1.1" 200 OK
+   ✅ Clip 6/6
+   ✅ PPT video: output/job_f072e10b-a83/metals,_non-metals_and_metallurgy_presentation.mp4
+📡 [2026-05-12T07:58:08.495588Z] [PPT_VIDEO] Presentation video production complete. (50.1s)
+📡 [2026-05-12T07:58:08.548117Z] [DEPLOY] Synchronizing final assets with Production CDN...
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-12T07:58:08.598448Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/f072e10b-a83/metals,_non-metals_and_metallurgy_presentation.mp4", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "f072e10b-a83"}
+📡 [2026-05-12T07:58:08.633454Z] [DEPLOY] Masterclass published successfully: http://localhost:8000/stream/f072e10b-a83/metals,_non-metals_and_metallurgy_presentation.mp4 (0.1s)
+📝 Scenes persisted for dub pipeline: output/job_f072e10b-a83/scenes.json
+🎬 [Thumbnail] Metals, Non-metals and Metallurgy [chemistry]
+   ⚠️  Gemini unavailable (No module named 'google') — using PIL fallback base
+   ✍️  Overlaying text: JEE / CHEMISTRY
+   ✅ Thumbnail: output/job_f072e10b-a83/thumbnail.png
+   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/
+📡 [2026-05-12T07:58:09.433207Z] [DEPLOY] {"event": "fallback", "node": "DEPLOY", "fallback": "http://localhost:8000/stream/f072e10b-a83/thumbnail.png", "reason": "S3_BUCKET not set", "error_class": "MissingConfig", "job_id": "f072e10b-a83"}
+📡 [2026-05-12T07:58:09.504176Z] [DEPLOY] Thumbnail generated: http://localhost:8000/stream/f072e10b-a83/thumbnail.png
+✅ Job f072e10b-a83 completed: http://localhost:8000/stream/f072e10b-a83/metals,_non-metals_and_metallurgy_presentation.mp4
+INFO:     127.0.0.1:55743 - "GET /status/f072e10b-a83 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55745 - "GET /status/f072e10b-a83 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55749 - "GET /stream/f072e10b-a83/metals%2C_non-metals_and_metallurgy_presentation.mp4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55764 - "GET /stream/f072e10b-a83/metals%2C_non-metals_and_metallurgy_presentation.mp4 HTTP/1.1" 206 Partial Content
+INFO:     127.0.0.1:55790 - "GET /stream/6c7cf2e7-7da/internal_combustion_engine_basics_presentation_hinglish_hinglish.mp4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55791 - "GET /stream/6c7cf2e7-7da/internal_combustion_engine_basics_presentation_hinglish_hinglish.mp4 HTTP/1.1" 206 Partial Content
+INFO:     127.0.0.1:56056 - "GET /stream/6c7cf2e7-7da/internal_combustion_engine_basics_presentation_hinglish_hinglish.mp4 HTTP/1.1" 206 Partial Content
+INFO:     127.0.0.1:56056 - "GET /stream/6c7cf2e7-7da/internal_combustion_engine_basics_presentation_hinglish_hinglish.mp4 HTTP/1.1" 206 Partial Content
+INFO:     127.0.0.1:56422 - "POST /generate HTTP/1.1" 404 Not Found
+🚀 Job 1f1c28e8-935 queued for: Corrosion of Iron
+📡 [2026-05-12T11:02:36.246340Z] [DIRECTOR] Analyzing curriculum and selecting render path for: Corrosion of Iron...
+INFO:     127.0.0.1:57112 - "POST /render HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
