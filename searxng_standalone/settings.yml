@@ -1,58 +1,34 @@
 # EaseToLearn SearXNG Industrial Configuration
-# Optimised for LLM Research Agents - Resilient to IP Blocks
+# Optimized for LLM Research Agents
 
-use_default_settings: false # We take full control to prevent flaky engines
+use_default_settings: true
 
 server:
   base_url: http://localhost:8080/
   port: 8080
   bind_address: "0.0.0.0"
-  secret_key: "TOKEN_PROVIDED_BY_ENV"
-  limiter: false 
+  secret_key: "978216fc65d3a1b2c4e5f60718293a4b" # Fallback key
   image_proxy: true
 
 search:
   safe_search: 1
-  autocomplete: ""
   formats:
     - html
     - json
 
-# Categories mapping to ensure the API finds the results
-categories_as_tabs:
-  general: 'General'
-  science: 'Science'
-
 engines:
   - name: google
     engine: google
-    shortcut: g
-    timeout: 3.0
-    disabled: true # Disable by default to avoid captchas/blocks
+    disabled: true
 
   - name: duckduckgo
     engine: duckduckgo
     shortcut: ddg
-    categories: general
     weight: 1.0
-
-  - name: qwant
-    engine: qwant
-    shortcut: q
-    categories: general
-    weight: 0.5
 
   - name: wikipedia
     engine: wikipedia
     shortcut: w
-    categories: [general, science]
-    weight: 2.0
-
-  - name: wolframalpha
-    engine: wolframalpha
-    shortcut: wa
-    categories: science
-    api_key: "" # Optional
     weight: 2.0
 
 ui:

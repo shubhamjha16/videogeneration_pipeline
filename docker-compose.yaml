@@ -47,10 +47,9 @@ services:
   searxng:
     build: ./searxng_standalone
     container_name: easetolearn-searxng
+    env_file: ./searxng_standalone/.env
     ports:
       - "8080:8080"
-    volumes:
-      - ./searxng_standalone/settings.yml:/etc/searxng/settings.yml:ro
     restart: always
 
 volumes:
