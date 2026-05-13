@@ -37,3 +37,4 @@ markdown>=3.6
 pillow>=10.0.0
 numpy>=1.23.0
 pandas>=2.0.0
+sympy>=1.12
