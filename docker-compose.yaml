@@ -1,24 +1,60 @@
+version: '3.8'
+
 services:
   # ── The Heart: Video Factory API ────────────────────────────────────────────
   factory-api:
     build: .
+    container_name: easetolearn-factory-api
     ports:
       - "8000:8000"
     environment:
-      - SEARXNG_URL=${SEARXNG_URL:-http://localhost:8080}
+      - SEARXNG_URL=http://searxng:8080
+      - REDIS_URL=redis://redis:6379/0
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - HEYGEN_API_KEY=${HEYGEN_API_KEY}
       - HIGGSFIELD_API_KEY=${HIGGSFIELD_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MANIM_MEDIA_DIR=/app/output
     volumes:
       - ./output:/app/output # Persist renders on host machine
+      - ./jobs.json:/app/jobs.json # Persist job state
+    depends_on:
+      redis:
+        condition: service_healthy
+      searxng:
+        condition: service_started
     restart: always
 
-  # ── The Brain: SearXNG Research Engine (DECOUPLED) ──────────────────────────
-  # Note: Move to searxng_standalone/ for dedicated deployment on Mac Mini.
-  # The Factory now connects via the SEARXNG_URL env var.
+  # ── The Memory: Redis Cache ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: easetolearn-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+
+  # ── The Brain: SearXNG Research Engine ──────────────────────────────────────
+  searxng:
+    build: ./searxng_standalone
+    container_name: easetolearn-searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng_standalone/settings.yml:/etc/searxng/settings.yml:ro
+    restart: always
+
+volumes:
+  redis_data:
 
 networks:
   default:

@@ -32,6 +32,7 @@ import random
 from utils.image_compositing import (
     composite_atmospheric,
     composite_accent,
+    composite_tony_pose,
     find_empty_corner,
     should_apply_atmospheric,
 )
@@ -1084,6 +1085,7 @@ def generate_slide_image(
     job_id: str = None,
     atmospheric_path: str = None,
     accent_path: str = None,
+    tony_pose_path: str = None,
 ) -> str:
     """
     Generate a doodle-style 1920x1080 slide PNG.
@@ -1142,6 +1144,16 @@ def generate_slide_image(
                 print(f"[ambient] accent composited for layout={layout} at {position}")
             except Exception as e:
                 print(f"[ambient] accent compositing failed (non-fatal): {e}")
+    
+    # ─── TONY: Character Overlay ───────────────────────────────
+    if tony_pose_path:
+        try:
+            img = composite_tony_pose(img, tony_pose_path, layout)
+            # Recreate draw object since img was replaced
+            draw = ImageDraw.Draw(img)
+            print(f"[tony] pose {os.path.basename(tony_pose_path)} composited for layout={layout}")
+        except Exception as e:
+            print(f"[tony] pose compositing failed (non-fatal): {e}")
 
     # Narration strip
     img, draw = _narration_strip(img, draw, narration)

@@ -39,7 +39,7 @@ docker push $ECR_BASE/$PROJECT_NAME:latest
 docker push $ECR_BASE/$PROJECT_NAME:$IMAGE_TAG
 
 echo "5. Building and pushing SearXNG Sidecar..."
-docker build -t $SEARXNG_NAME ./searxng
+docker build -t $SEARXNG_NAME ./searxng_standalone
 docker tag $SEARXNG_NAME:latest $ECR_BASE/$SEARXNG_NAME:latest
 docker tag $SEARXNG_NAME:latest $ECR_BASE/$SEARXNG_NAME:$IMAGE_TAG
 docker push $ECR_BASE/$SEARXNG_NAME:latest

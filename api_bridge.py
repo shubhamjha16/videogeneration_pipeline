@@ -436,7 +436,7 @@ class RenderRequest(BaseModel):
     markdown:    Optional[str] = None  # Markdown content with LaTeX support
     render_mode: Optional[Literal["manim", "presentation", "explainer", "heygen", "notes", "user_generated_video", "user_generated"]] = None
     with_avatar: bool = False
-    avatar_type: Optional[Literal["logo", "human", "pro", "user", "heygen"]] = None
+    avatar_type: Optional[Literal["logo", "human", "pro", "user", "heygen", "tony_cartoon"]] = None
     avatar_id:   Optional[str] = None
     video_type:  Optional[Literal["marketing", "educational"]] = None
     image_path:  Optional[str] = None

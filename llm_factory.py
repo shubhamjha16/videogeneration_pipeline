@@ -39,7 +39,7 @@ class LLMFactory:
         # Determine the effective model name for cache keying
         model = model_override
         if not model:
-            if provider == "groq": model = "llama-3.3-70b-versatile"
+            if provider == "groq": model = "llama-3.1-8b-instant"
             elif provider == "openai": model = "gpt-4o"
             elif provider == "local": model = config.LOCAL_LLM_MODEL
             else: model = "unknown"
@@ -137,7 +137,7 @@ class LLMFactory:
             
         # Industrial Sentinel: Set a generous 300s timeout for complex director planning
         client = Groq(api_key=api_key, timeout=300.0)
-        model = model_override or "llama-3.3-70b-versatile"
+        model = model_override or "llama-3.1-8b-instant"
         
         kwargs = {
             "model": model,

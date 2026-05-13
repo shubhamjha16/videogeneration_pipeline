@@ -129,3 +129,60 @@ def should_apply_atmospheric(layout_type: str) -> bool:
         Boolean indicating if atmospheric layer should be applied.
     """
     return layout_type in ATMOSPHERIC_LAYOUTS
+
+# ─── TONY CARTOON CHARACTER PLACEMENT ──────────────────────────────────────────
+
+TONY_PLACEMENT_RULES = {
+    "chaos_chapter":   {"pos": (50, 600),   "size": (450, 450)}, # Bottom left
+    "title_card":      {"pos": (1450, 550),  "size": (400, 450)}, # Bottom right
+    "big_statement":   {"pos": (1450, 550),  "size": (400, 450)}, # Bottom right
+    "key_highlight":   {"pos": (1450, 550),  "size": (400, 450)}, # Bottom right
+    "bullets":         {"pos": (1480, 580),  "size": (380, 420)}, # Bottom right
+    "two_column":      {"pos": (760, 600),   "size": (400, 420)}, # Middle bottom
+    "summary":         {"pos": (1450, 550),  "size": (400, 450)}, # Bottom right
+    "steps":           {"pos": (1450, 550),  "size": (400, 450)}, # Bottom right
+    "quote_card":      {"pos": (1450, 650),  "size": (350, 380)}, # Bottom right
+}
+
+def composite_tony_pose(
+    base: Image.Image, 
+    pose_path: Optional[str],
+    layout_type: str
+) -> Image.Image:
+    """Composites the Tony RGBA pose onto the slide based on layout rules."""
+    if not pose_path or not os.path.exists(pose_path):
+        return base
+    
+    rule = TONY_PLACEMENT_RULES.get(layout_type)
+    if not rule:
+        # Fallback to general corner if layout not defined
+        rule = {"pos": (1450, 550), "size": (400, 450)}
+
+    try:
+        print(f"   [tony] attempting to composite {os.path.basename(pose_path)} for layout {layout_type}")
+        with Image.open(pose_path) as pose:
+            pose = pose.convert("RGBA")
+            # Resize keeping aspect ratio
+            w, h = rule["size"]
+            pose.thumbnail((w, h), Image.LANCZOS)
+            
+            # Create transparent overlay same size as base
+            overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+            
+            # Center the thumbnail in the reserved slot
+            actual_w, actual_h = pose.size
+            x, y = rule["pos"]
+            # Adjust y if it's smaller than the slot to keep it on the floor
+            adjusted_y = y + (h - actual_h)
+            
+            print(f"   [tony] placing at ({x}, {adjusted_y}) with size {pose.size}")
+            overlay.paste(pose, (x, adjusted_y))
+            
+            # Alpha composite onto base
+            base_rgba = base.convert("RGBA")
+            combined = Image.alpha_composite(base_rgba, overlay)
+            return combined.convert("RGB")
+    except Exception as e:
+        print(f"   ❌ [tony] error: {e}")
+        return base
+

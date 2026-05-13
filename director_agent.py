@@ -48,7 +48,7 @@ import json
 import copy
 import anthropic
 from pydantic import BaseModel
-from typing import Literal, Any
+from typing import Literal, Any, Optional
 from llm_factory import LLMFactory, clean_llm_json
 
 
@@ -77,6 +77,7 @@ _REQUIRED_FIELDS = {
 
 class Scene(BaseModel):
     narration_text: str
+    tony_pose: Optional[str] = None # mood: happy | thinking | confused | explaining | idea | reading | excited | victory | standing_point_up
     visual_type: Literal[
         "title_card",
         "concept_bullets",
@@ -114,6 +115,8 @@ class DirectorOutput(BaseModel):
     decision_reasoning: str  # Explain why this mode was chosen based on the hierarchy
     search_queries: list[str] = [] # If content is sparse, list 1-3 queries to run via SearXNG
     scenes: list[Scene]
+
+DirectorOutput.model_rebuild()
 
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -221,6 +224,20 @@ USER_GENERATED_VIDEO (1–4 long scenes):
   - subtitle_chunk scenes only
   - focus on the narration; the visuals will be a single talking head avatar.
 
+━━━ CHARACTER DIRECTION (TONY) ━━━
+When `avatar_type` is "tony_cartoon", you may optionally select a `tony_pose` for a scene. 
+Do NOT use it for every slide. Use it sparingly (e.g., 30-50% of slides) to emphasize key emotional or pedagogical moments:
+- `desk_happy`: Use for the introduction or simple, positive facts.
+- `standing_point_up`: Use when highlighting a "Remember this!" rule or a critical definition.
+- `thinking`: Use during complex derivations, rhetorical questions, or "Now, let's consider..." moments.
+- `confused`: Use ONLY when addressing common student mistakes or addressing "Why is this not X?".
+- `explaining`: Use for particularly dense technical breakdowns.
+- `idea`: Use when introducing a shortcut, a trick, or an insightful "Eureka!" moment.
+- `reading`: Use when quoting a case study, a clinical scenario, or a long passage.
+- `excited`: Use to emphasize high-yield exam topics or breakthroughs.
+- `victory`: Use for the final answer or a triumphant summary.
+If a slide doesn't clearly benefit from a character's presence, set `tony_pose` to null.
+
 ━━━ NARRATION RULES (THE 3B1B STANDARD) ━━━
   - SYNC-FIRST RULE: In scenes where an element is highlighted (option_highlight, option_arrow, image_arrow), your narration MUST begin by identifying that specific element. (e.g., "Looking at Option B...", "Observe this region..."). This ensures the Pointer and the Speech land at the exact same moment.
   - CONCISE ELEGANCE: Favor short, powerful sentences. The 3b1b style thrives on clarity, not wordiness.
@@ -248,7 +265,9 @@ def run_director(
     search_results: list[dict] = None, 
     knowledge_base: dict = None, 
     job_id: str = None,
-    overrides: dict = None
+    overrides: dict = None,
+    avatar_type: str = None,
+    with_avatar: bool = False
 ) -> tuple[DirectorOutput, dict]:
     """
     Executes the Director Agent to determine the render path and script.
@@ -257,6 +276,12 @@ def run_director(
     from llm_factory import clean_llm_json
     
     user_message = _build_prompt(parsed_facts, search_results, knowledge_base)
+    
+    # Inject Avatar Context
+    if avatar_type:
+        user_message += f"\n\n━━━ AVATAR CONFIGURATION ━━━\nSelected Avatar Type: {avatar_type}\nWith Avatar Master Switch: {with_avatar}\n"
+        if avatar_type == "tony_cartoon":
+            user_message += "ACTION: You are in TONY mode. Use 'tony_pose' sparingly but effectively in your scenes.\n"
     
     # INDUSTRIAL OPTIMIZATION: Gemma 4/Local models perform 30% better with specific structural prototypes
     # than with raw JSON Schema definitions. 

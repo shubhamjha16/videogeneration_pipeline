@@ -445,7 +445,9 @@ def director_node(state: TonyState) -> TonyState:
         search_results=state.get("search_results"),
         knowledge_base=state.get("knowledge_base"),
         job_id=state.get("job_id"),
-        overrides=state.get("overrides")
+        overrides=state.get("overrides"),
+        avatar_type=state.get("avatar_type"),
+        with_avatar=state.get("with_avatar", False)
     )
     # INDUSTRIAL LEDGER: Capture tokens
     state["ledger"] = state.get("ledger", {})
@@ -1253,7 +1255,20 @@ STEP 1 — Deeply understand the content before anything else:
 - What is the SINGLE most dramatic or surprising fact in this content?
 - What is the emotional arc? (shock → understanding → clarity? mystery → reveal? problem → solution?)
 - What makes THIS topic unique — what would ONLY appear in a video about this specific topic?
-- Who is the student? What do they already know? What will surprise them?
+- Ensure "narration" is 1-3 sentences.
+- Optional: "tony_pose" (happy | thinking | confused | explaining | idea | reading | excited | victory | standing_point_up)
+
+EXPECTED JSON FORMAT:
+{{
+  "slides": [
+    {{
+      "layout": "chaos_chapter",
+      "tony_pose": "desk_happy",
+      "data": {{ "number": "1", "title": "Topic Name", "subtitle": "Insightful Subtitle" }},
+      "narration": "Narration text..."
+    }}
+  ]
+}}
 
 STEP 2 — Design a presentation that could ONLY be about this topic:
 - Every slide must be uniquely tied to this specific content
@@ -1272,6 +1287,20 @@ STEP 3 — Layout rules:
 - bullets must list SPECIFIC items (names, dates, numbers) — not vague categories
 - key_highlight must show ONE specific number/date/name that defines this topic
 - Narration must be 1-3 sentences, conversational, adds insight beyond the slide text
+
+STEP 4 — Character Direction (TONY):
+You may optionally include a `tony_pose` field for any slide to have the character "pop in" and add emotional/pedagogical weight.
+- Use it sparingly (e.g. 30-50% of slides).
+- `desk_happy`: Intro, simple facts.
+- `standing_point_up`: Highlighting a rule or "Remember this!" definition.
+- `thinking`: Complex concepts, rhetorical questions.
+- `confused`: Addressing common student mistakes or "Why is this not X?" moments.
+- `explaining`: Deep technical breakdowns.
+- `idea`: Shortcuts, tricks, "Eureka!" moments.
+- `reading`: Case studies, quotes, clinical scenarios.
+- `excited`: High-yield breakthroughs, very important topics.
+- `victory`: Final answer, lesson summary.
+- If no pose is needed, omit the field or set to null.
 
 {knowledge_section}
 
@@ -1403,6 +1432,7 @@ def ppt_planner_node(state: TonyState) -> TonyState:
             state=state,
         )
         slides = data.get("slides", [])
+        print(f"   [DEBUG] Raw Slides from Groq: {json.dumps(slides, indent=2)}")
         print(f"   Planned {len(slides)} slides:")
         for i, s in enumerate(slides):
             print(f"     {i+1}. [{s.get('layout','?')}] {s.get('data',{}).get('title') or s.get('data',{}).get('heading') or s.get('data',{}).get('statement','')[:40]}")
@@ -1526,6 +1556,22 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
         atmo_path = atmo_list[i % len(atmo_list)] if atmo_list else None
         acct_path = acct_list[i % len(acct_list)] if acct_list else None
 
+        # ─── TONY: Select pose for this slide ───
+        tony_path = None
+        print(f"   [tony-debug] topic={state.get('topic')} | avatar_type={state.get('avatar_type')} | with_avatar={state.get('with_avatar')}")
+        if state.get("avatar_type") == "tony_cartoon":
+            pose_name = slide.get("tony_pose")
+            print(f"   [tony-debug] slide {i} pose_name={pose_name}")
+            if pose_name:
+                # Ensure it ends with .png
+                if not pose_name.endswith(".png"):
+                    pose_name = f"tony_{pose_name}.png"
+                
+                tony_path = os.path.join(_root, "tony_avatars_poses", pose_name)
+                if not os.path.exists(tony_path):
+                    # Fallback to desk_happy if specific mood missing
+                    tony_path = os.path.join(_root, "tony_avatars_poses", "tony_desk_happy.png")
+
         path = generate_slide_image(
             slide_text, i, output_dir=job_dir,
             narration=narration,
@@ -1533,7 +1579,8 @@ def ppt_renderer_node(state: TonyState) -> TonyState:
             layout_data=layout_data,
             job_id=state.get("job_id"),
             atmospheric_path=atmo_path,
-            accent_path=acct_path
+            accent_path=acct_path,
+            tony_pose_path=tony_path,
         )
         if path and os.path.exists(path):
             slide_paths.append(path)
