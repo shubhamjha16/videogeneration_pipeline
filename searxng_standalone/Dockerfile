@@ -12,6 +12,13 @@ COPY settings.yml /etc/searxng/settings.yml
 # We ensure the config is readable by the app user.
 USER root
 RUN chown searxng:searxng /etc/searxng/settings.yml
+
+# Generate a unique secret_key at build time and inject it into settings.yml.
+# This keeps the secret out of the git-tracked settings.yml source file.
+# SearXNG refuses to start if secret_key is missing or equals 'ultrasecretkey'.
+RUN SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))") \
+    && sed -i "/^server:/a\\  secret_key: \"$SECRET\"" /etc/searxng/settings.yml
+
 USER searxng
 
 EXPOSE 8080
