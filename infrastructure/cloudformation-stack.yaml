@@ -11,6 +11,13 @@ Parameters:
   VpcCIDR:
     Type: String
     Default: 10.0.0.0/16
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: 'ACM Certificate ARN for HTTPS. Leave empty for HTTP-only (v1).'
+
+Conditions:
+  HasCertificate: !Not [ !Equals [ !Ref CertificateArn, '' ] ]
 
 Resources:
   # ── Networking ──
@@ -78,12 +85,16 @@ Resources:
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Enable HTTP access via port 80
+      GroupDescription: Enable HTTP/HTTPS access
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
 
   ECSSecurityGroup:
@@ -184,15 +195,35 @@ Resources:
       TargetType: ip
       VpcId: !Ref VPC
 
-  Listener:
+  HttpListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - !If
+          - HasCertificate
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: '443'
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCertificate
     Properties:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
       LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
 
   # ── Secrets Manager ──
   FactorySecrets:
@@ -200,10 +231,7 @@ Resources:
     Properties:
       Name: factory-keys
       Description: 'API Keys for EaseToLearn Video Generation Service'
-      GenerateSecretString:
-        SecretStringTemplate: '{"ANTHROPIC_API_KEY": "PLACEHOLDER", "GROQ_API_KEY": "PLACEHOLDER", "GEMINI_API_KEY": "PLACEHOLDER", "ELEVENLABS_API_KEY": "PLACEHOLDER", "HEYGEN_API_KEY": "PLACEHOLDER", "HIGGSFIELD_API_KEY": "PLACEHOLDER", "FACTORY_API_KEY": "PLACEHOLDER", "REDIS_URL": "PLACEHOLDER"}'
-
-        GenerateStringKey: 'dummy'
+      SecretString: '{"ANTHROPIC_API_KEY": "PLACEHOLDER", "GROQ_API_KEY": "PLACEHOLDER", "GEMINI_API_KEY": "PLACEHOLDER", "ELEVENLABS_API_KEY": "PLACEHOLDER", "HEYGEN_API_KEY": "PLACEHOLDER", "HIGGSFIELD_API_KEY": "PLACEHOLDER", "FACTORY_API_KEY": "PLACEHOLDER", "REDIS_URL": "PLACEHOLDER"}'
 
   # ── Logging ──
   LogGroup:
@@ -216,7 +244,7 @@ Resources:
   VideoBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${ProjectName}-videos-${AWS::AccountId}' # Unique bucket name
+      BucketName: !Sub '${ProjectName}-videos-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: false
         BlockPublicPolicy: false
@@ -225,6 +253,18 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-videos'
+
+  VideoBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref VideoBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadAccess
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${VideoBucket.Arn}/*'
 
 
   # ── IAM Roles ──
@@ -296,7 +336,7 @@ Resources:
   # ── ECS Service ──
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: Listener
+    DependsOn: HttpListener
     Properties:
       ServiceName: factory-service
       Cluster: !Ref ECSCluster
@@ -334,4 +374,17 @@ Outputs:
     Value: !Ref VideoBucket
   LogGroupName:
     Value: !Ref LogGroup
+  RedisEndpoint:
+    Description: Redis primary endpoint for secret wiring
+    Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+  ALBHttpListenerArn:
+    Description: HTTP Listener ARN
+    Value: !Ref HttpListener
+  ALBHttpsListenerArn:
+    Description: HTTPS Listener ARN (only when certificate is provided)
+    Condition: HasCertificate
+    Value: !Ref HttpsListener
+  ECSServiceName:
+    Description: ECS Service name for deploy script
+    Value: !GetAtt ECSService.Name
 

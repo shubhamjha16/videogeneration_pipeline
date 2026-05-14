@@ -45,11 +45,24 @@ docker tag $SEARXNG_NAME:latest $ECR_BASE/$SEARXNG_NAME:$IMAGE_TAG
 docker push $ECR_BASE/$SEARXNG_NAME:latest
 docker push $ECR_BASE/$SEARXNG_NAME:$IMAGE_TAG
 
-echo "6. Retrieving Infrastructure Outputs (EFS, Roles)..."
+echo "6. Retrieving Infrastructure Outputs (EFS, Roles, Redis, Service)..."
 export EFS_FS_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='EFSFileSystemId'].OutputValue" --output text)
 export TASK_EXEC_ROLE=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
 export TASK_ROLE=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
 export S3_BUCKET=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='VideoBucketName'].OutputValue" --output text)
+export REDIS_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='RedisEndpoint'].OutputValue" --output text)
+export ECS_SERVICE_NAME=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ECSServiceName'].OutputValue" --output text)
+
+echo "6a. Wiring Redis endpoint into Secrets Manager..."
+CURRENT_SECRET=$(aws secretsmanager get-secret-value --secret-id factory-keys --query SecretString --output text)
+UPDATED_SECRET=$(echo "$CURRENT_SECRET" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+d['REDIS_URL'] = 'rediss://$REDIS_ENDPOINT:6379/0'
+print(json.dumps(d))
+")
+aws secretsmanager update-secret --secret-id factory-keys --secret-string "$UPDATED_SECRET"
+echo "   Redis URL set to: rediss://$REDIS_ENDPOINT:6379/0"
 
 echo "7. Preparing Task Definition (Token Injection)..."
 cat infrastructure/ecs-task-def.json | \
@@ -69,7 +82,7 @@ TASK_REVISION=$(aws ecs register-task-definition \
 echo "9. Triggering ECS Service update with revision: $TASK_REVISION"
 aws ecs update-service \
     --cluster $CLUSTER_NAME \
-    --service factory-service \
+    --service $ECS_SERVICE_NAME \
     --task-definition $TASK_REVISION \
     --force-new-deployment
 
