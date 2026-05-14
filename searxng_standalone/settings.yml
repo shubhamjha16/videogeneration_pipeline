@@ -1,5 +1,7 @@
 # EaseToLearn SearXNG Industrial Configuration
 # Optimized for LLM Research Agents
+# secret_key: Auto-generated per-boot by the SearXNG Docker entrypoint.
+#   Override via SEARXNG_SECRET env var if session persistence is needed.
 
 use_default_settings: true
 
@@ -7,7 +9,6 @@ server:
   base_url: http://localhost:8080/
   port: 8080
   bind_address: "0.0.0.0"
-  secret_key: "978216fc65d3a1b2c4e5f60718293a4b" # Fallback key
   image_proxy: true
 
 search:
@@ -17,19 +18,49 @@ search:
     - json
 
 engines:
+  # ── Disabled ──
   - name: google
     engine: google
-    disabled: true
+    disabled: true  # Aggressively rate-limits & CAPTCHAs production scrapers
 
+  # ── General Purpose ──
   - name: duckduckgo
     engine: duckduckgo
     shortcut: ddg
     weight: 1.0
 
+  - name: bing
+    engine: bing
+    shortcut: bi
+    weight: 1.0
+
+  - name: brave
+    engine: brave
+    shortcut: br
+    weight: 1.0
+
+  - name: qwant
+    engine: qwant
+    shortcut: qw
+    weight: 0.8
+
+  # ── Knowledge & Reference ──
   - name: wikipedia
     engine: wikipedia
     shortcut: w
     weight: 2.0
+
+  # ── Medical (FMGE, NEET, Clinical) ──
+  - name: pubmed
+    engine: pubmed
+    shortcut: pm
+    weight: 1.5
+
+  # ── Scientific & Academic (JEE, Physics, Math) ──
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    weight: 1.2
 
 ui:
   static_use_hash: true
