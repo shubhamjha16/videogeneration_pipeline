@@ -20,6 +20,9 @@
         }
       ],
       "essential": true,
+      "dependsOn": [
+        { "containerName": "searxng", "condition": "START" }
+      ],
       "environment": [
         { "name": "PYTHONUNBUFFERED", "value": "1" },
         { "name": "MANIM_MEDIA_DIR", "value": "/app/output" },
@@ -32,16 +35,22 @@
         { "name": "HEYGEN_AVATAR_ID", "value": "josh_video_20230607" }
       ],
       "secrets": [
-        { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ANTHROPIC_API_KEY::" },
-        { "name": "GROQ_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:GROQ_API_KEY::" },
-        { "name": "GEMINI_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:GEMINI_API_KEY::" },
-        { "name": "ELEVENLABS_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:ELEVENLABS_API_KEY::" },
-        { "name": "HEYGEN_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HEYGEN_API_KEY::" },
-        { "name": "HIGGSFIELD_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:HIGGSFIELD_API_KEY::" },
-        { "name": "FACTORY_API_KEY", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:FACTORY_API_KEY::" },
-        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:factory-keys:REDIS_URL::" }
-
+        { "name": "ANTHROPIC_API_KEY", "valueFrom": "<SECRET_ARN>:ANTHROPIC_API_KEY::" },
+        { "name": "GROQ_API_KEY", "valueFrom": "<SECRET_ARN>:GROQ_API_KEY::" },
+        { "name": "GEMINI_API_KEY", "valueFrom": "<SECRET_ARN>:GEMINI_API_KEY::" },
+        { "name": "ELEVENLABS_API_KEY", "valueFrom": "<SECRET_ARN>:ELEVENLABS_API_KEY::" },
+        { "name": "HEYGEN_API_KEY", "valueFrom": "<SECRET_ARN>:HEYGEN_API_KEY::" },
+        { "name": "HIGGSFIELD_API_KEY", "valueFrom": "<SECRET_ARN>:HIGGSFIELD_API_KEY::" },
+        { "name": "FACTORY_API_KEY", "valueFrom": "<SECRET_ARN>:FACTORY_API_KEY::" },
+        { "name": "REDIS_URL", "valueFrom": "<SECRET_ARN>:REDIS_URL::" }
       ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 120
+      },
       "mountPoints": [
         {
           "sourceVolume": "factory-efs-volume",

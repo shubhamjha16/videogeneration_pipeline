@@ -45,13 +45,15 @@ docker tag $SEARXNG_NAME:latest $ECR_BASE/$SEARXNG_NAME:$IMAGE_TAG
 docker push $ECR_BASE/$SEARXNG_NAME:latest
 docker push $ECR_BASE/$SEARXNG_NAME:$IMAGE_TAG
 
-echo "6. Retrieving Infrastructure Outputs (EFS, Roles, Redis, Service)..."
+echo "6. Retrieving Infrastructure Outputs (EFS, Roles, Redis, Secrets, Service)..."
 export EFS_FS_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='EFSFileSystemId'].OutputValue" --output text)
 export TASK_EXEC_ROLE=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
 export TASK_ROLE=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
 export S3_BUCKET=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='VideoBucketName'].OutputValue" --output text)
 export REDIS_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='RedisEndpoint'].OutputValue" --output text)
 export ECS_SERVICE_NAME=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ECSServiceName'].OutputValue" --output text)
+export SECRET_ARN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='SecretArn'].OutputValue" --output text)
+echo "   Secret ARN (with suffix): $SECRET_ARN"
 
 echo "6a. Wiring Redis endpoint into Secrets Manager..."
 CURRENT_SECRET=$(aws secretsmanager get-secret-value --secret-id factory-keys --query SecretString --output text)
@@ -68,6 +70,7 @@ echo "7. Preparing Task Definition (Token Injection)..."
 cat infrastructure/ecs-task-def.json | \
     sed "s|arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole|$TASK_EXEC_ROLE|g" | \
     sed "s|arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskRole|$TASK_ROLE|g" | \
+    sed "s|<SECRET_ARN>|$SECRET_ARN|g" | \
     sed "s|<ACCOUNT_ID>|$ACCOUNT_ID|g" | \
     sed "s|<AWS_REGION>|$AWS_REGION|g" | \
     sed "s|<EFS_FS_ID>|$EFS_FS_ID|g" | \
