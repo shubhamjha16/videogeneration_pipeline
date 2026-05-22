@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     procps \
     redis-tools \
+    rustc \
+    cargo \
+    libssl-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

@@ -8,7 +8,7 @@ import os
 API_BASE = os.environ.get("FACTORY_API_BASE", "http://localhost:8000")
 API_KEY  = os.environ.get("FACTORY_API_KEY", "your_factory_key")
 
-def test_path(mode, topic, html):
+def _execute_test_path(mode, topic, html):
     """Triggers a render and polls to completion."""
     headers = {
         "X-API-Key": API_KEY,
@@ -65,7 +65,7 @@ def run_all_tests():
     
     results = []
     def run_wrapper(mode, topic, html):
-        success = test_path(mode, topic, html)
+        success = _execute_test_path(mode, topic, html)
         results.append(success)
 
     threads = []

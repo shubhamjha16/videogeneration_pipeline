@@ -97,6 +97,38 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
             if os.path.exists(aiff_path):
                 os.remove(aiff_path)
     
+    # Fallback Path 1.5: Linux native offline 'espeak' or 'espeak-ng'
+    import shutil
+    espeak_exe = shutil.which("espeak") or shutil.which("espeak-ng")
+    if espeak_exe and os.name == "posix":
+        import subprocess, imageio_ffmpeg
+        wav_path = output_filename.replace(".m4a", ".wav").replace(".mp3", ".wav")
+        mp3_path = output_filename.replace(".m4a", ".mp3")
+        try:
+            print(f"   [TTS Fallback] Found espeak at {espeak_exe}. Generating offline speech...")
+            subprocess.run([espeak_exe, "-w", wav_path, text], check=True, timeout=120, env=os.environ)
+            subprocess.run(
+                [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", wav_path,
+                 "-ar", "44100", "-ab", "128k", mp3_path],
+                capture_output=True,
+                check=True,
+                timeout=60,
+                env=os.environ
+            )
+            output_filename = mp3_path
+            print(f"Generated Linux espeak fallback audio for scene {scene_idx} -> {output_filename}")
+            try:
+                from cost_tracker import LedgerManager
+                LedgerManager.record_tts_call(job_id, "linux_espeak", len(text), cost_per_char=0.0)
+            except: pass
+            return output_filename, 0
+        except Exception as e:
+            print(f"❌ Linux espeak fallback/FFmpeg conversion failed: {e}")
+        finally:
+            if os.path.exists(wav_path):
+                try: os.remove(wav_path)
+                except: pass
+
     # Fallback Path 2: Linux gTTS (Hardened for Hindi/Indic)
     try:
         from gtts import gTTS

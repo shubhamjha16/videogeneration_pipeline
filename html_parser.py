@@ -44,7 +44,7 @@ def _clean(text: str) -> str:
 
 
 def _extract_letter(raw: str) -> str:
-    m = re.search(r'\b([A-D])\b', raw, re.IGNORECASE)
+    m = re.search(r'\b([A-D]|[1-4])\b', raw, re.IGNORECASE)
     return m.group(1).upper() if m else ""
 
 
@@ -109,10 +109,16 @@ def _detect_content_type(soup: BeautifulSoup, full_text: str) -> str:
 
     # MCQ: has option analysis or A/B/C/D pattern or options list
     has_options_heading = any('option' in h or 'analysis' in h for h in headings)
-    # Refined: Require at least two [A-D]. markers OR four [1-4]. markers to avoid math step false positives
-    has_abcd = len(re.findall(r'\b[A-D]\.\s+\w', full_text)) >= 2 or len(re.findall(r'\b[1-4]\.\s+\w', full_text)) >= 4
+    # Refined: Require at least two [A-D]. markers to avoid false positives on simple lists
+    has_abcd = len(re.findall(r'\b[A-D]\.\s+\w', full_text)) >= 2
     has_correct = any('correct' in h or 'answer' in h for h in headings)
-    if has_options_heading or has_abcd or has_correct:
+    
+    # Only allow numeric options if there is also an options heading or correct answer indicator in the text
+    has_numeric_options = len(re.findall(r'\b[1-4]\.\s+\w', full_text)) >= 4 and (
+        has_options_heading or has_correct or "answer" in full_text.lower() or "correct" in full_text.lower()
+    )
+    
+    if has_options_heading or has_abcd or has_correct or has_numeric_options:
         return "mcq"
 
     # Case study: check before numerical — business text has step words too
@@ -165,7 +171,7 @@ def _extract_options(soup: BeautifulSoup) -> dict:
                 letter = _extract_letter(header)
                 if not letter:
                     continue
-                name = re.sub(r'^[A-D][.\s]+', '', header).strip()
+                name = re.sub(r'^[A-D1-4][.\s]+', '', header).strip()
                 strong.extract()
                 explanation = _clean(li.get_text(separator=' '))
                 options[letter] = {"name": name, "explanation": explanation}
@@ -187,16 +193,27 @@ def _extract_options(soup: BeautifulSoup) -> dict:
                 letter = _extract_letter(header)
                 if not letter:
                     continue
-                name = re.sub(r'^(Option\s+)?[A-D][.:\s]+', '', header, flags=re.IGNORECASE).strip()
+                name = re.sub(r'^(Option\s+)?[A-D1-4][.:\s]+', '', header, flags=re.IGNORECASE).strip()
                 strong.extract()
                 explanation = _clean(sib.get_text(separator=' '))
+                options[letter] = {"name": name, "explanation": explanation}
+    # Format 4: <h3>Option A: Name</h3> or <h3>A. Name</h3> or <h3>Option A) Name</h3>
+    if not options:
+        for h in soup.find_all(['h2', 'h3', 'h4']):
+            header = _clean(h.get_text())
+            m = re.search(r'(?i)^(?:Option\s+)?([A-D]|[1-4])[.:\)\s]+(.*)', header)
+            if m:
+                letter = m.group(1).upper()
+                name = m.group(2).strip()
+                # Explanation is the body text after this heading
+                explanation = _clean(_body_after_heading(h))
                 options[letter] = {"name": name, "explanation": explanation}
 
     # Format 3: Raw text A. B. C. D. patterns (No headings)
     if not options:
         # Look for lines starting with A., B., C., or D.
-        # This handles raw text copy-pastes
-        matches = re.finditer(r'(?i)^\s*([A-D1-4])[.\)]\s+(.+)', soup.get_text(separator="\n"), re.MULTILINE)
+        # This handles raw text copy-pastes and avoids numbered concept lists
+        matches = re.finditer(r'(?i)^\s*([A-D]|[1-4])[.\)]\s+(.+)', soup.get_text(separator="\n"), re.MULTILINE)
         for m in matches:
             letter = m.group(1).upper()
             name = _clean(m.group(2))
@@ -506,8 +523,9 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
     subject      = _detect_subject(full_text)
     content_type = _detect_content_type(soup, full_text)
     
+    extracted_opts = _extract_options(soup)
     # 🚨 INDUSTRIAL OVERRIDE: If we have options, it IS an MCQ.
-    if options_from_v2 or _extract_options(soup):
+    if options_from_v2 or extracted_opts:
         content_type = "mcq"
 
 
@@ -518,8 +536,8 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
         all_markers = []
         for m in re.finditer(r'###', raw_text):
             all_markers.append({"pos": m.start(), "end": m.end(), "type": "header", "val": "###"})
-        # Refined label regex: handles A, B, C, D even with complex prefixes
-        for m in re.finditer(r'(?i)(?:Option\s+)?([A-D])[.\)]', raw_text):
+        # Refined label regex: handles A, B, C, D and 1, 2, 3, 4 even with complex prefixes
+        for m in re.finditer(r'(?i)(?:Option\s+)?([A-D]|[1-4])[.\)]', raw_text):
             all_markers.append({"pos": m.start(), "end": m.end(), "type": "label", "val": m.group(1).upper()})
         
         all_markers.sort(key=lambda x: x["pos"])
@@ -556,7 +574,7 @@ def parse_tony_html(input_data: Any, topic_hint: str = "") -> dict:
     }
 
     if content_type == "mcq":
-        options = _extract_options(soup)
+        options = extracted_opts
         
         # INDUSTRIAL OVERRIDE: Prioritize solutionV2 extraction absolutely
         if options_from_v2:

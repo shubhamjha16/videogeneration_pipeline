@@ -10,6 +10,8 @@ services:
     environment:
       - SEARXNG_URL=http://searxng:8080
       - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=mysql+pymysql://root:localdev@mysql:3306/etl_video_generation
+      - ENV=dev
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
@@ -24,6 +26,8 @@ services:
       redis:
         condition: service_healthy
       searxng:
+        condition: service_started
+      mysql:
         condition: service_started
     restart: always
 
@@ -52,8 +56,24 @@ services:
       - "8080:8080"
     restart: always
 
+  # ── The Persistence: MySQL Database ─────────────────────────────────────────
+  mysql:
+    image: mysql:8
+    container_name: easetolearn-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=localdev
+      - MYSQL_DATABASE=etl_video_generation
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - default
+    restart: always
+
 volumes:
   redis_data:
+  mysql_data:
 
 networks:
   default:

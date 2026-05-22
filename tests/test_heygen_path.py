@@ -6,7 +6,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from heygen_generator import generate_heygen_avatar
 
-def test_heygen_logic():
+def test_heygen_logic(monkeypatch=None):
+    if monkeypatch:
+        monkeypatch.setenv("HEYGEN_API_KEY", "")
+    else:
+        import os
+        os.environ["HEYGEN_API_KEY"] = ""
+
     print("🏗️  Testing HeyGen Path Logic (Industrialization Test)")
     
     # Use a dummy audio file or a real one if exists
@@ -22,10 +28,10 @@ def test_heygen_logic():
     os.makedirs("output", exist_ok=True)
 
     print(f"🎬 Running generator for topic: 'Test Avatar'...")
-    # This should hit the HIGH-FIDELITY MOCK because we haven't set the key yet
-    result = generate_heygen_avatar("This is a test of the HeyGen industrialization path.", test_audio, output_path)
+    # This should hit the HIGH-FIDELITY MOCK because we cleared the key
+    result, duration = generate_heygen_avatar("This is a test of the HeyGen industrialization path.", output_path)
     
-    if os.path.exists(result):
+    if result and os.path.exists(result):
         print(f"✅ SUCCESS: Generated asset at {result}")
         # Verify file size
         size = os.path.getsize(result)

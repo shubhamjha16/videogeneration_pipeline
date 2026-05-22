@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # ── The Production API Server ───────────────────────────────────────────────
+  factory-api:
+    image: easetolearn-factory-api:latest
+    build: .
+    container_name: etl-factory-api-prod
+    ports:
+      - "8000:8000"
+    environment:
+      # Production Flag activates Secrets Manager config loading
+      - ENV=production
+      - AWS_REGION=ap-south-1
+      - AWS_SECRETS_NAME=easetolearn/video-factory/prod
+      
+      # Target Production S3 Bucket
+      - S3_BUCKET=easetolearn-video-assets
+      
+      # Connection endpoints (External RDS MySQL & Redis/ElastiCache)
+      # These should be overridden by actual cloud secret values, but standard environment formats are set here:
+      - DATABASE_URL=mysql+pymysql://${DB_USER}:${DB_PASS}@${DB_HOST}:3306/etl_video_generation
+      - REDIS_URL=redis://redis-prod:6379/0
+      - SEARXNG_URL=http://searxng:8080
+      - FACTORY_API_KEY=${FACTORY_API_KEY}
+    
+    # Restrict resource allocation to avoid container crashes during intensive rendering tasks
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '2.0'
+          memory: 2048M
+    depends_on:
+      searxng:
+        condition: service_started
+      redis-prod:
+        condition: service_healthy
+    restart: always
+
+  # ── Sidecar Cache (If not using AWS ElastiCache) ────────────────────────────
+  redis-prod:
+    image: redis:7-alpine
+    container_name: etl-redis-prod
+    command: redis-server --appendonly yes
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: always
+
+  # ── Sidecar Search (SearXNG) ────────────────────────────────────────────────
+  searxng:
+    build: ./searxng_standalone
+    container_name: etl-searxng-prod
+    env_file: ./searxng_standalone/.env
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    restart: always
+
+networks:
+  default:
+    name: easetolearn-production-network

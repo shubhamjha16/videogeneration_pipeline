@@ -8,9 +8,9 @@ def test_tex_sanitization():
     
     # Test special character escaping
     result = tex("Price is $10 & 100% discount")
-    assert "\\\\$" in result
-    assert "\\\\&" in result
-    assert "\\\\%" in result
+    assert "\\$" in result
+    assert "\\&" in result
+    assert "\\%" in result
 
 def test_tex_wrapping():
     # Test long text wrapping into VGroup

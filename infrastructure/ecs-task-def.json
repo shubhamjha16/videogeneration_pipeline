@@ -32,7 +32,8 @@
         { "name": "WEBHOOK_URL", "value": "https://api.easetolearn.com/videos/webhook" },
         { "name": "SEARXNG_URL", "value": "http://localhost:8080" },
         { "name": "AUTO_DELETE_JOB_DIR", "value": "true" },
-        { "name": "HEYGEN_AVATAR_ID", "value": "josh_video_20230607" }
+        { "name": "HEYGEN_AVATAR_ID", "value": "josh_video_20230607" },
+        { "name": "ENV", "value": "production" }
       ],
       "secrets": [
         { "name": "ANTHROPIC_API_KEY", "valueFrom": "<SECRET_ARN>:ANTHROPIC_API_KEY::" },
@@ -42,7 +43,8 @@
         { "name": "HEYGEN_API_KEY", "valueFrom": "<SECRET_ARN>:HEYGEN_API_KEY::" },
         { "name": "HIGGSFIELD_API_KEY", "valueFrom": "<SECRET_ARN>:HIGGSFIELD_API_KEY::" },
         { "name": "FACTORY_API_KEY", "valueFrom": "<SECRET_ARN>:FACTORY_API_KEY::" },
-        { "name": "REDIS_URL", "valueFrom": "<SECRET_ARN>:REDIS_URL::" }
+        { "name": "REDIS_URL", "valueFrom": "<SECRET_ARN>:REDIS_URL::" },
+        { "name": "DATABASE_URL", "valueFrom": "<SECRET_ARN>:DATABASE_URL::" }
       ],
       "healthCheck": {
         "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],

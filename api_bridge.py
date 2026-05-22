@@ -32,7 +32,10 @@ try:
     import fcntl
 except ImportError:
     # Windows compatibility fallback — prevents crash on local dev
+    if os.environ.get("ENV", "dev").lower().strip() in ("production", "staging"):
+        raise
     fcntl = None
+
 
 import shutil
 from dub_pipeline import run_dub_pipeline
@@ -53,6 +56,19 @@ load_dotenv()
 
 app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
 _APP_START_TIME = datetime.utcnow()
+
+# ── Database Initialization ──────────────────────────────────────────────────
+try:
+    from db.engine import init_db
+    success = init_db()
+    if not success and config.ENV in ("production", "staging"):
+        raise RuntimeError("Database table verification/creation returned False.")
+except Exception as e:
+    print(f"⚠️  Critical: Database initialization failed: {e}")
+    if config.ENV in ("production", "staging"):
+        import sys
+        sys.exit(1)
+
 
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS")
 allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()] if allowed_origins_env else ["*"]
@@ -105,8 +121,392 @@ async def stream_video(job_id: str, filename: str):
     return FileResponse(path, media_type=mime_type or "video/mp4")
 
 
+def to_clean_python(val):
+    if hasattr(val, 'to_dict'):
+        return val.to_dict()
+    if hasattr(val, 'to_list'):
+        return val.to_list()
+    if isinstance(val, dict):
+        return {k: to_clean_python(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [to_clean_python(v) for v in val]
+    return val
+
+def wrap_value(val, on_mutation):
+    if isinstance(val, dict) and not isinstance(val, ObservedDict):
+        return ObservedDict(val, on_mutation)
+    elif isinstance(val, list) and not isinstance(val, ObservedList):
+        return ObservedList(val, on_mutation)
+    return val
+
+class ObservedDict(dict):
+    def __init__(self, initial_dict, on_mutation):
+        self._on_mutation = on_mutation
+        wrapped = {k: wrap_value(v, on_mutation) for k, v in initial_dict.items()}
+        super().__init__(wrapped)
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, wrap_value(value, self._on_mutation))
+        self._on_mutation()
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        self._on_mutation()
+
+    def update(self, *args, **kwargs):
+        temp = dict(*args, **kwargs)
+        wrapped = {k: wrap_value(v, self._on_mutation) for k, v in temp.items()}
+        super().update(wrapped)
+        self._on_mutation()
+
+    def setdefault(self, key, default=None):
+        if key in self:
+            return self[key]
+        wrapped = wrap_value(default, self._on_mutation)
+        super().__setitem__(key, wrapped)
+        self._on_mutation()
+        return wrapped
+
+    def pop(self, key, *args):
+        res = super().pop(key, *args)
+        self._on_mutation()
+        return res
+
+    def popitem(self):
+        res = super().popitem()
+        self._on_mutation()
+        return res
+
+    def clear(self):
+        super().clear()
+        self._on_mutation()
+
+    def to_dict(self):
+        return {k: to_clean_python(v) for k, v in self.items()}
+
+    def __deepcopy__(self, memo):
+        return copy.deepcopy(to_clean_python(self), memo)
+
+class ObservedList(list):
+    def __init__(self, initial_list, on_mutation):
+        self._on_mutation = on_mutation
+        wrapped = [wrap_value(v, on_mutation) for v in initial_list]
+        super().__init__(wrapped)
+
+    def append(self, item):
+        super().append(wrap_value(item, self._on_mutation))
+        self._on_mutation()
+
+    def extend(self, iterable):
+        wrapped = [wrap_value(v, self._on_mutation) for v in iterable]
+        super().extend(wrapped)
+        self._on_mutation()
+
+    def insert(self, index, item):
+        super().insert(index, wrap_value(item, self._on_mutation))
+        self._on_mutation()
+
+    def pop(self, *args):
+        res = super().pop(*args)
+        self._on_mutation()
+        return res
+
+    def remove(self, value):
+        super().remove(value)
+        self._on_mutation()
+
+    def clear(self):
+        super().clear()
+        self._on_mutation()
+
+    def __setitem__(self, index, value):
+        super().__setitem__(index, wrap_value(value, self._on_mutation))
+        self._on_mutation()
+
+    def __delitem__(self, index):
+        super().__delitem__(index)
+        self._on_mutation()
+
+    def to_list(self):
+        return [to_clean_python(v) for v in self]
+
+    def __deepcopy__(self, memo):
+        return copy.deepcopy(to_clean_python(self), memo)
+
+class CentralizedJobStore(dict):
+    """
+    Centralized proxy store for jobs.
+    In development mode: acts as a thread-safe local dictionary + jobs.json persistence.
+    In staging/production mode: acts as a Redis-backed centralized store.
+    """
+    def __init__(self):
+        super().__init__()
+        self._local_jobs = {}
+        self._lock = threading.RLock()
+        self._redis_client = None
+        self._redis_active = False
+        try:
+            cache = get_cache()
+            if cache.available:
+                self._redis_client = cache.client
+                self._redis_active = True
+                print("🚀 CentralizedJobStore: Redis is active. Using Redis as single source of truth.")
+            else:
+                print("⚠️ CentralizedJobStore: Redis not available. Falling back to local in-memory store.")
+        except Exception as e:
+            print(f"⚠️ CentralizedJobStore: Failed to check Redis ({e}). Falling back to local in-memory store.")
+            
+        # Seed local cache from Redis on startup if active
+        if self._redis_active:
+            try:
+                keys = self._redis_client.smembers("factory:job_keys")
+                for k in keys:
+                    raw = self._redis_client.get(f"factory:job:{k}")
+                    if raw:
+                        self._local_jobs[k] = json.loads(raw)
+                print(f"🚀 CentralizedJobStore: Seeded {len(self._local_jobs)} jobs from Redis.")
+            except Exception as e:
+                print(f"⚠️ CentralizedJobStore: Failed to seed from Redis ({e})")
+
+        # ── HIGH-SCALE REFINEMENTS ───────────────────────────────────────────
+        from concurrent.futures import ThreadPoolExecutor
+        self._executor = ThreadPoolExecutor(max_workers=5)
+        self._last_db_sync = {}       # job_id -> float (timestamp)
+        self._pending_syncs = {}      # job_id -> dict (latest state)
+        self._sync_timers = {}        # job_id -> threading.Timer
+        self._sync_generations = {}   # job_id -> int (epoch token for concurrency safety)
+        self._sync_lock = threading.Lock()
+
+    def _sync_job_to_store(self, job_id: str, job_dict: dict):
+        clean_dict = to_clean_python(job_dict)
+        with self._lock:
+            self._local_jobs[job_id] = clean_dict
+            if self._redis_active:
+                try:
+                    self._redis_client.set(f"factory:job:{job_id}", json.dumps(clean_dict))
+                    self._redis_client.sadd("factory:job_keys", job_id)
+                except Exception as e:
+                    print(f"⚠️ CentralizedJobStore: Redis write failed for job {job_id}: {e}")
+            
+        # Throttled sync to the relational MySQL database
+        self._enqueue_db_sync(job_id, clean_dict)
+
+    def _enqueue_db_sync(self, job_id: str, clean_dict: dict):
+        import time
+        import threading
+        
+        status = clean_dict.get("status", "queued")
+        # Terminal statuses bypass throttling to guarantee immediate persistence of final results
+        is_terminal = status in ("completed", "failed", "cancelled")
+        
+        with self._sync_lock:
+            # Increment and track active generation epoch to prevent race conditions from canceled timers
+            gen = self._sync_generations.get(job_id, 0) + 1
+            self._sync_generations[job_id] = gen
+            
+            # 1. Buffering: Store absolute latest state for eventual writing
+            self._pending_syncs[job_id] = clean_dict
+            
+            # 2. De-duplication: Cancel any active sync timers for this job
+            if job_id in self._sync_timers:
+                self._sync_timers[job_id].cancel()
+                del self._sync_timers[job_id]
+                
+            now = time.time()
+            last_sync = self._last_db_sync.get(job_id, 0.0)
+            time_since_last = now - last_sync
+            
+            if is_terminal or time_since_last >= 2.0:
+                # Bypass / Over-interval: Submit immediately on the background thread pool
+                self._last_db_sync[job_id] = now
+                if job_id in self._pending_syncs:
+                    del self._pending_syncs[job_id]
+                self._executor.submit(self._sync_job_to_db, job_id, clean_dict)
+            else:
+                # Active throttle: schedule deferred commit after remaining delay
+                delay = 2.0 - time_since_last
+                
+                def deferred_sync(current_gen=gen):
+                    with self._sync_lock:
+                        # Safety Check: Ignore timer execution if a newer enqueue epoch has started
+                        if self._sync_generations.get(job_id) != current_gen:
+                            return
+                        if job_id not in self._pending_syncs:
+                            return
+                        latest_dict = self._pending_syncs.pop(job_id)
+                        if job_id in self._sync_timers:
+                            del self._sync_timers[job_id]
+                        self._last_db_sync[job_id] = time.time()
+                    # Execute on background thread pool
+                    self._executor.submit(self._sync_job_to_db, job_id, latest_dict)
+                    
+                timer = threading.Timer(delay, deferred_sync)
+                self._sync_timers[job_id] = timer
+                timer.start()
+
+    def _sync_job_to_db(self, job_id: str, job_dict: dict):
+        try:
+            from db.engine import get_session
+            from db.models import RenderJob
+            from decimal import Decimal
+            
+            session = get_session()
+            if not session:
+                return
+                
+            try:
+                job = session.query(RenderJob).filter(RenderJob.job_id == job_id).first()
+                if not job:
+                    # Create job record if it doesn't exist
+                    job = RenderJob(
+                        job_id=job_id,
+                        topic=job_dict.get("topic", "N/A"),
+                        source_type=job_dict.get("source_type", "html"),
+                        priority=job_dict.get("priority", 100),
+                        callback_url=job_dict.get("webhook_url", ""),
+                        status=job_dict.get("status", "queued")
+                    )
+                    session.add(job)
+                
+                # Update status
+                status = job_dict.get("status", "queued")
+                if status in ("queued", "processing", "completed", "failed", "cancelled"):
+                    job.status = status
+                
+                # Update URLs
+                if "video_url" in job_dict:
+                    job.final_video_url = job_dict["video_url"]
+                if "thumbnail_url" in job_dict:
+                    job.thumbnail_url = job_dict["thumbnail_url"]
+                if "error" in job_dict:
+                    job.error_message = job_dict["error"]
+                
+                # Update costs and metrics
+                if "metrics" in job_dict:
+                    metrics = job_dict["metrics"]
+                    if "total_duration_sec" in metrics:
+                        job.duration_seconds = Decimal(str(metrics["total_duration_sec"]))
+                    elif "duration_sec" in metrics:
+                        job.duration_seconds = Decimal(str(metrics["duration_sec"]))
+                
+                # Sunk cost / ledger cost
+                if "ledger" in job_dict and "total_cost_usd" in job_dict["ledger"]:
+                    job.total_cost_usd = Decimal(str(job_dict["ledger"]["total_cost_usd"]))
+                elif "total_cost" in job_dict:
+                    job.total_cost_usd = Decimal(str(job_dict["total_cost"]))
+
+                # Timestamps
+                if status == "processing" and not job.started_at:
+                    job.started_at = datetime.utcnow()
+                elif status in ("completed", "failed", "cancelled") and not job.completed_at:
+                    job.completed_at = datetime.utcnow()
+                
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                print(f"⚠️ CentralizedJobStore: DB sync transaction failed for {job_id}: {e}")
+            finally:
+                session.close()
+        except Exception as e:
+            # We don't crash primary pipeline on DB log sync failures
+            pass
+
+    def __getitem__(self, job_id):
+        with self._lock:
+            source_dict = None
+            if self._redis_active:
+                try:
+                    raw = self._redis_client.get(f"factory:job:{job_id}")
+                    if raw:
+                        source_dict = json.loads(raw)
+                except Exception as e:
+                    print(f"⚠️ CentralizedJobStore: Redis read failed for job {job_id}: {e}")
+            
+            if source_dict is None:
+                if job_id not in self._local_jobs:
+                    raise KeyError(job_id)
+                source_dict = self._local_jobs[job_id]
+
+            # Create ObservedDict; callback serializes the observed dict itself
+            observed = ObservedDict(source_dict, lambda: None)  # placeholder
+            def _on_mutate(obs=observed, jid=job_id):
+                self._sync_job_to_store(jid, to_clean_python(obs))
+            observed._on_mutation = _on_mutate
+            # Re-wrap all children with the real callback
+            for k, v in list(observed.items()):
+                super(ObservedDict, observed).__setitem__(k, wrap_value(v, _on_mutate))
+            return observed
+
+    def __setitem__(self, job_id, value):
+        with self._lock:
+            clean_value = to_clean_python(value)
+            self._sync_job_to_store(job_id, clean_value)
+
+    def __delitem__(self, job_id):
+        with self._lock:
+            if job_id in self._local_jobs:
+                del self._local_jobs[job_id]
+            if self._redis_active:
+                try:
+                    self._redis_client.delete(f"factory:job:{job_id}")
+                    self._redis_client.srem("factory:job_keys", job_id)
+                except Exception as e:
+                    print(f"⚠️ CentralizedJobStore: Redis delete failed for job {job_id}: {e}")
+
+    def __contains__(self, job_id):
+        with self._lock:
+            if self._redis_active:
+                try:
+                    return bool(self._redis_client.sismember("factory:job_keys", job_id))
+                except Exception as e:
+                    print(f"⚠️ CentralizedJobStore: Redis sismember failed for job {job_id}: {e}")
+            return job_id in self._local_jobs
+
+    def get(self, job_id, default=None):
+        try:
+            return self[job_id]
+        except KeyError:
+            return default
+
+    def keys(self):
+        with self._lock:
+            if self._redis_active:
+                try:
+                    return list(self._redis_client.smembers("factory:job_keys"))
+                except Exception as e:
+                    print(f"⚠️ CentralizedJobStore: Redis smembers failed: {e}")
+            return list(self._local_jobs.keys())
+
+    def values(self):
+        with self._lock:
+            return [self[k] for k in self.keys()]
+
+    def items(self):
+        with self._lock:
+            return [(k, self[k]) for k in self.keys()]
+
+    def __iter__(self):
+        return iter(self.keys())
+
+    def __len__(self):
+        return len(self.keys())
+
+    def clear(self):
+        with self._lock:
+            for k in list(self.keys()):
+                del self[k]
+
+    def __deepcopy__(self, memo):
+        with self._lock:
+            res = {}
+            for k in self.keys():
+                res[k] = copy.deepcopy(to_clean_python(self[k]), memo)
+            return res
+
+
 JOBS_FILE = os.environ.get("JOBS_FILE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs.json"))
-jobs = {}
+jobs = CentralizedJobStore()
+
 
 # Industrial Concurrency Cap: Max 2 high-compute jobs (Manim/Video) at once
 # Reduced from 3 to 2 to prevent OOM on ECS during concurrent renders.
@@ -173,7 +573,6 @@ def _dlq_persist(job_id: str, payload: dict, webhook_url: str = "", last_status_
 
 def _sanitize_stalled_jobs():
     """Industrial Sentinel: Clean up 'Processing' jobs and purge their heavy storage folders."""
-    global jobs
     found_stalled = False
     with _jobs_lock:
         for job_id, details in list(jobs.items()):
@@ -277,9 +676,9 @@ def _sanitize_stalled_jobs():
 
 
 def _load_jobs():
-    """Industrial Sentinel: Loads jobs with cross-process file-level locking."""
+    """Industrial Sentinel: Loads jobs from disk and merges into CentralizedJobStore."""
     if not os.path.exists(JOBS_FILE):
-        return {}
+        return jobs
 
     try:
         data = {}
@@ -288,7 +687,7 @@ def _load_jobs():
             data = json.load(f)
             if fcntl: fcntl.flock(f, fcntl.LOCK_UN)
 
-        global jobs
+
         with _jobs_lock:
             # INDUSTRIAL MERGE: Don't just reassign. Update existing entries 
             # to preserve in-memory-only updates (like logs or progress)
@@ -298,8 +697,12 @@ def _load_jobs():
                     jobs[jid] = jdata
                 else:
                     # If job is in memory, only overwrite if local state is stale (not processing)
-                    if jobs[jid].get("status") not in ("processing", "queued"):
-                        jobs[jid].update(jdata)
+                    existing = jobs.get(jid)
+                    if existing and to_clean_python(existing).get("status") not in ("processing", "queued"):
+                        # Merge disk data into CentralizedJobStore
+                        merged = to_clean_python(existing)
+                        merged.update(jdata)
+                        jobs[jid] = merged
         return jobs
     except Exception as e:
         import sys
@@ -310,8 +713,13 @@ def _load_jobs():
 def _save_jobs():
     """Industrial Sentinel: Disk persistence with Atomic Write protection."""
     with _jobs_lock:
-        # Snapshot the current state to avoid lock-holding during long disk I/O
-        snapshot = copy.deepcopy(jobs)
+        # Snapshot the current state — use to_clean_python to strip ObservedDict wrappers
+        snapshot = {}
+        for k in jobs.keys():
+            try:
+                snapshot[k] = to_clean_python(jobs[k])
+            except Exception:
+                pass
 
     tmp_file = JOBS_FILE + ".tmp"
     lock_file = JOBS_FILE + ".lock"
@@ -370,8 +778,9 @@ def _safe_save_jobs(context: str, fatal: bool = False) -> bool:
         return False
 
 
-# ── In-memory job store ───────────────────────────────────────────────────────
-jobs = _load_jobs()
+# ── Load persisted job store from disk into CentralizedJobStore ──────────────
+_load_jobs()
+
 def start_industrial_services():
     """Starts the background janitor and sanitizes stalled jobs."""
     _sanitize_stalled_jobs()
@@ -379,6 +788,7 @@ def start_industrial_services():
 # Only run if explicitly called or if main
 if __name__ == "__main__":
     start_industrial_services()
+
 
 
 def _notify_webhook_with_retry(job_id: str, status_data: dict):
@@ -391,6 +801,8 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
 
     import time
     max_retries = 5
+    last_status_code = None
+    last_error = ""
     for attempt in range(max_retries):
         try:
             # Use a longer timeout for the webhook itself
@@ -833,6 +1245,22 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
             
             _safe_save_jobs(f"pipeline failed ({job_id})")
             
+            # DB Persistence: Hook 4 - Job Failed
+            try:
+                from db.repository import update_job_status
+                from cost_tracker import LedgerManager
+                sunk_cost = LedgerManager.get_job_total_cost(job_id)
+                update_job_status(
+                    job_id=job_id,
+                    status="failed",
+                    error_node=error_category,
+                    error_message=error_detail,
+                    total_cost_usd=sunk_cost,
+                    duration_seconds=time.time() - start_pipeline_t
+                )
+            except Exception as e:
+                pass
+            
             _notify_webhook_with_retry(
                 job_id=job_id,
                 status_data={
@@ -875,6 +1303,43 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
             final_error  = jobs[job_id]["error"]
 
         _safe_save_jobs(f"pipeline finalize ({job_id})")
+
+        # DB Persistence: Hook 4 - Job Completed/Failed (Final)
+        try:
+            from db.repository import update_job_status, upsert_video_cache
+            from cost_tracker import LedgerManager
+            sunk_cost = LedgerManager.get_job_total_cost(job_id)
+            total_duration = time.time() - start_pipeline_t
+            
+            with _jobs_lock:
+                status = jobs[job_id]["status"]
+                error = jobs[job_id]["error"]
+                v_url = jobs[job_id]["video_url"]
+                t_url = jobs[job_id]["thumbnail_url"]
+            
+            update_job_status(
+                job_id=job_id,
+                status=status,
+                video_url=v_url,
+                thumbnail_url=t_url,
+                error_message=error,
+                total_cost_usd=sunk_cost,
+                duration_seconds=total_duration
+            )
+            
+            if v_url:
+                upsert_video_cache(
+                    job_id=job_id,
+                    video_url=v_url,
+                    thumbnail_url=t_url,
+                    render_mode=jobs[job_id].get("render_mode", "auto"),
+                    topic=topic,
+                    total_cost_usd=sunk_cost,
+                    duration_seconds=int(total_duration),
+                    status="ready"
+                )
+        except Exception as e:
+            pass
 
     # Final Webhook Handover with 3-attempt exponential backoff
     with _jobs_lock:
@@ -1037,6 +1502,21 @@ def start_render(
             "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}]
         }
 
+    # DB Persistence: Hook 1 - Job Submitted
+    try:
+        from db.repository import create_job
+        create_job(
+            job_id=job_id,
+            topic=request.topic,
+            source_type=source_type,
+            render_mode_requested=request.render_mode or "auto",
+            with_avatar=request.with_avatar,
+            avatar_type=request.avatar_type,
+            callback_url=request.webhook_url
+        )
+    except Exception as e:
+        pass
+
 
     thread = threading.Thread(
         target=_run_pipeline,
@@ -1146,6 +1626,21 @@ async def bulk_render(
                 "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}],
                 "metrics":      {}
             }
+        
+        # DB Persistence: Hook 1 - Job Submitted (Bulk)
+        try:
+            from db.repository import create_job
+            create_job(
+                job_id=job_id,
+                topic=topic,
+                source_type=source_type,
+                render_mode_requested=lesson.get("render_mode") or "auto",
+                with_avatar=lesson.get("with_avatar", False),
+                avatar_type=lesson.get("avatar_type")
+            )
+        except Exception as e:
+            pass
+
         job_ids.append(job_id)
         job_queue.append((job_id, topic, raw_content, source_type))
 

@@ -92,6 +92,28 @@ class LedgerManager:
         with cls._lock:
             with open(path, "a", encoding="utf-8") as f:
                 f.write(entry.model_dump_json() + "\n")
+        
+        # DB Persistence: Record usage to MySQL
+        try:
+            from db.repository import insert_token_usage
+            tts_chars = entry.input_tokens if entry.call_type == "audio" else 0
+            img_count = 1 if entry.call_type == "image" else 0
+            
+            insert_token_usage(
+                job_id=entry.job_id,
+                provider=entry.provider,
+                service=entry.model,
+                call_type=entry.call_type,
+                input_tokens=entry.input_tokens,
+                output_tokens=entry.output_tokens,
+                cost_usd=entry.cost_usd,
+                from_cache=entry.from_cache,
+                tts_characters=tts_chars,
+                image_count=img_count
+            )
+        except Exception as e:
+            # Repository already logs, but we ensure record_cost itself never raises
+            pass
 
     @classmethod
     def _log_entry(cls, data: dict):

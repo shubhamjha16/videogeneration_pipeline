@@ -99,8 +99,11 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
         LedgerManager.record_higgsfield_call(job_id, cost_per_call=0.08)  # DALL-E 3 HD 1024x1792
     except Exception as e:
         print(f"  Failed to log notes image cost: {e}")
-
-    client = OpenAI(api_key=api_key)
+    from openai import Timeout
+    client = OpenAI(
+        api_key=api_key,
+        timeout=Timeout(connect=5.0, read=300.0, write=5.0, pool=5.0)
+    )
     prompt = NOTES_IMAGE_PROMPT.format(topic=topic, content_summary=content_summary[:1500])
 
     print(f"  [Notes] Generating infographic image for: {topic[:50]}...")
@@ -108,12 +111,11 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
     for attempt in range(3):
         try:
             response = client.images.generate(
-                model="dall-e-3",
+                model="gpt-image-2",
                 prompt=prompt,
                 size="1024x1792",  # Portrait for vertical scroll
-                quality="hd",
+                quality="high",
                 n=1,
-                response_format="b64_json",
             )
             break
         except Exception as e:
@@ -125,13 +127,32 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
     if not response.data:
         raise RuntimeError(f"DALL-E 3 returned no image for notes: {topic}")
 
+    print(f"  [Notes] Image Response Data: {response.data}")
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "notes_infographic.png")
-    import base64
-    image_bytes = base64.b64decode(response.data[0].b64_json)
+    
+    # Download from URL
+    image_url = response.data[0].url
+    if not image_url:
+        print(f"  [Notes] URL is None. Checking b64_json...")
+        b64 = response.data[0].b64_json
+        if b64:
+             import base64
+             with open(output_path, "wb") as f:
+                 f.write(base64.b64decode(b64))
+             print(f"  [Notes] Infographic saved from b64: {output_path}")
+             return os.path.abspath(output_path)
+        else:
+             print(f"  [Notes] Full Item: {response.data[0]}")
+             raise RuntimeError("DALL-E 3 returned no URL and no b64_json.")
 
+    print(f"  [Notes] Downloading image from: {image_url[:50]}...")
+    import requests
+    img_resp = requests.get(image_url)
+    img_resp.raise_for_status()
+    
     with open(output_path, "wb") as f:
-        f.write(image_bytes)
+        f.write(img_resp.content)
 
     print(f"  [Notes] Infographic saved: {output_path}")
     return os.path.abspath(output_path)
@@ -139,13 +160,13 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
 
 # ── TTS Audio ─────────────────────────────────────────────────────────────────
 
-def _generate_notes_audio(scenes: list[dict], output_dir: str, job_id: str = None) -> tuple[str, float]:
+def _generate_notes_audio(scenes: list[dict], output_dir: str, use_elevenlabs: bool = False, job_id: str = None) -> tuple[str, float]:
     """Generate narration audio from scene text."""
     from tts_generator import generate_audio
     from moviepy.editor import AudioFileClip
 
     full_text = " ".join(s.get("narration_text", "") for s in scenes)
-    audio_path, char_count = generate_audio(full_text, 0, output_dir=output_dir, job_id=job_id)
+    audio_path, char_count = generate_audio(full_text, 0, output_dir=output_dir, use_elevenlabs=use_elevenlabs, job_id=job_id)
 
     # Get duration
     clip = AudioFileClip(audio_path)
@@ -313,6 +334,7 @@ def generate_notes_video(
     scenes: list[dict],
     output_dir: str,
     job_id: str = None,
+    use_elevenlabs: bool = False,
 ) -> tuple[str, dict]:
     """
     Full notes pipeline orchestrator.
@@ -335,7 +357,7 @@ def generate_notes_video(
 
     # 3. Generate narration audio
     print(f"[Notes Pipeline] Step 3/4: Generating narration audio...")
-    audio_path, audio_duration = _generate_notes_audio(scenes, output_dir, job_id=job_id)
+    audio_path, audio_duration = _generate_notes_audio(scenes, output_dir, use_elevenlabs=use_elevenlabs, job_id=job_id)
     ledger["notes_audio_duration"] = audio_duration
 
     # 4. Apply animated sequential reveal

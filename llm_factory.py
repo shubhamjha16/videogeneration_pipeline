@@ -70,17 +70,39 @@ class LLMFactory:
                     
                 return (content, usage) if include_usage else content
 
-        # ── CACHE MISS: Execute Completion ────────────────────────────────────
-        if provider == "groq":
-            content, usage = LLMFactory._call_groq(full_messages, json_mode, model_override)
-        elif provider == "openai":
-            content, usage = LLMFactory._call_openai(full_messages, json_mode, model_override)
-        elif provider == "local":
-            content, usage = LLMFactory._call_local(full_messages, json_mode, model_override)
-        elif provider == "google":
-            content, usage = LLMFactory._call_google(full_messages, json_mode, model_override)
-        else:
-            raise ValueError(f"Unknown LLM provider: {provider}")
+        # ── CACHE MISS: Execute Completion with Resilient Retry ──
+        import time
+        for attempt in range(5):
+            try:
+                if provider == "groq":
+                    content, usage = LLMFactory._call_groq(full_messages, json_mode, model_override)
+                elif provider == "openai":
+                    content, usage = LLMFactory._call_openai(full_messages, json_mode, model_override)
+                elif provider == "local":
+                    content, usage = LLMFactory._call_local(full_messages, json_mode, model_override)
+                elif provider == "google":
+                    content, usage = LLMFactory._call_google(full_messages, json_mode, model_override)
+                else:
+                    raise ValueError(f"Unknown LLM provider: {provider}")
+                break
+            except Exception as e:
+                if attempt == 4:
+                    print(f"❌ LLM Provider '{provider}' failed completely after 5 attempts. Last error: {e}")
+                    raise
+                
+                # Dynamic backoff sleep duration
+                sleep_sec = 3.0 * (2 ** attempt)
+                # Parse retry-after from error message if possible
+                import re
+                retry_match = re.search(r"try again in ([\d\.]+)s", str(e), re.IGNORECASE)
+                if retry_match:
+                    try:
+                        sleep_sec = float(retry_match.group(1)) + 0.5
+                    except:
+                        pass
+                
+                print(f"⚠️  LLM Provider '{provider}' error: {e}. Retrying ({attempt + 1}/5) in {sleep_sec:.2f}s...")
+                time.sleep(sleep_sec)
 
         # ── PERSIST TO CACHE ──────────────────────────────────────────────────
         if cache.available and cacheable and cache_key:

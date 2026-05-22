@@ -97,6 +97,7 @@ class Scene(BaseModel):
         "b_roll_clip",
         "counting_metaphor",
         "generative_video",
+        "explainer_slide",
     ]
     visual_data: dict[str, Any]
 
@@ -111,7 +112,7 @@ class Scene(BaseModel):
 
 
 class DirectorOutput(BaseModel):
-    render_mode: Literal["manim", "presentation", "explainer", "user_generated_video", "notes"]
+    render_mode: Literal["manim", "presentation", "explainer", "user_generated_video", "notes", "explainer_slides"]
     decision_reasoning: str  # Explain why this mode was chosen based on the hierarchy
     search_queries: list[str] = [] # If content is sparse, list 1-3 queries to run via SearXNG
     scenes: list[Scene]
@@ -157,7 +158,13 @@ LEVEL 5 (Visual Summary / Cheat Sheet) → Use "notes":
   - Revision or recap content where a "one-page cheat sheet" is the best format.
   - Use this when the user explicitly requests "notes" or "summary" style output.
 
-ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" to Manim/Explainer if the content strictly warrants it.
+LEVEL 6 (Premium Structured Overview) → Use "explainer_slides":
+  - Content that needs a "structured, comprehensive overview that connects the dots".
+  - When you want a "Whiteboard Doodle" aesthetic with numbered slides (1, 2, 3...).
+  - Best for: Complex medical concepts (like heart failure), multi-step strategies, or any high-value lesson summary.
+  - MANDATORY RULE: Always start with a `title_card`, followed by a slide titled "What should the AI hosts focus on?" using `explainer_slide`.
+
+ECONOMY RULE: If unsure, prefer "presentation" to save compute. Only "upgrade" to Manim/Explainer/ExplainerSlides if the content strictly warrants it.
 
 ━━━ MCQ MANDATORY SCENE RULE ━━━
 If the content type is "mcq", you MUST include exactly these scenes at the end of your script in this exact order:
@@ -181,17 +188,14 @@ point at the clinically relevant feature being discussed in the narration.
 
 ━━━ SCENE RULES BY RENDER MODE ━━━
 
-MANIM SCENES (8–12 scenes):
-  - HYBRID RULE: If the lesson includes a "Concept Explanation" section, you MUST start with 2–4 scenes explaining the background material (using concept_bullets, formula_display, or key_point) before starting the MCQ phase.
+MANIM SCENES (4–5 scenes for maximum economy & impact):
+  - CONCISE & TARGETED RULE (ECONOMY): Do NOT generate unnecessary slides or duplicate visual assets. Sticking strictly to the core structure prevents redundant DALL-E image generations and keeps the lesson punchy.
   - For MCQ Phase (CONTINUOUS VISUAL FLOW):
-      1. title_card (Topic)
-      2. annotated_image (anatomical/clinical overview with bullets on left)
-      3. CONCEPT TEACHING (Use concept_bullets to reinforce each new fact)
-      4. annotated_image (Update image region pointer for the new concept)
-      5. mcq_layout (Switch to MCQ focus)
-      7. option_highlight (wrong options, color "#FF6B6B")
-      8. cross_out (Scrub wrong options)
-      9. answer_reveal (explanation + final diagram summarizing the answer)
+      1. title_card (Topic introduction - Scene 1)
+      2. concept_bullets / formula_step_list (Exactly ONE single concise concept overview / derivation slide - Scene 2)
+      3. mcq_layout (Question and options - Scene 3)
+      4. cross_out (Scrub all wrong options in a single step - Scene 4)
+      5. answer_reveal (Highlight correct option and explain - Scene 5)
   - PEDAGOGICAL INTEGRITY: NEVER use generic placeholders like "Option A" or "Option B" if real names (e.g., "Cortical contusion") are available in the parsed_facts. You MUST use the exact names from the facts in your `visual_data`.
   - ANSWER LOCK: The "correct_answer" letter and "explanation" in the answer_reveal scene MUST match the ground truth provided in the parsed_facts. Do not hallucinate a different answer.
   - cross_out rule (SINGLE SCENE): You MUST provide exactly ONE "cross_out" scene that includes all incorrect letters in a single list (e.g., {"letters": ["A", "B", "C"]}). NEVER split cross-outs across multiple scenes.
@@ -220,6 +224,13 @@ EXPLAINER SCENES (6–10 scenes):
     4. NO PLAIN BACKGROUNDS: Ensure the background prompt provides a "World" for the objects to live in (e.g. "train on tracks", "market table", "blueprint drafting board").
   - MOOD: Each generative_video must have a cinematic prompt (e.g. "Sparks flying in a high-tech lab, 4k ultra realistic, Higgsfield style")
 
+EXPLAINER_SLIDES SCENES (6–10 scenes):
+  - title_card → explainer_slide (Focus) → series of explainer_slide (Numbered 1, 2, 3...) → summary
+  - AESTHETIC: "Whiteboard Doodle".
+  - NUMBERING RULE: For the core teaching slides, include a large number (1, 2, 3...) in the `title`.
+  - OBJECTS RULE: In `visual_data`, describe 3-5 hand-drawn doodle icons relevant to the topic to be included in the slide (e.g., {"objects": ["broken heart icon", "stethoscope", "fluid drop"]}).
+  - FOCUS SLIDE: The second slide MUST be `explainer_slide` with title="What should the AI hosts focus on?" and bullets defining the key teaching priorities.
+
 USER_GENERATED_VIDEO (1–4 long scenes):
   - subtitle_chunk scenes only
   - focus on the narration; the visuals will be a single talking head avatar.
@@ -240,7 +251,7 @@ If a slide doesn't clearly benefit from a character's presence, set `tony_pose` 
 
 ━━━ NARRATION RULES (THE 3B1B STANDARD) ━━━
   - SYNC-FIRST RULE: In scenes where an element is highlighted (option_highlight, option_arrow, image_arrow), your narration MUST begin by identifying that specific element. (e.g., "Looking at Option B...", "Observe this region..."). This ensures the Pointer and the Speech land at the exact same moment.
-  - CONCISE ELEGANCE: Favor short, powerful sentences. The 3b1b style thrives on clarity, not wordiness.
+  - CONCISE ELEGANCE & HIGH DEPTH: The audio `narration_text` must NOT be generic, lazy introductory filler (e.g., avoid "Let's look at slide 1", "Let's explore the retrofacial air cells"). Instead, the narration MUST be a rich, substantive, academic narration that fully reads and explains the detailed clinical/scientific facts, definitions, and option analyses provided in the input curriculum. The student listening to the audio must hear the complete and deep explanation of the concepts.
   - GROUND TRUTH OATH: Use the PERSISTENT KNOWLEDGE BASE (GROUND TRUTH) as your primary source of facts. If a KB fact contradicts the input, the KB WINS.
   - Build tension before an answer reveal. Use "we", "let's", "notice that" — conversational and engaging.
   - MCQ ALIGNMENT: During "option_highlight" or "cross_out" scenes, ONLY discuss the specific options being visually focused on. Do NOT mention the final correct answer until the "answer_reveal" scene.
@@ -250,10 +261,9 @@ If a slide doesn't clearly benefit from a character's presence, set `tony_pose` 
   - formula: Use plain text or LaTeX (e.g. "e = mc^2").
   - graph_hint: MUST include specific equations and domain/ranges (e.g. 'Plot y=sin(x) from -pi to pi').
   - option_highlight: {"letter": "A", "verdict": "wrong", "reason": "why this option is incorrect"}.
-━━━ APPENDED / COMPOSITE INPUT RULE ━━━
-- You may receive inputs that were appended from multiple sources (JSON + HTML + Markdown).
-- If you see a sequence of mathematical steps or formulas across these segments that form a logical progression, you MUST group them into a single `formula_derivation` scene.
-- Do not create separate `formula_display` scenes for each segment if they are part of the same derivation. Append them to the `steps` list of a single `formula_derivation`.
+━━━ VISUAL MINIMALISM & CORE CURRICULUM STRICTNESS ━━━
+  - VISUAL MINIMALIST TEXT RULE: The whiteboard and slide visual elements must have very MINIMAL text to stay highly visual. Bullet points and labels MUST be extremely short, concise, and clean (maximum 2-5 words or short phrases per bullet). Do NOT write full sentences or paragraphs on the visual slide itself.
+  - STRICT CURRICULUM GROUNDING: You MUST strictly ground your narration and slides in the facts directly provided in the CORE CURRICULUM and OPTIONS input payload. Do NOT hallucinate extra topics not in the source. However, you MUST ensure that all detailed facts, explanations, and option descriptions given in the input curriculum are fully and richly incorporated into the audio narration_text, rather than using lazy introductory filler.
 
 OUTPUT: Return valid JSON only. No extra text."""
 
@@ -295,23 +305,23 @@ Structure:
   "scenes": [
     {
       "visual_type": "title_card",
-      "visual_data": {"title": "Topic", "subtitle": "Description"},
-      "narration_text": "Hello, today we talk about..."
+      "visual_data": {"title": "Branches of the Internal Iliac Artery", "subtitle": "Pelvic Cavity Vascularization"},
+      "narration_text": "Welcome to this deep-dive tutorial. Today, we are exploring the highly intricate vascular anatomy of the internal iliac artery. We will analyze the major vessel branching and anatomical relations that supply blood to the pelvic viscera, the gluteal region, and the perineum."
     },
     {
       "visual_type": "annotated_image",
       "visual_data": {"label": "Internal Iliac Artery", "target_landmark": "internal iliac artery bifurcation", "region": "center_left", "bullets": ["Anterior division: Obturator, Uterine", "Posterior division: Iliolumbar, Lateral sacral"]},
-      "narration_text": "Let us look at the branches of the internal iliac artery..."
+      "narration_text": "Looking at the branches of the internal iliac artery, notice how the vessel divides at the pelvic brim. The anterior division gives rise to key visceral arteries including the obturator and uterine arteries, which supply pelvic organs, while the posterior division branches into parietal vessels like the iliolumbar and lateral sacral arteries to vascularize muscle and bone."
     },
     {
       "visual_type": "annotated_image",
       "visual_data": {"label": "Convex Lens Ray Diagram", "target_landmark": "focal point", "region": "center_right", "bullets": ["Parallel rays converge at focal point", "Image is real and inverted beyond 2F"]},
-      "narration_text": "Observe how parallel rays pass through the lens and meet at the focal point..."
+      "narration_text": "Observe how parallel incoming light rays strike the surface of the convex lens and converge exactly at the focal point on the opposite side. When an object is placed beyond the twice-focal-length boundary, labeled 2F, the emerging rays form a real, inverted image, demonstrating the principles of optical refraction."
     },
     {
       "visual_type": "formula_derivation",
       "visual_data": {"heading": "Ejection Fraction", "steps": ["EF = \\frac{SV}{EDV}", "EF = \\frac{EDV - ESV}{EDV}", "EF = \\frac{120 - 50}{120}", "EF = \\frac{70}{120}", "EF = 0.58"]},
-      "narration_text": "By substituting the End Diastolic Volume and End Systolic Volume, we can derive the ejection fraction step by step..."
+      "narration_text": "Let us step-by-step derive the ejection fraction, which is the ratio of stroke volume to end diastolic volume. By substituting stroke volume as the difference between end-diastolic and end-systolic volumes, and inserting a typical patient's measurements of one hundred twenty milliliters and fifty milliliters, we calculate a final cardiac efficiency of approximately fifty-eight percent."
     }
   ]
 }
@@ -354,6 +364,7 @@ IMPORTANT INSTRUCTIONS:
         
         # Fallback for required fields (Industrial Resilience)
         if not data.get("render_mode"): data["render_mode"] = "manim"
+        if not data.get("decision_reasoning"): data["decision_reasoning"] = "System selected appropriate render mode."
         
         # INDUSTRIAL REPAIR: Fix scenes that are missing required fields
         if "scenes" in data and isinstance(data["scenes"], list):

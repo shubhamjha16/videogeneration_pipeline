@@ -1,13 +1,16 @@
-import sys
 import os
+import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from bs4 import BeautifulSoup
-from html_parser import _extract_options, _extract_correct_answer
+from autonomous_graph import app
 
-html = """
+def test_temporal_bone():
+    topic = "Temporal Bone Air Cell Groups MCQ"
+    raw_input = """
     <h1>Explanation of Temporal Bone Air Cell Groups</h1>
     <p>
       The temporal bone is a complex structure comprising several parts that are pneumatized (contain air cells). These air cell groups are incorporated in various regions of the temporal bone and play an important role in the resonance and ventilation of the middle ear, as well as in reducing the weight of the skull. The main pneumatized regions include the mastoid air cell system, petrous, retrofacial, and hypotympanic groups. These air cells are categorized based on their anatomical locations within the temporal bone. It is critical to differentiate between these genuine air cell groups and anatomical structures that might be confused as such.
@@ -39,10 +42,40 @@ html = """
       <li>Gray’s Anatomy for Students – which details the temporal bone subdivisions and pneumatization.</li>
       <li>Rudolf Fahlbusch's Complete Otolaryngology – provides an in-depth look into the anatomy of the temporal bone and middle ear structures.</li>
     </ul>
-"""
+    """
+    
+    print(f"🚀 Triggering Explainer Slides pipeline for: {topic}")
+    
+    # We force explainer_slides mode via overrides
+    initial_state = {
+        "raw_input": raw_input,
+        "topic": topic,
+        "job_id": "test_temporal_bone_" + str(os.getpid()),
+        "overrides": {"render_mode": "explainer_slides"},
+        "use_elevenlabs": True,
+        
+        # Initialize other required state fields
+        "attempt_count": 0,
+        "ppt_attempt_count": 0,
+        "no_vision": False,
+        "with_avatar": False,
+        "ledger": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "elevenlabs_chars": 0,
+            "heygen_seconds": 0
+        },
+        "rejected_attempts": [],
+        "media_manifest": [],
+        "research_count": 0
+    }
+    
+    final_state = app.invoke(initial_state)
+    
+    print("\n🏁 Pipeline Finished!")
+    print(f"Output Path: {final_state.get('output_path')}")
+    print(f"Video URL: {final_state.get('video_url')}")
+    print(f"Ledger: {final_state.get('ledger')}")
 
-soup = BeautifulSoup(html, "html.parser")
-print("Parsed Options:")
-print(_extract_options(soup))
-print("Parsed Correct Answer:")
-print(_extract_correct_answer(soup))
+if __name__ == "__main__":
+    test_temporal_bone()

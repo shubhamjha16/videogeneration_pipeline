@@ -42,3 +42,7 @@ merge_*.py
 bpf_*.txt
 bpf_*.html
 narration*
+
+# Databases
+*.db
+

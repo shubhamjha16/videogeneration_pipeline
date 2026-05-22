@@ -55,71 +55,142 @@ class DesignTokens:
 
 def tex(text: str, width: int = 45) -> str:
     """
-    Industrial Sentinel: Smart multi-line LaTeX wrapping.
+    Industrial Sentinel: Smart multi-line LaTeX wrapping with inline math protection.
     Prevents screen overflow by splitting long text into balanced 'VGroups'.
     """
     if not text or not text.strip():
         return f'Tex(r"\\text{{-}}", tex_template=my_template)'
+
+    # Repair JSON-loaded backslash escapes for LaTeX compatibility (e.g. \t -> \theta, \f -> \frac)
+    text = (text
+        .replace("\t", "\\t")
+        .replace("\f", "\\f")
+    )
     
+    # Map Unicode Greek characters to mathematical LaTeX representations
+    unicode_greek = {
+        "ω": r"$\omega$",
+        "θ": r"$\theta$",
+        "π": r"$\pi$",
+        "α": r"$\alpha$",
+        "β": r"$\beta$",
+        "γ": r"$\gamma$",
+        "λ": r"$\lambda$",
+        "μ": r"$\mu$",
+        "σ": r"$\sigma$",
+        "τ": r"$\tau$",
+        "ϕ": r"$\phi$",
+        "Δ": r"$\Delta$",
+    }
+    for char, latex_rep in unicode_greek.items():
+        text = text.replace(char, latex_rep)
+
     # Convert headers to bold
     text = re.sub(r'###\s*(.*)', r'**\1**', text)
     
     # Normalize explicit \textbf{...} to **...** so our state machine handles it safely
     text = re.sub(r'\\textbf\{(.*?)\}', r'**\1**', text)
 
-    # 1. Sanitize for LaTeX (preserving **)
-    escaped = (text
-        .replace("\\", r"\\")
-        .replace("&", r"\&")
-        .replace("%", r"\%")
-        .replace("$", r"\$")
-        .replace("#", r"\#")
-        .replace("_", r"\_")
-        .replace("{", r"\{")
-        .replace("}", r"\}")
-        .replace("~", r"\textasciitilde{}")
-        .replace("^", r"\textasciicircum{}")
-    )
+    # Escape unmatched dollar signs if count is odd
+    dollar_count = text.count('$')
+    if dollar_count % 2 != 0:
+        text = text.replace('$', 'LITERALDOLLARPLACEHOLDER')
+
+    # Split by '$' to isolate inline math blocks
+    parts = text.split('$')
+    escaped_parts = []
     
-    # 2. Wrap text, then apply bold state
+    for i, part in enumerate(parts):
+        if i % 2 == 0:
+            # Non-math part: Apply full LaTeX escaping
+            p = (part
+                .replace("\\", r"\\")
+                .replace("&", r"\&")
+                .replace("%", r"\%")
+                .replace("#", r"\#")
+                .replace("_", r"\_")
+                .replace("{", r"\{")
+                .replace("}", r"\}")
+                .replace("~", r"\textasciitilde{}")
+                .replace("^", r"\textasciicircum{}")
+                .replace("LITERALDOLLARPLACEHOLDER", r"\$")
+            )
+            # Re-apply bold state (**...**)
+            p_formatted = ""
+            is_bold = False
+            j = 0
+            while j < len(p):
+                if p[j:j+2] == '**':
+                    if not is_bold:
+                        p_formatted += r'}\textbf{'
+                        is_bold = True
+                    else:
+                        p_formatted += r'}\text{'
+                        is_bold = False
+                    j += 2
+                else:
+                    p_formatted += p[j]
+                    j += 1
+            escaped_parts.append(p_formatted)
+        else:
+            # Math part: Keep raw LaTeX symbols but escape backslashes for python raw string generation
+            p = part.replace("\\", r"\\")
+            escaped_parts.append(f"${p}$")
+            
+    escaped = "".join(escaped_parts)
+    
+    # 2. Wrap text, then wrap each line in \text{} for final compilation
     lines = textwrap.wrap(escaped, width=width)
     latex_lines = []
-    is_bold = False
     
     for line in lines:
-        formatted_line = ""
-        if is_bold:
-            formatted_line += r'\textbf{'
-            
-        i = 0
-        while i < len(line):
-            if line[i:i+2] == '**':
-                if not is_bold:
-                    formatted_line += r'\textbf{'
-                    is_bold = True
-                else:
-                    formatted_line += r'}'
-                    is_bold = False
-                i += 2
-            else:
-                formatted_line += line[i]
-                i += 1
-                
-        if is_bold:
-            formatted_line += r'}'
-            
-        latex_lines.append(formatted_line)
+        latex_lines.append(f'\\text{{{line}}}')
 
     if len(latex_lines) > 1:
-        line_objs = [f'Tex(r"\\text{{{l}}}", tex_template=my_template)' for l in latex_lines]
+        line_objs = [f'Tex(r"{l}", tex_template=my_template)' for l in latex_lines]
         return f'VGroup({", ".join(line_objs)}).arrange(DOWN, aligned_edge=LEFT, buff=0.15)'
     
-    return f'Tex(r"\\text{{{latex_lines[0]}}}", tex_template=my_template)'
+    return f'Tex(r"{latex_lines[0]}", tex_template=my_template)'
 
 
 def math(formula: str) -> str:
     """Wrap a formula in MathTex with high-contrast 3b1b coloring."""
-    return f'MathTex(r"{formula}", tex_template=my_template, color=DesignTokens.WHITE).scale(1.2)'
+    safe_formula = math_tex_safe(formula)
+    if "$" in safe_formula:
+        return f'Tex(r"{safe_formula}", tex_template=my_template, color=DesignTokens.WHITE).scale(1.2)'
+    return f'MathTex(r"{safe_formula}", tex_template=my_template, color=DesignTokens.WHITE).scale(1.2)'
+
+
+def math_tex_safe(formula: str) -> str:
+    """Repairs raw JSON escape sequences and unicode Greek characters specifically for MathTex strings."""
+    if not formula:
+        return ""
+    
+    # Repair JSON-loaded backslash escapes (e.g. \t -> \theta, \f -> \frac)
+    formula = (formula
+        .replace("\t", "\\t")
+        .replace("\f", "\\f")
+    )
+    
+    # Map Unicode Greek characters to mathematical LaTeX representations (without $ since MathTex is already math mode)
+    unicode_greek = {
+        "ω": r"\omega",
+        "θ": r"\theta",
+        "π": r"\pi",
+        "α": r"\alpha",
+        "β": r"\beta",
+        "γ": r"\gamma",
+        "λ": r"\lambda",
+        "μ": r"\mu",
+        "σ": r"\sigma",
+        "τ": r"\tau",
+        "ϕ": r"\phi",
+        "Δ": r"\Delta",
+    }
+    for char, latex_rep in unicode_greek.items():
+        formula = formula.replace(char, latex_rep)
+        
+    return formula
 
 
 def _region_to_coords(region: str) -> str:
@@ -269,7 +340,7 @@ def _render_option_box(letter: str, name: str, idx: int, pos: str, is_ghost: boo
             color=DesignTokens.WHITE, stroke_width=2, stroke_opacity={op}).move_to({pos})
         {vname}_letter = {tex(letter + ".")}
         {vname}_letter.scale(0.85).set_color(DesignTokens.BLUE).move_to({pos} + np.array([-2.4, 0, 0])).set_opacity({op})
-        {vname}_text = {tex(name, width=35)}
+        {vname}_text = {tex(name, width=60)}
         {vname}_text.scale(0.65).set_color(DesignTokens.WHITE).move_to({pos} + np.array([0.3, 0, 0])).set_opacity({op})
         {vname}_grp = VGroup({vname}_box, {vname}_letter, {vname}_text)"""
 
@@ -820,7 +891,11 @@ def _scene_formula_step_list(scene: dict, idx: int) -> str:
         a_vname = f"a_{idx}_{i}"
         
         # Create formula and arrow (not rendered yet)
-        lines.append(f"        {f_vname} = MathTex(r\"{step}\", tex_template=my_template).scale(0.9)")
+        safe_step = math_tex_safe(step)
+        if "$" in safe_step:
+            lines.append(f"        {f_vname} = Tex(r\"{safe_step}\", tex_template=my_template).scale(0.9)")
+        else:
+            lines.append(f"        {f_vname} = MathTex(r\"{safe_step}\", tex_template=my_template).scale(0.9)")
         lines.append(f"        if {f_vname}.width > DesignTokens.MAX_WIDTH: {f_vname}.set_width(DesignTokens.MAX_WIDTH)")
         
         if i > 0:

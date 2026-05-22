@@ -6,7 +6,11 @@ from typing import Optional, Any
 try:
     import redis
 except ImportError:
+    import os
+    if os.environ.get("ENV", "dev").lower().strip() in ("production", "staging"):
+        raise
     redis = None
+
 
 import config
 

@@ -49,7 +49,7 @@ PURPOSE: Focal Point. These will be used as sharp corner illustrations (full opa
 INSTRUCTION: Each prompt MUST focus on the primary subject element of the topic, isolated and centered. For "The Human Heart", these prompts should finally describe the heart itself or its specific components (valves, ventricles). Square composition (1:1).
 
 CRITICAL STYLE RULES — every prompt MUST end with this exact phrase:
-"Black marker on cream paper, hand-drawn sketchy notebook doodle style. No text, no words, no labels, no captions anywhere in the image."
+"High-fidelity textbook illustration, professional clinical and academic diagram style, sharp detail, rich vibrant colors, high resolution, clean educational graphic, wowed aesthetic. No watermarks."
 
 Each prompt should be 2-3 sentences. Focus on WHAT to draw (specific objects, scenes, elements relevant to the topic) — the style rule above handles HOW.
 
@@ -96,8 +96,11 @@ Return ONLY valid JSON in this exact format, no markdown fences:
         print("⚠️ OPENAI_API_KEY not set in config / environment. Skipping ambient visual generation.")
         state["ambient_assets"] = {"atmospheric": [], "accents": [], "generated_prompts": prompts_data}
         return state
-
-    client = OpenAI(api_key=api_key)
+    from openai import Timeout
+    client = OpenAI(
+        api_key=api_key,
+        timeout=Timeout(connect=5.0, read=300.0, write=5.0, pool=5.0)
+    )
     
     ambient_dir = os.path.join(get_job_dir(state), "ambient")
     os.makedirs(ambient_dir, exist_ok=True)

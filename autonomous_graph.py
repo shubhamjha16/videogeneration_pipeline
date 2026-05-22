@@ -42,6 +42,7 @@ import config
 from healer_agent import run_healer
 from knowledge_vector_store import retrieve_related_research
 from nodes.ambient_visual_node import ambient_visual_node
+from explainer_slides_generator import generate_explainer_slides_video
 
 
 # ── Industrial Helpers ───────────────────────────────────────────────────────
@@ -581,14 +582,55 @@ def director_node(state: TonyState) -> TonyState:
             v_data["options"] = fixed_options
 
     # MINIMUM SCENE GUARD: If Gemma gets lazy and plans < 3 scenes for a full lesson
-    if len(scenes) < 3 and state.get("render_mode") == "manim":
+    if len(scenes) < 3 and state.get("render_mode") in ["manim", "explainer_slides"]:
         print(f"   ⚠️  Laziness Alert: Gemma planned only {len(scenes)} scenes. FORCING INDUSTRIAL FALLBACK...")
         # INDUSTRIAL RECOVERY: Build a subject-aware masterclass if the AI fails
         facts = state.get("parsed_facts", {})
         topic = state.get("topic", "Masterclass")
         subject = facts.get("subject", "unknown")
         
-        if subject in ["maths", "physics"] or facts.get("content_type") == "numerical":
+        if state.get("render_mode") == "explainer_slides":
+            # ── Explainer Slides Recovery ──
+            fallback_scenes = [
+                {
+                    "visual_type": "title_card",
+                    "visual_data": {"title": topic, "subtitle": "Comprehensive Overview"},
+                    "narration_text": f"Welcome to this comprehensive overview of {topic}. Today we'll connect the dots and understand the core principles."
+                },
+                {
+                    "visual_type": "explainer_slide",
+                    "visual_data": {
+                        "title": "What should the AI hosts focus on?",
+                        "bullets": ["Pathophysiology and Mechanisms", "Clinical Presentation", "Management Strategies"],
+                        "objects": ["brain icon", "target icon", "focus icon"]
+                    },
+                    "narration_text": "Before we dive in, let's establish our focus. We will prioritize the underlying pathophysiology and how it manifests clinically."
+                },
+                {
+                    "visual_type": "explainer_slide",
+                    "visual_data": {
+                        "title": "1. The Core Mechanism",
+                        "bullets": facts.get("key_points", ["Conceptual Overview"])[:3],
+                        "objects": ["gear icon", "lightbulb", "flowchart"]
+                    },
+                    "narration_text": "First, let's look at the core mechanism. Understanding this is the key to mastering the entire topic."
+                },
+                {
+                    "visual_type": "explainer_slide",
+                    "visual_data": {
+                        "title": "2. Clinical Patterns",
+                        "bullets": ["Identifying key symptoms", "Diagnostic criteria", "Patient presentation"],
+                        "objects": ["stethoscope", "chart icon", "eye icon"]
+                    },
+                    "narration_text": "Next, we move to clinical patterns. How does this look in a real-world scenario?"
+                },
+                {
+                    "visual_type": "summary",
+                    "visual_data": {"heading": "Key Takeaways", "points": [f"Final summary of {topic}."]},
+                    "narration_text": "To wrap up, remember these key points. Mastery comes from understanding these connections."
+                }
+            ]
+        elif subject in ["maths", "physics"] or facts.get("content_type") == "numerical":
             # ── Mathematical Recovery ──
             steps = facts.get("steps", [])
             if not steps:
@@ -709,6 +751,27 @@ def director_node(state: TonyState) -> TonyState:
     print(f"   💡 Reasoning: {director_output.decision_reasoning}")
     
     _log_progress(state, "DIRECTOR", f"Planned {len(scenes)} scenes for {state['render_mode']} path.", duration=time.time() - start_t)
+
+    # DB Persistence: Record conditions and routing decision
+    try:
+        from db.repository import insert_conditions
+        parsed = state.get("parsed_facts", {})
+        has_diagram = any(s.get("visual_type") == "annotated_image" for s in scenes)
+        
+        insert_conditions(
+            job_id=state.get("job_id"),
+            selected_render_mode=state["render_mode"],
+            routing_reason=director_output.decision_reasoning,
+            content_type=parsed.get("content_type"),
+            subject=parsed.get("subject"),
+            scene_count=len(scenes),
+            overrides=state.get("overrides"),
+            has_diagram=has_diagram
+        )
+    except Exception as e:
+        # Repository logs the error, we keep the pipeline moving
+        pass
+
     return state
 
 
@@ -1185,7 +1248,16 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
     bucket   = os.environ.get("S3_BUCKET")
     region   = os.environ.get("AWS_REGION", "ap-south-1")
 
+    _env = os.environ.get("ENV", "dev").lower().strip()
+
     if not bucket:
+        if _env in ("production", "staging"):
+            raise RuntimeError(
+                f"🔴 FATAL: S3_BUCKET environment variable is not set in {_env.upper()}. "
+                "Video upload requires S3 in production/staging — local /stream/ fallback is "
+                "not available because ECS Fargate containers use ephemeral storage. "
+                "Set S3_BUCKET in your ECS task definition or Secrets Manager."
+            )
         # Local dev: act as a local CDN fallback via FastAPI
         print("   ℹ️  S3_BUCKET not set — using local CDN fallback via /stream/")
         job_id_safe = job_id or "unknown"
@@ -1232,12 +1304,22 @@ def _upload_to_s3(local_path: str, topic: str, job_id: Optional[str] = None) -> 
         except botocore.exceptions.ClientError as e:
             print(f"   ❌ S3 Upload Failed (IAM/Bucket issue) on attempt {attempt}/{_S3_UPLOAD_MAX_ATTEMPTS}: {e}")
             if attempt >= _S3_UPLOAD_MAX_ATTEMPTS:
+                if _env in ("production", "staging"):
+                    raise RuntimeError(
+                        f"🔴 FATAL: S3 upload failed after {_S3_UPLOAD_MAX_ATTEMPTS} attempts in {_env.upper()}. "
+                        f"Bucket: {bucket}, Key: {s3_key}. Error: {e}"
+                    )
                 job_id = job_id or "unknown"
                 filename = os.path.basename(local_path)
                 return f"/stream/{job_id}/{filename}"
         except Exception as e:
             print(f"   ❌ S3 Upload Failed (unexpected) on attempt {attempt}/{_S3_UPLOAD_MAX_ATTEMPTS}: {e}")
             if attempt >= _S3_UPLOAD_MAX_ATTEMPTS:
+                if _env in ("production", "staging"):
+                    raise RuntimeError(
+                        f"🔴 FATAL: S3 upload failed after {_S3_UPLOAD_MAX_ATTEMPTS} attempts in {_env.upper()}. "
+                        f"Bucket: {bucket}, Key: {s3_key}. Error: {e}"
+                    )
                 filename = os.path.basename(local_path)
                 return f"/stream/{job_id}/{filename}"
         time.sleep(_S3_RETRY_SLEEP_SECONDS * min(attempt, 3))
@@ -1765,7 +1847,10 @@ def _run_presentation_fallback(state: TonyState, source_node: str) -> TonyState:
     state = ppt_tts_node(state)
     if state.get("rendering_errors"):
         return state
-    return ppt_video_node(state)
+    res = ppt_video_node(state)
+    if res.get("output_path"):
+        res["rendering_errors"] = None
+    return res
 
 
 def explainer_node(state: TonyState) -> TonyState:
@@ -1806,6 +1891,43 @@ def explainer_node(state: TonyState) -> TonyState:
     return state
 
 
+def explainer_slides_node(state: TonyState) -> TonyState:
+    """7th Pipeline: Explainer Slides — Numbered Whiteboard Sequences."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
+    print(f"🎬 [Explainer Slides] Generating structured slide sequences for: {state['topic']}")
+    
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
+    job_dir = os.path.join("output", job_prefix)
+    os.makedirs(job_dir, exist_ok=True)
+
+    try:
+        video_path, metrics = generate_explainer_slides_video(
+            state["scenes"], 
+            job_dir, 
+            state["topic"],
+            job_id=state.get("job_id"),
+            use_elevenlabs=state.get("use_elevenlabs", True)
+        )
+        state["output_path"] = os.path.abspath(video_path)
+        
+        # INDUSTRIAL LEDGER: Capture ElevenLabs and DALL-E usage
+        state["ledger"] = state.get("ledger", {})
+        state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + metrics.get("elevenlabs_chars", 0)
+        state["ledger"]["dalle_calls"] = state["ledger"].get("dalle_calls", 0) + metrics.get("dalle_calls", 0)
+        
+    except Exception as e:
+        print(f"   ❌ Explainer Slides failed: {e}")
+        _record_error(state, "EXPLAINER_SLIDES", str(e))
+        # Fallback to presentation mode if slides fail
+        return _run_presentation_fallback(state, "EXPLAINER_SLIDES")
+
+    _log_progress(state, "EXPLAINER_SLIDES", "Structured slide production lifecycle complete.", duration=time.time() - start_t)
+    return state
+
+
 def notes_node(state: TonyState) -> TonyState:
     """Pipeline 5: Generate premium handwritten infographic notes video.
 
@@ -1832,6 +1954,7 @@ def notes_node(state: TonyState) -> TonyState:
             scenes=scenes,
             output_dir=job_dir,
             job_id=state.get("job_id"),
+            use_elevenlabs=state.get("use_elevenlabs", False),
         )
 
         if not output_path or not os.path.exists(output_path):
@@ -2091,6 +2214,8 @@ def route_by_mode(state: TonyState) -> str:
         return "ppt_planner"
     elif mode == "explainer":
         return "explainer"
+    elif mode == "explainer_slides":
+        return "explainer_slides"
     elif mode == "notes":
         return "notes"
     elif mode in {"heygen", "user_generated_video", "user_generated", "human_face"}:
@@ -2145,6 +2270,7 @@ workflow.add_node("ppt_renderer",  ppt_renderer_node)
 workflow.add_node("ppt_tts",       ppt_tts_node)
 workflow.add_node("ppt_video",     ppt_video_node)
 workflow.add_node("explainer",     explainer_node)
+workflow.add_node("explainer_slides", explainer_slides_node)
 workflow.add_node("notes",         notes_node)
 workflow.add_node("heygen",        heygen_node)
 workflow.add_node("subtitles",     subtitle_node)
@@ -2168,6 +2294,7 @@ workflow.add_conditional_edges("ambient_visual", route_by_mode, {
     "architect":   "architect",
     "ppt_planner": "ppt_planner",
     "explainer":   "explainer",
+    "explainer_slides": "explainer_slides",
     "notes":       "notes",
     "heygen":      "heygen",
 })
@@ -2192,6 +2319,9 @@ workflow.add_edge("ppt_video",     "deploy")
 
 # Path 3: Narrative Explainers (B-roll)
 workflow.add_edge("explainer",     "deploy")
+
+# Path 7: Premium Explainer Slides (Whiteboard Doodle)
+workflow.add_edge("explainer_slides", "deploy")
 
 # Path 5: Premium Study Notes (Ken Burns Infographic)
 workflow.add_edge("notes",         "deploy")
