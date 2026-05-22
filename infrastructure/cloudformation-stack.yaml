@@ -246,10 +246,16 @@ Resources:
     Properties:
       BucketName: !Sub '${ProjectName}-videos-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-videos'
@@ -260,11 +266,16 @@ Resources:
       Bucket: !Ref VideoBucket
       PolicyDocument:
         Statement:
-          - Sid: PublicReadAccess
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
             Effect: Allow
-            Principal: '*'
+            Principal:
+              Service: cloudfront.amazonaws.com
             Action: 's3:GetObject'
             Resource: !Sub '${VideoBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
 
 
   # ── IAM Roles ──
@@ -356,8 +367,91 @@ Resources:
           ContainerPort: 8000
           TargetGroupArn: !Ref TargetGroup
 
+  # ── Auto Scaling ──
+  ECSAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 8
+      MinCapacity: 1
+      ResourceId: !Sub 'service/${ECSCluster}/${ECSService.Name}'
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  CpuScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  MemoryScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-memory-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageMemoryUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  # ── CloudFront Distribution (OAC) ──
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${ProjectName}-oac-${AWS::AccountId}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: S3VideoOrigin
+            DomainName: !GetAtt VideoBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Empty when using OAC
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: S3VideoOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+            Headers:
+              - Origin
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+          DefaultTTL: 86400  # 1 day
+          MaxTTL: 31536000   # 1 year
+          MinTTL: 0
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
 
 Outputs:
+
   ALBDNSName:
     Description: The DNS name of the ALB
     Value: !GetAtt LoadBalancer.DNSName
@@ -387,4 +481,9 @@ Outputs:
   ECSServiceName:
     Description: ECS Service name for deploy script
     Value: !GetAtt ECSService.Name
-
+  CloudFrontDomainName:
+    Description: The domain name of the CloudFront CDN distribution
+    Value: !GetAtt CloudFrontDistribution.DomainName
+  CloudFrontDistributionId:
+    Description: The ID of the CloudFront CDN distribution
+    Value: !Ref CloudFrontDistribution
