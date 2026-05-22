@@ -7,6 +7,20 @@ Structured around a state-of-the-art **Adaptive Agentic RAG** and a robust **Lan
 
 ---
 
+## 🗂️ Project Directory Structure
+
+To keep the workspace clean and highly professional, the codebase has been structured into intuitive top-level directories:
+
+*   **[`academic_presets/`](file:///Users/apple/Desktop/easetolearn.videogeneration/academic_presets/)**: Contains raw educational lesson texts, curriculum source HTMLs, bulk JSON inputs, and academic guides used for preset rendering and testing.
+*   **[`docs/`](file:///Users/apple/Desktop/easetolearn.videogeneration/docs/)**: Holds internal documentation, architecture blueprints, system guides (like operations runbooks, pipeline definitions), and diagnostic bug audits.
+*   **[`scratch/`](file:///Users/apple/Desktop/easetolearn.videogeneration/scratch/)**: Holds developer sandbox scripts, one-off verification files, experiment drafts, and transient outputs.
+*   **[`scripts/`](file:///Users/apple/Desktop/easetolearn.videogeneration/scripts/)**: Contains core administrative tools, smoke tests, database migration scripts, and utility commands (such as the automated smoke runner or disk hygiene tools).
+*   **[`tests/`](file:///Users/apple/Desktop/easetolearn.videogeneration/tests/)**: Consists of the official unit and integration test suites, ensuring maximum quality control and system stability.
+*   **[`utils/`](file:///Users/apple/Desktop/easetolearn.videogeneration/utils/)**: Python utility packages containing cross-cutting helper components (like Slack telemetry alert systems and image compositing tools).
+*   **`nodes/`** / **`ppt_engine/`** / **`db/`** / **`caching/`**: Modular logic layers managing state transition steps, slide compilers, ORM models, and Redis integrations.
+
+---
+
 ## 🗂 Master Architecture Schematic
 
 ```text
