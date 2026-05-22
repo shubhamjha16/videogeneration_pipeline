@@ -108,6 +108,9 @@
                 <input type="text" placeholder="Search factory jobs or curriculum...">
             </div>
             <div class="user-actions">
+                <button class="btn btn-primary" id="newMasterclassBtn">
+                    <i data-lucide="plus"></i> Dispatch Mission Node
+                </button>
                 <button class="btn btn-secondary" id="bulkIngestBtn">
                     <i data-lucide="layers"></i> Bulk Ingest Curriculum
                 </button>
@@ -117,17 +120,75 @@
             </div>
         </header>
 
-        <!-- MISSION CONTROL TAB (Simplified Tony Match Box) -->
+        <!-- MISSION CONTROL TAB -->
         <section id="missionTab" class="tab-content active">
-            <div class="masterclass-container">
-                <div id="masterclassHero" class="masterclass-hero">
-                    <!-- Dynamic States injected via script.js -->
-                    <div class="empty-state">
-                        <i data-lucide="video"></i>
-                        <h3>Ready for Production</h3>
-                        <p>Trigger a generation from Tony AI to see the masterclass box in action.</p>
+            <div class="matrix-overview" style="flex: 1; display: flex; flex-direction: column;">
+                <div class="matrix-path manim-path"></div>
+                <div class="matrix-path ppt-path"></div>
+                <div class="matrix-path explainer-path"></div>
+                <div class="matrix-path ugv-path"></div>
+                
+                <section class="pipeline-view">
+                    <div class="column" data-node="ingestion">
+                        <div class="column-header">
+                            <h3>Ingestion</h3>
+                            <span class="count" id="count-ingestion">0</span>
+                        </div>
+                        <div class="scroll-area" id="column-ingestion">
+                            <!-- Ingestion jobs go here -->
+                        </div>
                     </div>
-                </div>
+
+                    <div class="column" data-node="synthesis">
+                        <div class="column-header">
+                            <h3>Synthesis</h3>
+                            <span class="count" id="count-synthesis">0</span>
+                        </div>
+                        <div class="scroll-area" id="column-synthesis">
+                            <!-- Synthesis jobs go here -->
+                        </div>
+                    </div>
+
+                    <div class="column" data-node="orchestration">
+                        <div class="column-header">
+                            <h3>Orchestration</h3>
+                            <span class="count" id="count-orchestration">0</span>
+                        </div>
+                        <div class="scroll-area" id="column-orchestration">
+                            <!-- Orchestration jobs go here -->
+                        </div>
+                    </div>
+
+                    <div class="column" data-node="production">
+                        <div class="column-header">
+                            <h3>Production</h3>
+                            <span class="count" id="count-production">0</span>
+                        </div>
+                        <div class="scroll-area" id="column-production">
+                            <!-- Production jobs go here -->
+                        </div>
+                    </div>
+
+                    <div class="column" data-node="qc">
+                        <div class="column-header">
+                            <h3>QC / Testing</h3>
+                            <span class="count" id="count-qc">0</span>
+                        </div>
+                        <div class="scroll-area" id="column-qc">
+                            <!-- QC jobs go here -->
+                        </div>
+                    </div>
+
+                    <div class="column" data-node="deployment">
+                        <div class="column-header">
+                            <h3>Deployment</h3>
+                            <span class="count" id="count-deployment">0</span>
+                        </div>
+                        <div class="scroll-area" id="column-deployment">
+                            <!-- Deployment jobs go here -->
+                        </div>
+                    </div>
+                </section>
             </div>
         </section>
 
@@ -263,6 +324,85 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary close-modal">Cancel</button>
                 <button class="btn btn-primary" id="startBatchBtn">Initialize 40 Render Nodes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUTONOMOUS MISSION DISPATCHER MODAL -->
+    <div id="dispatchModal" class="modal-overlay">
+        <div class="modal glass">
+            <div class="modal-header">
+                <h3>Dispatch Autonomous Agent Node</h3>
+                <button class="close-modal" id="closeDispatchBtn"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label class="form-label" style="display: block; font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 0.5rem; letter-spacing: 1px;">Target Subject or Topic</label>
+                    <input type="text" id="customTopicInput" class="glass" style="width: 100%; padding: 0.75rem; border-radius: 8px; color: white; background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); outline: none;" placeholder="e.g. Kepler's Laws of Motion, Battle of Waterloo...">
+                </div>
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <label class="form-label" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); letter-spacing: 1px;">Detailed Context facts (Optional)</label>
+                        <button type="button" id="toggleContextBtn" style="background: none; border: none; color: var(--primary); font-size: 0.7rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Add Context
+                        </button>
+                    </div>
+                    <textarea id="customLessonContent" class="glass" style="width: 100%; height: 80px; padding: 0.75rem; border-radius: 8px; color: white; display: none; resize: none; background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); outline: none;" placeholder="Provide ground truth syllabus text or markdown..."></textarea>
+                </div>
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label class="form-label" style="display: block; font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 0.5rem; letter-spacing: 1px;">Pipeline Strategy Constraint</label>
+                    <select id="dispatchRenderMode" class="glass selector" style="width: 100%; padding: 0.75rem; border-radius: 8px; color: white; background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); outline: none;">
+                        <option value="auto" selected>AUTO (Agent Decision)</option>
+                        <option value="manim">MANIM (Mathematical)</option>
+                        <option value="presentation">PPT (Slide Deck)</option>
+                        <option value="explainer">EXPLAINER (Kinetic)</option>
+                        <option value="user_generated_video">UGV (HeyGen Avatar)</option>
+                    </select>
+                </div>
+                <div class="batch-settings" style="grid-template-columns: 1fr; gap: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--glass-border);">
+                        <span style="font-size: 0.8rem; color: #E2E8F0;">Enable Realism Avatar Presenter</span>
+                        <label class="toggle" style="transform: scale(0.85);">
+                            <input type="checkbox" id="withAvatarCheckbox">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--glass-border);">
+                        <span style="font-size: 0.8rem; color: #E2E8F0;">Engage ElevenLabs HD TTS</span>
+                        <label class="toggle" style="transform: scale(0.85);">
+                            <input type="checkbox" id="useElevenlabsCheckbox">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelDispatchBtn">Cancel</button>
+                <button class="btn btn-primary" id="triggerProductionBtn">Dispatch Agent Node</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIDEO PLAYER PREVIEW MODAL -->
+    <div id="videoPlayerModal" class="modal-overlay">
+        <div class="modal glass" style="width: 800px; max-width: 95%;">
+            <div class="modal-header">
+                <h3 id="playerModalTitle">Previewing Video</h3>
+                <button class="close-modal" id="closePlayerModalBtn"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1rem;">
+                <div class="hero-player-container">
+                    <video id="playerModalVideo" controls autoplay style="width: 100%; border-radius: 12px;">
+                        <source src="" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--glass-border);">
+                <span id="playerModalMeta" style="font-size: 0.8rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">Mode: MANIM</span>
+                <button class="btn btn-primary" id="playerModalDownloadBtn">
+                    <i data-lucide="download"></i> Download Video
+                </button>
             </div>
         </div>
     </div>
