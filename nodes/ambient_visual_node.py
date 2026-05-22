@@ -128,7 +128,8 @@ Return ONLY valid JSON in this exact format, no markdown fences:
                 successful_atmospheric.append(os.path.abspath(output_path))
                 try:
                     LedgerManager.record_dalle_call(job_id, cost=0.08)
-                except Exception: pass
+                except Exception as e:
+                    print(f"⚠️ [ambient_visual_node] Failed to record atmospheric DALL-E cost: {e}")
         except Exception as e:
             print(f"⚠️ Failed to generate atmospheric_{i}.png: {e}")
 
@@ -150,7 +151,8 @@ Return ONLY valid JSON in this exact format, no markdown fences:
                 successful_accents.append(os.path.abspath(output_path))
                 try:
                     LedgerManager.record_dalle_call(job_id, cost=0.04)
-                except Exception: pass
+                except Exception as e:
+                    print(f"⚠️ [ambient_visual_node] Failed to record accent DALL-E cost: {e}")
         except Exception as e:
             print(f"⚠️ Failed to generate accent_{i}.png: {e}")
 

@@ -89,7 +89,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
             try:
                 from cost_tracker import LedgerManager
                 LedgerManager.record_tts_call(job_id, "macos_say", len(text), cost_per_char=0.0)
-            except: pass
+            except Exception as e: print(f"⚠️ [tts_generator] failed to record macOS TTS cost: {e}")
             return output_filename, 0
         except Exception as e:
             print(f"❌ Mac FFmpeg conversion failed: {e}")
@@ -120,14 +120,14 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
             try:
                 from cost_tracker import LedgerManager
                 LedgerManager.record_tts_call(job_id, "linux_espeak", len(text), cost_per_char=0.0)
-            except: pass
+            except Exception as e: print(f"⚠️ [tts_generator] failed to record espeak TTS cost: {e}")
             return output_filename, 0
         except Exception as e:
             print(f"❌ Linux espeak fallback/FFmpeg conversion failed: {e}")
         finally:
             if os.path.exists(wav_path):
                 try: os.remove(wav_path)
-                except: pass
+                except Exception as e: print(f"⚠️ [tts_generator] failed to remove temp WAV {wav_path}: {e}")
 
     # Fallback Path 2: Linux gTTS (Hardened for Hindi/Indic)
     try:
@@ -147,7 +147,7 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
         try:
             from cost_tracker import LedgerManager
             LedgerManager.record_tts_call(job_id, "gtts", len(text), cost_per_char=0.0)
-        except: pass
+        except Exception as e: print(f"⚠️ [tts_generator] failed to record gTTS cost: {e}")
         return output_filename, 0
     except Exception as e:
         print(f"❌ gTTS failed: {e} — falling back to Silent Sentinel")

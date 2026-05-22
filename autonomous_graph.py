@@ -90,7 +90,7 @@ def _run_command_with_group_cleanup(args: list, timeout: int, env: dict = None) 
         # Ensure we don't leave lingering processes on other errors
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except: pass
+        except Exception as e: print(f"   ⚠️ [run_command] cleanup failed for process group {proc.pid}: {e}")
         raise e
 
 def _kill_process_group(proc, timeout_occured=False):
@@ -1041,7 +1041,8 @@ def architect_node(state: TonyState) -> TonyState:
             try:
                 import json
                 scene["visual_data"] = json.loads(scene["visual_data"])
-            except:
+            except Exception as e:
+                print(f"   ⚠️ [architect] failed to parse stringified visual_data: {e}")
                 scene["visual_data"] = {"name": scene["visual_data"]}
 
     # 2. INDUSTRIAL MANIFEST: Declare asset needs instead of hoping they exist.

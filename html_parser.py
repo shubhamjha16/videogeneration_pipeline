@@ -414,7 +414,8 @@ def _item_to_html(item: Any) -> str:
         try:
             parsed_json = json.loads(s)
             return _item_to_html(parsed_json)
-        except: pass
+        except Exception as e:
+            print(f"⚠️ [html_parser] JSON parse failed: {e}")
 
     # ── 2. Detect HTML ──
     if s.startswith("<") and ">" in s:

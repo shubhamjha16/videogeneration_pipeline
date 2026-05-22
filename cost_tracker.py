@@ -1,4 +1,5 @@
 import os
+import json
 import threading
 from datetime import datetime
 from pydantic import BaseModel
@@ -113,7 +114,7 @@ class LedgerManager:
             )
         except Exception as e:
             # Repository already logs, but we ensure record_cost itself never raises
-            pass
+            print(f"⚠️ [cost_tracker] Failed to record cost: {e}")
 
     @classmethod
     def _log_entry(cls, data: dict):

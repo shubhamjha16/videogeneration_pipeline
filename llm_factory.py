@@ -98,8 +98,8 @@ class LLMFactory:
                 if retry_match:
                     try:
                         sleep_sec = float(retry_match.group(1)) + 0.5
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️ [LLMFactory] Failed to parse retry-after duration: {e}")
                 
                 print(f"⚠️  LLM Provider '{provider}' error: {e}. Retrying ({attempt + 1}/5) in {sleep_sec:.2f}s...")
                 time.sleep(sleep_sec)
@@ -239,7 +239,8 @@ def clean_llm_json(content: str) -> dict:
     # 1. Try direct parse
     try:
         data = json.loads(content.strip())
-    except: pass
+    except Exception as e:
+        print(f"⚠️ [clean_llm_json] Direct JSON parse failed: {e}")
     
     # 2. Try markdown extraction
     if data is None:
@@ -247,7 +248,8 @@ def clean_llm_json(content: str) -> dict:
         if match:
             try:
                 data = json.loads(match.group(1).strip())
-            except: pass
+            except Exception as e:
+                print(f"⚠️ [clean_llm_json] Markdown-extracted JSON parse failed: {e}")
     
     # 3. Try fuzzy extraction (first { to last })
     if data is None:
@@ -257,14 +259,16 @@ def clean_llm_json(content: str) -> dict:
             if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
                 potential_json = content[start_idx:end_idx+1]
                 data = json.loads(potential_json.strip())
-        except: pass
+        except Exception as e:
+            print(f"⚠️ [clean_llm_json] Fuzzy-extracted JSON parse failed: {e}")
         
     # 4. Final attempt with prefix stripping
     if data is None:
         try:
             cleaned = content.strip().lstrip("JSON response:").lstrip("Here is the JSON:").strip()
             data = json.loads(cleaned)
-        except: pass
+        except Exception as e:
+            print(f"⚠️ [clean_llm_json] Prefix-stripped JSON parse failed: {e}")
 
     # 5. INDUSTRIAL SURGERY: Auto-close truncated JSON
     if data is None:

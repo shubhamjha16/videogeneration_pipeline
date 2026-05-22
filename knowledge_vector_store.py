@@ -32,7 +32,8 @@ class VectorStore:
         # Initialize or Load table
         try:
             self.table = self.db.open_table(self.table_name)
-        except:
+        except Exception as e:
+            print(f"⚠️ [VectorStore] Could not open table '{self.table_name}': {e}")
             self.table = None
 
     @classmethod
@@ -70,7 +71,8 @@ class VectorStore:
                     try:
                         print("🔄 Vector Store: Attempting fallback to default cache...")
                         self._model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-                    except:
+                    except Exception as e:
+                        print(f"⚠️ [VectorStore] Fallback model init also failed: {e}")
                         return None
         return self._model
 

@@ -53,8 +53,8 @@ def render_explainer_mcq_slide(
             if os.path.exists(p):
                 try:
                     return ImageFont.truetype(p, size)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ [explainer_slides] font load failed for {p}: {e}")
         return ImageFont.load_default()
         
     font_q = get_font(28, bold=True)
@@ -74,7 +74,8 @@ def render_explainer_mcq_slide(
             test_line = " ".join(current_line + [word])
             try:
                 tw = draw.textlength(test_line, font=font)
-            except:
+            except Exception as e:
+                print(f"⚠️ [explainer_slides] textlength fallback: {e}")
                 tw = len(test_line) * (font.size * 0.6)
             if tw <= max_width:
                 current_line.append(word)
@@ -325,7 +326,7 @@ def generate_explainer_slides_video(scenes: list, output_dir: str, topic: str, j
         # Cleanup clips
         for c in clips:
             try: c.close()
-            except: pass
+            except Exception as e: print(f"⚠️ [explainer_slides] clip close error: {e}")
         for a in audio_clips:
             try: a.close()
-            except: pass
+            except Exception as e: print(f"⚠️ [explainer_slides] audio clip close error: {e}")

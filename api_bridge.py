@@ -718,8 +718,8 @@ def _save_jobs():
         for k in jobs.keys():
             try:
                 snapshot[k] = to_clean_python(jobs[k])
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ [_save_jobs] Failed to snapshot job {k}: {e}")
 
     tmp_file = JOBS_FILE + ".tmp"
     lock_file = JOBS_FILE + ".lock"
@@ -735,8 +735,8 @@ def _save_jobs():
                 try:
                     with open(JOBS_FILE, "r", encoding='utf-8') as f:
                         disk_state = json.load(f)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ [_save_jobs] Failed to read disk state: {e}")
 
             # 3. Merger logic: Memory snapshot wins for active records
             for jid, jval in snapshot.items():
@@ -762,7 +762,7 @@ def _save_jobs():
         print(f"❌ Error persisting factory state: {e}")
         if os.path.exists(tmp_file):
             try: os.remove(tmp_file)
-            except: pass
+            except Exception as e: print(f"⚠️ [_save_jobs] Failed to clean tmp file: {e}")
         return False
 
 
@@ -1554,7 +1554,8 @@ async def bulk_render(
     
     try:
         lessons = json.loads(content)
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ [bulk_render] Invalid JSON upload: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON file")
     
     if not isinstance(lessons, list):
@@ -1863,14 +1864,16 @@ def _get_system_health() -> dict:
         # We check the /v1/models endpoint as it's a standard probe
         resp = requests.get(config.LOCAL_LLM_URL.replace("/v1", "/v1/models"), timeout=2)
         health["gemma_status"] = "online" if resp.status_code == 200 else "error"
-    except:
+    except Exception as e:
+        print(f"⚠️ [health_probes] Gemma probe failed: {e}")
         health["gemma_status"] = "offline"
         
     # Probe SearXNG (Metasearch)
     try:
         resp = requests.get(config.SEARXNG_URL, timeout=2)
         health["searxng_status"] = "online" if resp.status_code == 200 else "error"
-    except:
+    except Exception as e:
+        print(f"⚠️ [health_probes] SearXNG probe failed: {e}")
         health["searxng_status"] = "offline"
         
     return health
@@ -1974,7 +1977,8 @@ def health_detailed():
         client = groq_lib.Groq(api_key=os.environ.get("GROQ_API_KEY"))
         client.models.list()
         checks["groq"] = "ok"
-    except:
+    except Exception as e:
+        print(f"⚠️ [health_detailed] Groq check failed: {e}")
         checks["groq"] = "error"
     
     # S3
@@ -2020,7 +2024,8 @@ def analytics_timeline():
             day_key = dt.strftime("%Y-%m-%d")
             hourly[hour_key][status] = hourly[hour_key].get(status, 0) + 1
             daily[day_key][status] = daily[day_key].get(status, 0) + 1
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ [timeline] Failed to parse timestamp for job: {e}")
             continue
     
     return {
@@ -2187,8 +2192,8 @@ def get_version():
                                 capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             git_commit = result.stdout.strip()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ [version] Failed to get git commit: {e}")
     
     return {
         "service": "EaseToLearn Video Generation Factory",

@@ -103,7 +103,8 @@ def _draw_whiteboard_fallback(prompt: str, output_path: str, size_str: str = "10
 
     try:
         w, h = map(int, size_str.split("x"))
-    except:
+    except Exception as e:
+        print(f"⚠️ [image_generator] failed to parse size_str '{size_str}': {e}, defaulting to 1024x1024")
         w, h = 1024, 1024
 
     # Create off-white whiteboard canvas
@@ -161,8 +162,8 @@ def _draw_whiteboard_fallback(prompt: str, output_path: str, size_str: str = "10
             if os.path.exists(p):
                 try:
                     return ImageFont.truetype(p, font_size)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ [image_generator] failed to load font '{p}': {e}")
         return ImageFont.load_default()
 
     font_title = get_font(40, bold=True)
@@ -190,7 +191,8 @@ def _draw_whiteboard_fallback(prompt: str, output_path: str, size_str: str = "10
             test_line = " ".join(current_line + [word])
             try:
                 tw = draw.textlength(test_line, font=font)
-            except:
+            except Exception as e:
+                print(f"⚠️ [image_generator] textlength fallback: {e}")
                 tw = len(test_line) * (font.size * 0.6)
             if tw <= max_width:
                 current_line.append(word)

@@ -227,7 +227,8 @@ def _run_command_with_group_cleanup(args: list, timeout: int) -> subprocess.Comp
         # Ensure we don't leave lingering processes on other errors
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except: pass
+        except Exception as e:
+            print(f"   ⚠️ [ppt_pipeline] Failed to kill process group {proc.pid}: {e}")
         raise e
 
 
