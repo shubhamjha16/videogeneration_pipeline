@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Slack webhook URL configuration (from environment)
 SLACK_WEBHOOK_URL = os.environ.get("OPERATIONS_SLACK_WEBHOOK")
@@ -50,7 +50,7 @@ def alert_pipeline_failure(job_id: str, topic: str, error_msg: str, sunk_cost: f
     """Triggers an alert on active rendering failure with operational metadata."""
     print(f"🚨 [TELEMETRY ALARM] Job {job_id} failed permanently! Sunk cost: ${sunk_cost:.4f}")
     
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     fallback = f"🚨 Render Job Failed: {job_id} | Topic: {topic} | Error: {error_msg}"
     
     blocks = [

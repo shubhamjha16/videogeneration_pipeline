@@ -1,7 +1,7 @@
 import os
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Optional
 
@@ -123,7 +123,7 @@ class LedgerManager:
             return
             
         entry = LedgerEntry(
-            ts=datetime.utcnow().isoformat() + "Z",
+            ts=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             job_id=data["job_id"],
             provider=data["provider"],
             model=data.get("model", "unknown"),

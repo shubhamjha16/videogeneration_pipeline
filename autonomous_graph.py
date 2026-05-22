@@ -109,8 +109,8 @@ def _log_progress(state: "TonyState", node_name: str, msg: str, log_type: str = 
     job_id = state.get("job_id")
     if not job_id: return
     
-    from datetime import datetime
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    from datetime import datetime, timezone
+    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     
     log_entry = {
         "timestamp": timestamp,
