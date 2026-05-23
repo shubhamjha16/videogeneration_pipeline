@@ -166,7 +166,7 @@ class VectorStore:
                 })
         
         # ── INDUSTRIAL AUDIT: KB Telemetry ────────────────────────────────────
-        from datetime import datetime
+        from datetime import datetime, timezone
         from pathlib import Path
         
         KB_LOG_PATH = Path("output/kb_retrievals.jsonl")
@@ -177,7 +177,7 @@ class VectorStore:
         used = len(hits) > 0
 
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
             "job_id": job_id,
             "node": node,
             "render_mode": render_mode,

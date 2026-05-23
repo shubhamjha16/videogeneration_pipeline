@@ -54,8 +54,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def utcnow() -> datetime:
+    from datetime import timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 app = FastAPI(title="EaseToLearn Video Generation Service", version="2.0.0")
-_APP_START_TIME = datetime.utcnow()
+_APP_START_TIME = utcnow()
 
 # ── Database Initialization ──────────────────────────────────────────────────
 try:
@@ -397,9 +401,9 @@ class CentralizedJobStore(dict):
 
                 # Timestamps
                 if status == "processing" and not job.started_at:
-                    job.started_at = datetime.utcnow()
+                    job.started_at = utcnow()
                 elif status in ("completed", "failed", "cancelled") and not job.completed_at:
-                    job.completed_at = datetime.utcnow()
+                    job.completed_at = utcnow()
                 
                 session.commit()
             except Exception as e:
@@ -553,7 +557,7 @@ def _dlq_persist(job_id: str, payload: dict, webhook_url: str = "", last_status_
         "job_id": job_id,
         "webhook_url": webhook_url,
         "payload": payload,
-        "failed_at": datetime.utcnow().isoformat() + "Z",
+        "failed_at": utcnow().isoformat() + "Z",
         "last_status_code": last_status_code,
         "last_error": last_error,
         "retries_exhausted": True,
@@ -591,7 +595,7 @@ def _sanitize_stalled_jobs():
                     except Exception as e:
                         print(f"⚠️ Hygiene Failure: {e}")
                 
-                details["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                details["updated_at"] = utcnow().isoformat() + "Z"
                 found_stalled = True
     if found_stalled:
         _safe_save_jobs("startup stalled-job sanitization")
@@ -606,7 +610,7 @@ def _sanitize_stalled_jobs():
         if not os.path.exists(media_root):
             return
             
-        now = datetime.utcnow()
+        now = utcnow()
         retention_hours = config.HYGIENE_RETENTION_HOURS
         purged_count = 0
         
@@ -806,7 +810,11 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
     for attempt in range(max_retries):
         try:
             # Use a longer timeout for the webhook itself
-            resp = requests.post(webhook_url, json=status_data, timeout=60)
+            headers = {}
+            webhook_secret = os.environ.get("FACTORY_WEBHOOK_SECRET")
+            if webhook_secret:
+                headers["X-Webhook-Secret"] = webhook_secret
+            resp = requests.post(webhook_url, json=status_data, headers=headers, timeout=60)
             last_status_code = resp.status_code
 
             if resp.status_code < 300:
@@ -1127,8 +1135,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
         with _jobs_lock:
             import time
             start_pipeline_t = time.time()
-            from datetime import datetime
-            now_iso = datetime.utcnow().isoformat() + "Z"
+            now_iso = utcnow().isoformat() + "Z"
             if job_id not in jobs:
                 print(f"⚠️  Job {job_id} missing during thread pickup. Aborting.")
                 return
@@ -1241,7 +1248,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                 if "metrics" not in jobs[job_id]:
                     jobs[job_id]["metrics"] = {}
                 jobs[job_id]["metrics"]["total_duration_sec"] = round(duration, 2)
-                jobs[job_id]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                jobs[job_id]["updated_at"] = utcnow().isoformat() + "Z"
             
             _safe_save_jobs(f"pipeline failed ({job_id})")
             
@@ -1271,7 +1278,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                     "progress": 0,
                     "usd_cost": sunk_cost,
                     "webhook_url": jobs[job_id].get("webhook_url"),
-                    "updated_at": datetime.utcnow().isoformat() + "Z"
+                    "updated_at": utcnow().isoformat() + "Z"
                 }
             )
             return
@@ -1473,8 +1480,7 @@ def start_render(
     _idempotency_register(effective_key, job_id)
 
 
-    from datetime import datetime
-    now_iso = datetime.utcnow().isoformat() + "Z"
+    now_iso = utcnow().isoformat() + "Z"
 
     with _jobs_lock:
         init_msg = f"🚀 Job initialized for topic: {request.topic} | Source: {source_type.upper()} | Mode: {request.render_mode or 'auto'} | Avatar: {request.with_avatar}"
@@ -1604,7 +1610,7 @@ async def bulk_render(
                 if job_id not in jobs:
                     break
         
-        now_iso = datetime.utcnow().isoformat() + "Z"
+        now_iso = utcnow().isoformat() + "Z"
         
         with _jobs_lock:
             init_msg = f"🚀 Bulk job initialized for topic: {topic} | Source: {source_type.upper()} | Mode: {lesson.get('render_mode', 'auto')}"
@@ -1928,8 +1934,7 @@ def retry_job(job_id: str):
         raise HTTPException(status_code=400, detail="No HTML stored for retry")
     
     # Reset job state
-    from datetime import datetime
-    now_iso = datetime.utcnow().isoformat() + "Z"
+    now_iso = utcnow().isoformat() + "Z"
     with _jobs_lock:
         jobs[job_id]["status"] = "queued"
         jobs[job_id]["error"] = ""
@@ -2170,7 +2175,7 @@ def cancel_job(job_id: str):
             raise HTTPException(status_code=400, detail="Only active jobs can be cancelled")
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = "Cancelled by operator"
-        jobs[job_id]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        jobs[job_id]["updated_at"] = utcnow().isoformat() + "Z"
         jobs[job_id]["logs"].append({"node": "SYSTEM", "msg": "Job cancelled by operator.", "type": "warning"})
     
     _safe_save_jobs(f"cancel job ({job_id})")
@@ -2180,7 +2185,7 @@ def cancel_job(job_id: str):
 @app.get("/version", response_model=VersionResponse, tags=["Enterprise"], summary="Service version info", description="Retrieves the current API version, server uptime, git commit hash, and environment details.")
 def get_version():
     """API version, uptime, and build info — enterprise compliance."""
-    uptime_seconds = (datetime.utcnow() - _APP_START_TIME).total_seconds()
+    uptime_seconds = (utcnow() - _APP_START_TIME).total_seconds()
     hours = int(uptime_seconds // 3600)
     minutes = int((uptime_seconds % 3600) // 60)
     
@@ -2311,7 +2316,7 @@ def test_webhook():
         "status": "test",
         "topic": "Webhook Connectivity Test",
         "video_url": "",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": utcnow().isoformat() + "Z",
         "message": "This is a test webhook from EaseToLearn Video Factory."
     }
     

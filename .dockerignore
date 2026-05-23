@@ -15,6 +15,7 @@ output/
 factory_vector_db/
 factory_knowledge/
 media/
+scratch/
 
 # Secrets
 .env

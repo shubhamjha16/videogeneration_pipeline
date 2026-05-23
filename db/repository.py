@@ -7,7 +7,7 @@ failures never crash the primary video generation pipeline.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any
 
@@ -16,6 +16,10 @@ from db.engine import get_session
 from db.models import RenderJob, JobCondition, JobTokenUsage, VideoCache
 
 logger = logging.getLogger("video_factory.db")
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 def create_job(
     job_id: str,
@@ -45,7 +49,7 @@ def create_job(
             avatar_type=avatar_type,
             question_id=question_id,
             status="queued",
-            queued_at=datetime.utcnow()
+            queued_at=utcnow()
         )
         session.add(job)
         session.commit()
@@ -90,7 +94,7 @@ def insert_conditions(
             scene_count=scene_count,
             selected_render_mode=selected_render_mode,
             routing_reason=routing_reason,
-            created_at=datetime.utcnow()
+            created_at=utcnow()
         )
         session.add(condition)
         
@@ -98,7 +102,7 @@ def insert_conditions(
         job = session.query(RenderJob).filter(RenderJob.job_id == job_id).first()
         if job:
             job.render_mode_actual = selected_render_mode
-            job.started_at = datetime.utcnow()
+            job.started_at = utcnow()
             job.status = "processing"
             
         session.commit()
@@ -140,7 +144,7 @@ def insert_token_usage(
             from_cache=1 if from_cache else 0,
             tts_characters=tts_characters,
             image_count=image_count,
-            created_at=datetime.utcnow()
+            created_at=utcnow()
         )
         session.add(usage)
         session.commit()
@@ -177,7 +181,7 @@ def update_job_status(
             job.error_message = error_message
             job.total_cost_usd = Decimal(str(total_cost_usd))
             job.duration_seconds = Decimal(str(duration_seconds))
-            job.completed_at = datetime.utcnow()
+            job.completed_at = utcnow()
             
             session.commit()
             return True
@@ -219,7 +223,7 @@ def upsert_video_cache(
         cache_entry.total_cost_usd = Decimal(str(total_cost_usd))
         cache_entry.total_cost_inr = Decimal(str(total_cost_usd)) * Decimal("83.5")
         cache_entry.status = status
-        cache_entry.updated_at = datetime.utcnow()
+        cache_entry.updated_at = utcnow()
         
         session.commit()
         return True
