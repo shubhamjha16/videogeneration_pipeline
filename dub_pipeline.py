@@ -9,7 +9,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
-HINDI_VOICE_ID = os.environ.get("HINDI_VOICE_ID", "QTKSa2Iyv0yoxvXY2V8a")  # override with Hindi voice
+HINDI_VOICE_ID = os.environ.get("HINDI_VOICE_ID", "QTKSa2Iyv0yoxvXY2V8a")  # default high-quality multilingual voice
 
 SUPPORTED_LANGUAGES = {
     "hindi": "hi",
@@ -17,7 +17,9 @@ SUPPORTED_LANGUAGES = {
     "tamil": "ta",
     "telugu": "te",
     "bengali": "bn",
-    "marathi": "mr"
+    "marathi": "mr",
+    "kannada": "kn",
+    "malayalam": "ml"
 }
 
 
@@ -61,26 +63,33 @@ Text: {text}"""
     return response.choices[0].message.content.strip()
 
 
-def generate_hindi_audio(text: str, output_path: str) -> str:
-    """Generate audio for translated text via ElevenLabs."""
+def generate_dubbed_audio(text: str, output_path: str, target_language: str) -> str:
+    """Generate audio for translated text via ElevenLabs with regional voice support."""
+    lang_lower = target_language.lower()
+    lang_code = SUPPORTED_LANGUAGES.get(lang_lower, "hi")
+    
+    # Allow language-specific voice overrides from env vars, falling back to HINDI_VOICE_ID
+    env_var_name = f"{lang_lower.upper()}_VOICE_ID"
+    voice_id = os.environ.get(env_var_name, HINDI_VOICE_ID)
+    
     if ELEVENLABS_API_KEY:
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{HINDI_VOICE_ID}"
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
         data = {"text": text, "model_id": "eleven_multilingual_v2"}
         response = requests.post(url, json=data, headers=headers, timeout=30)
         if response.status_code == 200:
             with open(output_path, "wb") as f:
                 f.write(response.content)
-            print(f"✅ ElevenLabs Hindi audio: {output_path}")
+            print(f"✅ ElevenLabs dubbed audio ({target_language}): {output_path}")
             return output_path
         else:
-            print(f"⚠️ ElevenLabs failed: {response.status_code}, falling back to gTTS")
+            print(f"⚠️ ElevenLabs failed ({response.status_code}): {response.text}, falling back to gTTS")
     
-    # Fallback: gTTS
+    # Fallback: gTTS with correct target ISO code
     from gtts import gTTS
-    tts = gTTS(text=text, lang="hi", slow=False)
+    tts = gTTS(text=text, lang=lang_code, slow=False)
     tts.save(output_path)
-    print(f"✅ gTTS Hindi audio: {output_path}")
+    print(f"✅ gTTS dubbed audio ({target_language}): {output_path}")
     return output_path
 
 
@@ -132,7 +141,8 @@ def run_dub_pipeline(job_id: str, target_language: str = "hindi") -> dict:
     Returns:
         dict with dubbed_video_url and metadata
     """
-    if target_language not in SUPPORTED_LANGUAGES:
+    target_language_clean = target_language.lower().strip()
+    if target_language_clean not in SUPPORTED_LANGUAGES:
         raise ValueError(f"Unsupported language: {target_language}. Supported: {list(SUPPORTED_LANGUAGES.keys())}")
     
     # Find job directory
@@ -160,10 +170,10 @@ def run_dub_pipeline(job_id: str, target_language: str = "hindi") -> dict:
     with open(scenes_path) as f:
         scenes = json.load(f)
     
-    print(f"🎬 Starting Pipeline 6: Dubbing {job_id} → {target_language} ({len(scenes)} scenes)")
+    print(f"🎬 Starting Pipeline 6: Dubbing {job_id} → {target_language_clean} ({len(scenes)} scenes)")
     
     # Translate + generate audio per scene
-    dub_dir = os.path.join(job_dir, f"dub_{target_language}")
+    dub_dir = os.path.join(job_dir, f"dub_{target_language_clean}")
     os.makedirs(dub_dir, exist_ok=True)
     
     audio_files = []
@@ -172,33 +182,34 @@ def run_dub_pipeline(job_id: str, target_language: str = "hindi") -> dict:
         
         # Translate
         print(f"   🌐 Translating scene {i}...")
-        translated = translate_text(english_text, target_language)
+        translated = translate_text(english_text, target_language_clean)
         print(f"   ✅ Scene {i}: {translated[:60]}...")
         
         # Generate audio
         audio_path = os.path.join(dub_dir, f"scene_{i}_dubbed.mp3")
-        generate_hindi_audio(translated, audio_path)
+        generate_dubbed_audio(translated, audio_path, target_language_clean)
         audio_files.append(audio_path)
         
         # Save translation for reference
-        scene[f"narration_{target_language}"] = translated
+        scene[f"narration_{target_language_clean}"] = translated
     
     # Save translated scenes
     with open(os.path.join(dub_dir, "scenes_translated.json"), "w") as f:
         json.dump(scenes, f, indent=2, ensure_ascii=False)
     
     # Swap audio into video
-    dubbed_video_path = os.path.join(job_dir, f"{os.path.splitext(video_files[0])[0]}_{target_language}.mp4")
+    dubbed_video_path = os.path.join(job_dir, f"{os.path.splitext(video_files[0])[0]}_{target_language_clean}.mp4")
     swap_audio(original_video, audio_files, dubbed_video_path)
     
     print(f"🏆 Pipeline 6 Complete: {dubbed_video_path}")
     
     return {
         "job_id": job_id,
-        "language": target_language,
+        "language": target_language_clean,
         "dubbed_video_path": dubbed_video_path,
         "scenes_translated": len(scenes)
     }
+
 
 
 if __name__ == "__main__":
