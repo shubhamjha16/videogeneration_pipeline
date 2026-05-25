@@ -1949,13 +1949,25 @@ def retry_job(job_id: str):
     thread.start()
     return {"job_id": job_id, "status": "retrying"}
 
+from enum import Enum
+
+class TargetLanguage(str, Enum):
+    HINDI = "hindi"
+    HINGLISH = "hinglish"
+    TAMIL = "tamil"
+    TELUGU = "telugu"
+    BENGALI = "bengali"
+    MARATHI = "marathi"
+    KANNADA = "kannada"
+    MALAYALAM = "malayalam"
+
 
 @app.post("/dub/{job_id}", response_model=DubResponse, dependencies=[SecurityDep], tags=["Operational"], summary="Dub completed job", description="Translates and re-dubs an existing completed job into a target language (hindi, tamil, etc.) using Pipeline 6.")
-def dub_job(job_id: str, language: str = "hindi"):
+def dub_job(job_id: str, language: TargetLanguage = TargetLanguage.HINDI):
     """Dub a completed job into a target language."""
     try:
         # Run the dubbing pipeline (Groq + ElevenLabs + FFmpeg)
-        result = run_dub_pipeline(job_id, language)
+        result = run_dub_pipeline(job_id, language.value)
         
         # Convert local file path to accessible streaming URL
         video_filename = os.path.basename(result["dubbed_video_path"])
@@ -1968,6 +1980,7 @@ def dub_job(job_id: str, language: str = "hindi"):
         # Industrial Sentinel: Log the full error to stdout for debugging
         print(f"❌ Dubbing Pipeline Error for job {job_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/health/detailed", response_model=dict, tags=["Enterprise"], summary="System dependency health", description="Performs a deep check of all third-party dependencies (Groq, S3, ElevenLabs) to ensure the factory is fully operational.")
