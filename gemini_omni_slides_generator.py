@@ -172,8 +172,8 @@ def generate_gemini_omni_concept_video(
 
         print(f"🎨 Invoking Gemini Omni Video Engine (Veo) for: {topic[:50]} (Duration: {duration:.1f}s)...")
         
-        # Google Veo model ID in the GenAI SDK
-        model_name = "veo-2.0-generate-001"
+        # Google Gemini Omni Flash model ID (unveiled Google I/O May 2026)
+        model_name = "gemini-omni-flash"
         
         # Start async video generation operation
         operation = client.models.generate_videos(
@@ -197,7 +197,7 @@ def generate_gemini_omni_concept_video(
             print(f"   ⏳ [Poll {poll+1}/{max_polls}] Generating video in progress...")
 
         if not operation.done or not operation.response or not operation.response.generated_videos:
-            raise RuntimeError("Gemini Video (Veo) operation timed out or returned no video")
+            raise RuntimeError("Gemini Omni Video operation timed out or returned no video")
 
         video_bytes = operation.response.generated_videos[0].video.video_bytes
         with open(output_path, "wb") as f:
@@ -209,20 +209,21 @@ def generate_gemini_omni_concept_video(
         try:
             from cost_tracker import LedgerManager, LedgerEntry
             from datetime import datetime, timezone
-            # Standard Veo pricing is approx $0.0667 per second of video generated ($0.33 per 5s)
-            veo_cost = duration * 0.0667
+            # Gemini Omni Flash is highly optimized and priced at $0.0200 per second of video generated ($0.10 per 5s)
+            omni_cost = duration * 0.0200
             entry = LedgerEntry(
                 ts=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 job_id=job_id or "local-omni",
                 provider="google",
-                model="veo-2.0",
+                model="gemini-omni",
                 call_type="video",
                 input_tokens=1,
-                cost_usd=veo_cost
+                cost_usd=omni_cost
             )
             LedgerManager.record_cost(entry)
         except Exception as e:
             print(f"⚠️ Failed to record cost for Gemini Video call: {e}")
+
 
         return os.path.abspath(output_path)
 
