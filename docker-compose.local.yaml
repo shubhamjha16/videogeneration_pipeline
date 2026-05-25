@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # ── 1. The Heart: Video Factory API ────────────────────────────────────────────
+  factory-api:
+    build: .
+    container_name: easetolearn-factory-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SEARXNG_URL=http://searxng:8080
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=mysql+pymysql://root:localdev@mysql:3306/etl_video_generation
+      - ENV=dev
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
+      - HIGGSFIELD_API_KEY=${HIGGSFIELD_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MANIM_MEDIA_DIR=/app/output
+    volumes:
+      - ./output:/app/output # Persist renders on host machine
+      - ./jobs.json:/app/jobs.json # Persist job state
+    depends_on:
+      redis:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+      mysql:
+        condition: service_started
+    restart: always
+
+  # ── 2. The Brain: Spring Boot Backend ─────────────────────────────────────────
+  springboot-backend:
+    build:
+      context: ../easetolearn.videogeneration.springbootintegration
+      dockerfile: Dockerfile
+    container_name: easetolearn-springboot-backend
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev # active dev profile runs on local DB
+      - FACTORY_BASE_URL=http://factory-api:8000
+      - FACTORY_API_KEY=${FACTORY_API_KEY:-change-me}
+      - FACTORY_WEBHOOK_SECRET=${FACTORY_WEBHOOK_SECRET:-change-me}
+      - APP_SELF_BASE_URL=http://springboot-backend:8081
+      - DB_URL=jdbc:mysql://mysql:3306/etl_video_generation?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC
+      - DB_USERNAME=root
+      - DB_PASSWORD=localdev
+    depends_on:
+      mysql:
+        condition: service_started
+      factory-api:
+        condition: service_started
+    restart: always
+
+  # ── 3. The Memory: Redis Cache ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: easetolearn-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+
+  # ── 4. The Scholar: SearXNG Standalone ─────────────────────────────────────────
+  searxng:
+    build: ./searxng_standalone
+    container_name: easetolearn-searxng
+    env_file: ./searxng_standalone/.env
+    ports:
+      - "8082:8080" # Map to 8082 on host to avoid collision if 8080 is used
+    restart: always
+
+  # ── 5. The Persistence: MySQL Database ─────────────────────────────────────────
+  mysql:
+    image: mysql:8
+    container_name: easetolearn-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=localdev
+      - MYSQL_DATABASE=etl_video_generation
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: always
+
+volumes:
+  redis_data:
+  mysql_data:
+
+networks:
+  default:
+    name: easetolearn-local-network
