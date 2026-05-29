@@ -194,11 +194,12 @@ MANIM SCENES (4–5 scenes for maximum economy & impact):
       1. title_card (Topic introduction - Scene 1)
       2. concept_bullets / formula_step_list (Exactly ONE single concise concept overview / derivation slide - Scene 2)
       3. mcq_layout (Question and options - Scene 3)
-      4. cross_out (Scrub all wrong options in a single step - Scene 4)
-      5. answer_reveal (Highlight correct option and explain - Scene 5)
+      4. option_highlight (Provide a separate scene for EACH wrong option that is discussed, highlighting only that option to sync the pointer with the voice)
+      5. cross_out (Scrub all wrong options in a single step - only use simple transition narration here, like 'Therefore, we eliminate options A, B, and D', without discussing the reasoning again)
+      6. answer_reveal (Highlight correct option and explain - Scene 6)
   - PEDAGOGICAL INTEGRITY: NEVER use generic placeholders like "Option A" or "Option B" if real names (e.g., "Cortical contusion") are available in the parsed_facts. You MUST use the exact names from the facts in your `visual_data`.
   - ANSWER LOCK: The "correct_answer" letter and "explanation" in the answer_reveal scene MUST match the ground truth provided in the parsed_facts. Do not hallucinate a different answer.
-  - cross_out rule (SINGLE SCENE): You MUST provide exactly ONE "cross_out" scene that includes all incorrect letters in a single list (e.g., {"letters": ["A", "B", "C"]}). NEVER split cross-outs across multiple scenes.
+  - cross_out rule (SINGLE SCENE): You MUST provide exactly ONE "cross_out" scene that includes all incorrect letters in a single list (e.g., {"letters": ["A", "B", "C"]}) as a final quick visual scrub. The narration for this cross_out scene MUST be extremely short and avoid discussing the reasoning of individual options, which should instead be handled on their own individual preceding "option_highlight" slides.
   - For numerical: title_card → formula_step_list (MANDATORY: Appends steps vertically to show the whole process on one screen) → graph_hint (if applicable) → summary
   - MATHEMATICAL PRECISION: 
       1. formula_step_list: ALWAYS use this for mathematical derivations. It appends steps one-by-one vertically. This ensures the student can see the entire derivation history at once.
@@ -229,6 +230,10 @@ EXPLAINER_SLIDES SCENES (6–10 scenes):
   - AESTHETIC: "Whiteboard Doodle".
   - NUMBERING RULE: For the core teaching slides, include a large number (1, 2, 3...) in the `title`.
   - OBJECTS RULE: In `visual_data`, describe 3-5 hand-drawn doodle icons relevant to the topic to be included in the slide (e.g., {"objects": ["broken heart icon", "stethoscope", "fluid drop"]}).
+  - SUBJECT DOODLE RULE: The `objects` you plan MUST be strictly relevant to the target SUBJECT:
+    1. If SUBJECT is "english" or language, only use doodles representing writing, books, quills, text sheets, conversation bubbles, sentence connections, or letters. You are STRICTLY FORBIDDEN from generating anatomical organs, biological cells, waves, chemical compounds, or scientific gears.
+    2. If SUBJECT is "medical" or biology, focus on clinical/anatomical structures, medical icons, organs, or cellular models.
+    3. If SUBJECT is "physics" or "maths", focus on waves, coordinate graphs, formulas, vectors, or geometric shapes.
   - FOCUS SLIDE: The second slide MUST be `explainer_slide` with title="What should the AI hosts focus on?" and bullets defining the key teaching priorities.
 
 USER_GENERATED_VIDEO (1–4 long scenes):
@@ -338,7 +343,8 @@ IMPORTANT INSTRUCTIONS:
         system_prompt=system_prompt_with_hint,
         json_mode=True,
         include_usage=True,
-        job_id=job_id
+        job_id=job_id,
+        temperature=0.3
     )
     
     try:

@@ -8,6 +8,465 @@ from tts_generator import generate_audio
 from image_generator import generate_concept_image
 from PIL import Image, ImageDraw, ImageFont
 
+sub_to_norm = {
+    '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4',
+    '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+    '₊': '+', '₋': '-', '₌': '=', '₍': '(', '₎': ')',
+    'ₐ': 'a', 'ₑ': 'e', 'ₕ': 'h', 'ᵢ': 'i', 'ⱼ': 'j',
+    'ₖ': 'k', 'ₗ': 'l', 'ₘ': 'm', 'ₙ': 'n', 'ₒ': 'o',
+    'ₚ': 'p', 'ᵣ': 'r', 'ₛ': 's', 'ₜ': 't', 'ᵤ': 'u',
+    'ᵥ': 'v', 'ₓ': 'x', 'ᵧ': 'y'
+}
+
+sup_to_norm = {
+    '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4',
+    '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+    '⁺': '+', '⁻': '-', '⁼': '=', '⁽': '(', '⁾': ')',
+    'ⁿ': 'n', 'ⁱ': 'i', 'ˣ': 'x', 'ʸ': 'y', 'ᵃ': 'a',
+    'ᵇ': 'b', 'ᶜ': 'c', 'ᵈ': 'd', 'ᵉ': 'e', 'ᵍ': 'g',
+    'ʰ': 'h', 'ʲ': 'j', 'ᵏ': 'k', 'ˡ': 'l', 'ᵐ': 'm',
+    'ᵒ': 'o', 'ᵖ': 'p', 'ʳ': 'r', 'ˢ': 's', 'ᵗ': 't',
+    'ᵘ': 'u', 'ᵛ': 'v', 'ʷ': 'w', 'ᶻ': 'z',
+    'ᴬ': 'A', 'ᴮ': 'B', 'ᴰ': 'D', 'ᴱ': 'E', 'ᴳ': 'G',
+    'ᴴ': 'H', 'ᴵ': 'I', 'ᴶ': 'J', 'ᴲ': 'K', 'ᴸ': 'L',
+    'ᴹ': 'M', 'ᴺ': 'N', 'ᴼ': 'O', 'ᴾ': 'P', 'ᴿ': 'R',
+    'ᵀ': 'T', 'ᵁ': 'U', 'ᵂ': 'W'
+}
+
+def parse_rich_math(text: str):
+    sub_chars = "".join(sub_to_norm.keys())
+    sup_chars = "".join(sup_to_norm.keys())
+    
+    segments = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == '∫':
+            i += 1
+            sub = ""
+            sup = ""
+            while i < n:
+                char = text[i]
+                if char in sub_chars:
+                    sub += char
+                    i += 1
+                elif char in sup_chars:
+                    sup += char
+                    i += 1
+                else:
+                    break
+            segments.append({
+                "type": "integral",
+                "sub": sub,
+                "sup": sup
+            })
+        elif text[i:i+5] == "\\frac":
+            i += 5
+            while i < n and text[i].isspace():
+                i += 1
+            if i < n and text[i] == '{':
+                i += 1
+                num = ""
+                brace_count = 1
+                while i < n and brace_count > 0:
+                    if text[i] == '{':
+                        brace_count += 1
+                        num += text[i]
+                        i += 1
+                    elif text[i] == '}':
+                        brace_count -= 1
+                        if brace_count > 0:
+                            num += text[i]
+                        i += 1
+                    else:
+                        num += text[i]
+                        i += 1
+                
+                while i < n and text[i].isspace():
+                    i += 1
+                if i < n and text[i] == '{':
+                    i += 1
+                    den = ""
+                    brace_count = 1
+                    while i < n and brace_count > 0:
+                        if text[i] == '{':
+                            brace_count += 1
+                            den += text[i]
+                            i += 1
+                        elif text[i] == '}':
+                            brace_count -= 1
+                            if brace_count > 0:
+                                den += text[i]
+                            i += 1
+                        else:
+                            den += text[i]
+                            i += 1
+                    segments.append({
+                        "type": "fraction",
+                        "num": num,
+                        "den": den
+                    })
+                else:
+                    segments.append({
+                        "type": "text",
+                        "content": "\\frac{" + num + "}"
+                    })
+            else:
+                segments.append({
+                    "type": "text",
+                    "content": "\\frac"
+                })
+        elif text[i] == '^':
+            i += 1
+            if i < n and text[i] == '{':
+                i += 1
+                content = ""
+                brace_count = 1
+                while i < n and brace_count > 0:
+                    if text[i] == '{':
+                        brace_count += 1
+                        content += text[i]
+                        i += 1
+                    elif text[i] == '}':
+                        brace_count -= 1
+                        if brace_count > 0:
+                            content += text[i]
+                        i += 1
+                    else:
+                        content += text[i]
+                        i += 1
+                segments.append({
+                    "type": "superscript",
+                    "content": content
+                })
+            else:
+                if i < n:
+                    segments.append({
+                        "type": "superscript",
+                        "content": text[i]
+                    })
+                    i += 1
+                else:
+                    segments.append({
+                        "type": "text",
+                        "content": "^"
+                    })
+        elif text[i] == '_':
+            i += 1
+            if i < n and text[i] == '{':
+                i += 1
+                content = ""
+                brace_count = 1
+                while i < n and brace_count > 0:
+                    if text[i] == '{':
+                        brace_count += 1
+                        content += text[i]
+                        i += 1
+                    elif text[i] == '}':
+                        brace_count -= 1
+                        if brace_count > 0:
+                            content += text[i]
+                        i += 1
+                    else:
+                        content += text[i]
+                        i += 1
+                segments.append({
+                    "type": "subscript",
+                    "content": content
+                })
+            else:
+                if i < n:
+                    segments.append({
+                        "type": "subscript",
+                        "content": text[i]
+                    })
+                    i += 1
+                else:
+                    segments.append({
+                        "type": "text",
+                        "content": "_"
+                    })
+        else:
+            start = i
+            while i < n and text[i] != '∫' and text[i:i+5] != "\\frac" and text[i] != '^' and text[i] != '_':
+                i += 1
+            segments.append({
+                "type": "text",
+                "content": text[start:i]
+            })
+    return segments
+
+def measure_rich_math_width(draw, text, font):
+    segments = parse_rich_math(text)
+    width = 0
+    for seg in segments:
+        if seg["type"] == "text":
+            content = seg["content"]
+            try:
+                width += draw.textlength(content, font=font)
+            except Exception:
+                width += len(content) * (font.size * 0.6)
+        elif seg["type"] == "integral":
+            try:
+                int_w = draw.textlength("∫", font=font)
+            except Exception:
+                int_w = font.size * 0.5
+            sub = seg["sub"]
+            sup = seg["sup"]
+            try:
+                small_font = ImageFont.truetype(font.path, int(font.size * 0.6))
+            except Exception:
+                small_font = font
+            sup_w = len(sup) * (small_font.size * 0.6)
+            sub_w = len(sub) * (small_font.size * 0.6)
+            width += int_w * 0.8 + max(sup_w, sub_w) + font.size * 0.1
+        elif seg["type"] == "fraction":
+            try:
+                small_font = ImageFont.truetype(font.path, int(font.size * 0.75))
+            except Exception:
+                small_font = font
+            num_w = measure_rich_math_width(draw, seg["num"], small_font)
+            den_w = measure_rich_math_width(draw, seg["den"], small_font)
+            width += max(num_w, den_w) + font.size * 0.2
+        elif seg["type"] == "superscript":
+            try:
+                small_font = ImageFont.truetype(font.path, int(font.size * 0.65))
+            except Exception:
+                small_font = font
+            width += measure_rich_math_width(draw, seg["content"], small_font)
+        elif seg["type"] == "subscript":
+            try:
+                small_font = ImageFont.truetype(font.path, int(font.size * 0.65))
+            except Exception:
+                small_font = font
+            width += measure_rich_math_width(draw, seg["content"], small_font)
+    return width
+
+def draw_rich_math_text(draw, xy, text, font, fill):
+    segments = parse_rich_math(text)
+    x, y = xy
+    
+    try:
+        small_font = ImageFont.truetype(font.path, int(font.size * 0.6))
+    except Exception:
+        small_font = font
+        
+    for seg in segments:
+        if seg["type"] == "text":
+            content = seg["content"]
+            if not content:
+                continue
+            draw.text((x, y), content, fill=fill, font=font)
+            try:
+                x += draw.textlength(content, font=font)
+            except Exception:
+                x += len(content) * (font.size * 0.6)
+        elif seg["type"] == "integral":
+            draw.text((x, y), "∫", fill=fill, font=font)
+            try:
+                int_w = draw.textlength("∫", font=font)
+            except Exception:
+                int_w = font.size * 0.5
+                
+            sub = seg["sub"]
+            sup = seg["sup"]
+            
+            norm_sub = "".join(sub_to_norm.get(c, c) for c in sub)
+            norm_sup = "".join(sup_to_norm.get(c, c) for c in sup)
+            
+            sup_w = 0
+            if norm_sup:
+                draw.text((x + int_w * 0.8, y - font.size * 0.2), norm_sup, fill=fill, font=small_font)
+                try:
+                    sup_w = draw.textlength(norm_sup, font=small_font)
+                except Exception:
+                    sup_w = len(norm_sup) * (small_font.size * 0.6)
+            
+            sub_w = 0
+            if norm_sub:
+                draw.text((x + int_w * 0.8, y + font.size * 0.7), norm_sub, fill=fill, font=small_font)
+                try:
+                    sub_w = draw.textlength(norm_sub, font=small_font)
+                except Exception:
+                    sub_w = len(norm_sub) * (small_font.size * 0.6)
+            
+            x += int_w * 0.8 + max(sup_w, sub_w) + font.size * 0.1
+        elif seg["type"] == "fraction":
+            try:
+                frac_font = ImageFont.truetype(font.path, int(font.size * 0.75))
+            except Exception:
+                frac_font = font
+                
+            num_w = measure_rich_math_width(draw, seg["num"], frac_font)
+            den_w = measure_rich_math_width(draw, seg["den"], frac_font)
+            frac_w = max(num_w, den_w)
+            
+            # Numerator top centered, shifted up clear of the line
+            num_x = x + (frac_w - num_w) / 2
+            num_y = y - font.size * 0.25 - 4
+            draw_rich_math_text(draw, (num_x, num_y), seg["num"], frac_font, fill)
+            
+            # Denominator bottom centered, shifted down clear of the line
+            den_x = x + (frac_w - den_w) / 2
+            den_y = y + font.size * 0.5 + 4
+            draw_rich_math_text(draw, (den_x, den_y), seg["den"], frac_font, fill)
+            
+            # Line in middle of standard line height
+            line_y = y + font.size * 0.5
+            line_thickness = max(1, int(font.size * 0.06))
+            draw.line([(x - 2, line_y), (x + frac_w + 2, line_y)], fill=fill, width=line_thickness)
+            
+            x += frac_w + font.size * 0.2
+        elif seg["type"] == "superscript":
+            try:
+                ss_font = ImageFont.truetype(font.path, int(font.size * 0.65))
+            except Exception:
+                ss_font = font
+            draw_rich_math_text(draw, (x, y - font.size * 0.25), seg["content"], ss_font, fill)
+            x += measure_rich_math_width(draw, seg["content"], ss_font)
+        elif seg["type"] == "subscript":
+            try:
+                ss_font = ImageFont.truetype(font.path, int(font.size * 0.65))
+            except Exception:
+                ss_font = font
+            draw_rich_math_text(draw, (x, y + font.size * 0.35), seg["content"], ss_font, fill)
+            x += measure_rich_math_width(draw, seg["content"], ss_font)
+
+def format_math_for_pillow(text: str) -> str:
+    """
+    Sanitizes and formats math text (LaTeX and plain notation) into premium,
+    highly readable Unicode representation for Pillow rendering.
+    Handles:
+      - Superscripts: x^2 -> x², x^{10} -> x¹⁰, x^n -> xⁿ
+      - Subscripts: x_1 -> x₁, a_{ij} -> aᵢⱼ, x_n -> xₙ
+      - Fractions: \\frac{a}{b} -> a/b, \\frac{a+b}{2} -> (a+b)/2
+      - Common LaTeX operators & Greek symbols: \\alpha, \\beta, \\theta, \\times, etc.
+    """
+    if not text:
+        return text
+
+    # Convert simple inline slash fractions (e.g. 1/2, 1/e, a/b) to LaTeX \frac format
+    # so they are typeset vertically stacked by draw_rich_math_text
+    text = re.sub(r'\b([0-9a-zA-Zα-ωΑ-Ω]+)\s*/\s*([0-9a-zA-Zα-ωΑ-Ω]+)\b', r'\\frac{\1}{\2}', text)
+
+    # (Fractions are kept as raw \frac so draw_rich_math_text can typeset them vertically stacked)
+
+    # --- 2. Greek and Mathematical LaTeX Commands
+    greek_and_math_map = {
+        r'\alpha': 'α',
+        r'\beta': 'β',
+        r'\gamma': 'γ',
+        r'\delta': 'δ',
+        r'\epsilon': 'ε',
+        r'\zeta': 'ζ',
+        r'\eta': 'η',
+        r'\theta': 'θ',
+        r'\iota': 'ι',
+        r'\kappa': 'κ',
+        r'\lambda': 'λ',
+        r'\mu': 'μ',
+        r'\nu': 'ν',
+        r'\xi': 'ξ',
+        r'\pi': 'π',
+        r'\rho': 'ρ',
+        r'\sigma': 'σ',
+        r'\tau': 'τ',
+        r'\upsilon': 'υ',
+        r'\phi': 'φ',
+        r'\chi': 'χ',
+        r'\psi': 'ψ',
+        r'\omega': 'ω',
+        r'\Delta': 'Δ',
+        r'\Omega': 'Ω',
+        r'\Sigma': 'Σ',
+        r'\Theta': 'Θ',
+        r'\Phi': 'Φ',
+        r'\times': '×',
+        r'\div': '÷',
+        r'\pm': '±',
+        r'\cdot': '·',
+        r'\infty': '∞',
+        r'\approx': '≈',
+        r'\neq': '≠',
+        r'\leq': '≤',
+        r'\geq': '≥',
+        r'\to': '→',
+        r'\leftarrow': '←',
+        r'\rightarrow': '→',
+        r'\leftrightarrow': '↔',
+        r'\partial': '∂',
+        r'\nabla': '∇',
+        r'\sqrt': '√',
+        r'\int': '∫',
+        r'\ln': 'ln',
+        r'\log': 'log',
+        r'\sin': 'sin',
+        r'\cos': 'cos',
+        r'\tan': 'tan',
+        r'\exp': 'exp',
+        r'\,': ' ',
+        r'\:': ' ',
+        r'\;': ' ',
+        r'\!': '',
+        r'\quad': '  ',
+        r'\qquad': '    ',
+    }
+    
+    for cmd, char in greek_and_math_map.items():
+        text = text.replace(cmd, char)
+
+    # Clean up any residual LaTeX curly brackets around standard symbols, e.g., \sqrt{x} -> √{x} -> √x
+    text = re.sub(r'√\s*\{([^}]+)\}', r'√\1', text)
+
+    # --- 3. Unicode Superscript and Subscript Mapping
+    superscript_map = {
+        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+        '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+        'n': 'ⁿ', 'i': 'ⁱ', 'x': 'ˣ', 'y': 'ʸ', 'a': 'ᵃ',
+        'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ', 'g': 'ᵍ',
+        'h': 'ʰ', 'j': 'ʲ', 'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ',
+        'o': 'ᵒ', 'p': 'ᵖ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ',
+        'u': 'ᵘ', 'v': 'ᵛ', 'w': 'ʷ', 'z': 'ᶻ',
+        'A': 'ᴬ', 'B': 'ᴮ', 'D': 'ᴰ', 'E': 'ᴱ', 'G': 'ᴳ',
+        'H': 'ᴴ', 'I': 'ᴵ', 'J': 'ᴶ', 'K': 'ᴲ', 'L': 'ᴸ',
+        'M': 'ᴹ', 'N': 'ᴺ', 'O': 'ᴼ', 'P': 'ᴾ', 'R': 'ᴿ',
+        'T': 'ᵀ', 'U': 'ᵁ', 'W': 'ᵂ'
+    }
+
+    subscript_map = {
+        '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+        '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+        '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+        'a': 'ₐ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ',
+        'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'o': 'ₒ',
+        'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ',
+        'v': 'ᵥ', 'x': 'ₓ', 'y': 'ᵧ'
+    }
+
+    def replace_superscript(match):
+        inner = match.group(1)
+        return "".join(superscript_map.get(c, c) for c in inner)
+
+    def replace_subscript(match):
+        inner = match.group(1)
+        return "".join(subscript_map.get(c, c) for c in inner)
+
+    # Resolve complex braces first: x^{10} or x_ {ij}
+    # (Commented out to let parse_rich_math handle them natively with shifted smaller fonts)
+    # text = re.sub(r'\^\s*\{([^}]+)\}', replace_superscript, text)
+    # text = re.sub(r'_\s*\{([^}]+)\}', replace_subscript, text)
+
+    # Resolve simple words/consecutive letters: x^2 or x_1 or x^10 or x_n
+    # text = re.sub(r'\^\s*([0-9a-zA-Z]+)', replace_superscript, text)
+    # text = re.sub(r'_\s*([0-9a-zA-Z]+)', replace_subscript, text)
+
+    # Clean up standard LaTeX inline math delimiters ($) if present
+    text = text.replace("$", "")
+    text = text.replace(r"\(", "").replace(r"\)", "")
+    
+    return text
+
 def render_explainer_mcq_slide(
     visual_type: str,
     visual_data: dict,
@@ -34,17 +493,20 @@ def render_explainer_mcq_slide(
     # Draw dark teal border (consistent with provided templates)
     draw.rounded_rectangle([20, 20, w - 20, h - 20], radius=15, outline="#0D7A7F", width=4)
     
-    # Load fonts
     def get_font(size, bold=False):
         paths = []
         if bold:
             paths = [
+                "/Library/Fonts/Arial Unicode.ttf",
+                "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
                 "/Library/Fonts/Arial Bold.ttf",
                 "/System/Library/Fonts/HelveticaNeue.dfont",
             ]
         else:
             paths = [
+                "/Library/Fonts/Arial Unicode.ttf",
+                "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial.ttf",
                 "/Library/Fonts/Arial.ttf",
                 "/System/Library/Fonts/Helvetica.dfont",
@@ -63,7 +525,7 @@ def render_explainer_mcq_slide(
     font_exp = get_font(18, bold=False)
     
     # 2. Get Question
-    question = visual_data.get("question") or "Review the options below:"
+    question = format_math_for_pillow(visual_data.get("question") or "Review the options below:")
     
     # Word wrap question
     def wrap_text(text, font, max_width):
@@ -87,13 +549,13 @@ def render_explainer_mcq_slide(
             lines.append(" ".join(current_line))
         return lines
         
-    q_lines = wrap_text(question, font_q, w - 120)
+    q_lines = wrap_text(question, font_q, w - 240)
     
     # Draw question card
     draw.rounded_rectangle([40, 40, w - 40, 200], radius=15, fill="#EBF5F5", outline="#0D7A7F", width=2)
     q_y = 65
     for line in q_lines[:3]: # limit to 3 lines
-        draw.text((60, q_y), line, fill="#0D7A7F", font=font_q)
+        draw_rich_math_text(draw, (60, q_y), line, font_q, "#0D7A7F")
         q_y += 35
         
     # 3. Get Options
@@ -139,7 +601,7 @@ def render_explainer_mcq_slide(
     
     opt_y = 230
     for letter in opt_keys:
-        opt_text = options.get(letter, f"Option {letter}")
+        opt_text = format_math_for_pillow(options.get(letter, f"Option {letter}"))
         
         # Determine styling based on state
         card_fill = "#FFFFFF"
@@ -188,13 +650,13 @@ def render_explainer_mcq_slide(
         # Draw Letter Circle
         circle_box = [60, opt_y + 35, 110, opt_y + 85]
         draw.ellipse(circle_box, fill="#CBD5E1" if letter_fill == "#94A3B8" else "#EBF5F5", outline=card_outline)
-        draw.text((77, opt_y + 45), letter, fill=letter_fill, font=font_opt_letter)
+        draw_rich_math_text(draw, (77, opt_y + 45), letter, font_opt_letter, letter_fill)
         
         # Draw Option Text
         opt_lines = wrap_text(opt_text, font_opt, w - 240)
         line_y = opt_y + 40 if len(opt_lines) == 1 else opt_y + 25
         for line in opt_lines[:2]:
-            draw.text((140, line_y), line, fill=text_fill, font=font_opt)
+            draw_rich_math_text(draw, (140, line_y), line, font_opt, text_fill)
             line_y += 30
             
         # Draw dynamic status icons
@@ -209,31 +671,62 @@ def render_explainer_mcq_slide(
         
     # 4. Draw explanation if reveal
     if is_reveal:
-        explanation = visual_data.get("explanation") or ""
+        explanation = format_math_for_pillow(visual_data.get("explanation") or "")
         if explanation:
-            exp_lines = wrap_text(explanation, font_exp, w - 80)
+            exp_lines = wrap_text(explanation, font_exp, w - 240)
             exp_y = 810
             draw.rounded_rectangle([40, 790, w - 40, h - 40], radius=10, fill="#ECFDF5", outline="#34D399", width=2)
             
             if is_none_of_above:
                 font_exp_bold = get_font(20, bold=True)
-                draw.text((60, exp_y), "Correct Answer: None of the above", fill="#047857", font=font_exp_bold)
+                draw_rich_math_text(draw, (60, exp_y), "Correct Answer: None of the above", font_exp_bold, "#047857")
                 exp_y += 30
                 
             for line in exp_lines[:4]:
-                draw.text((60, exp_y), line, fill="#065F46", font=font_exp)
+                draw_rich_math_text(draw, (60, exp_y), line, font_exp, "#065F46")
                 exp_y += 25
                 
     img.save(output_path)
     print(f"✅ Handcrafted MCQ slide ({visual_type}) rendered successfully to {output_path}")
 
 
-def generate_explainer_slides_video(scenes: list, output_dir: str, topic: str, job_id: str = None, use_elevenlabs: bool = True) -> tuple[str, dict]:
+def apply_logo_watermark(img_path: str):
+    """Pastes the EaseToLearn transparent logo at the top-right corner of the slide."""
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+    if not os.path.exists(logo_path):
+        return
+        
+    try:
+        slide_img = Image.open(img_path).convert("RGBA")
+        logo_img = Image.open(logo_path).convert("RGBA")
+        
+        # Resize logo to standard watermark size (140px width, keeping aspect ratio)
+        target_width = 140
+        w_percent = (target_width / float(logo_img.size[0]))
+        target_height = int((float(logo_img.size[1]) * float(w_percent)))
+        logo_resized = logo_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        
+        # Position logo: Bottom Right corner with 30px padding
+        slide_w, slide_h = slide_img.size
+        pos_x = slide_w - target_width - 30
+        pos_y = slide_h - target_height - 30
+        
+        # Paste logo using its alpha channel as a mask for perfect transparency rendering
+        slide_img.paste(logo_resized, (pos_x, pos_y), logo_resized)
+        
+        # Save back as RGB
+        slide_img.convert("RGB").save(img_path)
+        print(f"💧 Successfully applied watermark to: {os.path.basename(img_path)}")
+    except Exception as e:
+        print(f"⚠️ Failed to apply watermark to {img_path}: {e}")
+
+
+def generate_explainer_slides_video(scenes: list, output_dir: str, topic: str, job_id: str = None, use_elevenlabs: bool = True, subject: str = "default") -> tuple[str, dict]:
     """
     Explainer Slides Engine v2.0
     Generates a premium, numbered whiteboard sequence synced to ElevenLabs narration.
     """
-    print(f"🎬 [Explainer Slides] Building premium whiteboard sequences for: {topic}")
+    print(f"🎬 [Explainer Slides] Building premium whiteboard sequences for: {topic} (Subject: {subject})")
     
     clips = []
     audio_clips = []
@@ -296,12 +789,15 @@ def generate_explainer_slides_video(scenes: list, output_dir: str, topic: str, j
                 
                 img_path = generate_concept_image(
                     topic=slide_content,
-                    subject="whiteboard_doodle",
+                    subject=f"whiteboard_doodle_{subject}",
                     output_dir=output_dir,
                     filename=img_filename,
                     job_id=job_id
                 )
                 ledger["dalle_calls"] += 1
+            
+            # Apply watermark dynamically
+            apply_logo_watermark(img_path)
             
             # 3. Create clip
             slide_clip = ImageClip(img_path).set_duration(dur).set_audio(audio_clip)

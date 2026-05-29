@@ -242,8 +242,39 @@ def generate_concept_image(
     """
     global _DALLE_FAILED
 
-    # Same subject-aware prompts you already have
-    template = _PROMPT_TEMPLATES.get(subject, _PROMPT_TEMPLATES["default"])
+    # Dynamic whiteboard doodle support
+    if subject == "whiteboard_doodle" or subject.startswith("whiteboard_doodle_"):
+        actual_subj = "default"
+        if "_" in subject:
+            parts = subject.split("_")
+            if len(parts) >= 3:
+                actual_subj = parts[2] # e.g. whiteboard_doodle_english -> english
+            
+        # Define subject illustration focuses for whiteboard doodles
+        doodle_focuses = {
+            "english": "a clean typographical diagram, a linguistic syntax tree, parts-of-speech connections, word relationship bubble charts, or structural sentence diagrams",
+            "medical": "a textbook-quality clinical anatomical diagram, organic cellular systems, or biological mechanisms",
+            "physics": "a textbook-quality physics wave diagram, motion vectors, force illustrations, or mechanical components",
+            "maths": "a textbook-quality geometric shape, Cartesian coordinate function, algebraic intersection graph, or calculus integral visualization",
+            "chemistry": "a textbook-quality molecular structure, atomic shell configuration, organic bond reaction, or chemical apparatus sketch",
+            "default": "a professional-grade conceptual infographic chart, connecting guide arrows, flowboxes, or neat structural diagrams"
+        }
+        focus_text = doodle_focuses.get(actual_subj, doodle_focuses["default"])
+        
+        # Build the final custom whiteboard prompt template dynamically!
+        template = (
+            "A premium, high-fidelity educational presentation slide explaining {topic}. "
+            "The slide design has a modern, clean academic aesthetic. "
+            "The background is a beautiful solid teal or a muted off-white color with a subtle, clean grid pattern. "
+            "The layout is highly structured and organized: on the left side, there is a giant, bold, stylized numeral/section marker (like '1', '2', or '3') or a large, high-fidelity textbook illustration. "
+            "On the right side, there is a clean white rectangular content card with rounded corners overlaying the background, featuring large, clean bold typography for the titles and subtitles, and elegant academic text in a highly legible sans-serif font. "
+            f"The slide is enriched with a detailed, professional-grade sketched illustration ({focus_text}) with clean black outlines and vibrant accent colors. "
+            "Include dynamic guiding elements like hand-drawn arrow indicators or highlighted boxes with a soft yellow background. "
+            "No watermark, no generic stock photo placeholders, extremely high resolution, professional educational graphics, wowed visual design."
+        )
+    else:
+        template = _PROMPT_TEMPLATES.get(subject, _PROMPT_TEMPLATES["default"])
+
     prompt = template.format(topic=topic)
 
     # Safe clean name preparation
@@ -253,6 +284,10 @@ def generate_concept_image(
         + "_diagram.png"
     )
     output_path = os.path.join(output_dir, safe_name)
+
+    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        print(f"   ℹ️  Visual asset already exists on disk: {output_path}. Bypassing DALL-E 3 call.")
+        return os.path.abspath(output_path)
 
     if _DALLE_FAILED:
         print(f"   ℹ️  DALL-E 3 known to be offline/blocked. Bypassing and using Premium PIL Fallback directly...")

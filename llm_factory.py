@@ -30,7 +30,8 @@ class LLMFactory:
         provider_override: Optional[str] = None,
         include_usage: bool = False,
         cacheable: bool = True,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
+        temperature: float = 0.0
     ) -> Any:
         from caching.redis_client import get_cache, generate_llm_cache_key
         
@@ -54,7 +55,7 @@ class LLMFactory:
         cache_key = None
         if cache.available and cacheable:
             # We use a default temperature of 0.0 for deterministic educational content
-            cache_key = generate_llm_cache_key(model, str(system_prompt or ""), str(messages), 0.0)
+            cache_key = generate_llm_cache_key(model, str(system_prompt or ""), str(messages), temperature)
             cached_res = cache.get(cache_key)
             if cached_res:
                 print(f"💎 LLM Cache Hit: {model} (Key: {cache_key[:8]}...)")
@@ -75,11 +76,11 @@ class LLMFactory:
         for attempt in range(5):
             try:
                 if provider == "groq":
-                    content, usage = LLMFactory._call_groq(full_messages, json_mode, model_override)
+                    content, usage = LLMFactory._call_groq(full_messages, json_mode, model_override, temperature)
                 elif provider == "openai":
-                    content, usage = LLMFactory._call_openai(full_messages, json_mode, model_override)
+                    content, usage = LLMFactory._call_openai(full_messages, json_mode, model_override, temperature)
                 elif provider == "local":
-                    content, usage = LLMFactory._call_local(full_messages, json_mode, model_override)
+                    content, usage = LLMFactory._call_local(full_messages, json_mode, model_override, temperature)
                 elif provider == "google":
                     content, usage = LLMFactory._call_google(full_messages, json_mode, model_override)
                 else:
@@ -120,7 +121,7 @@ class LLMFactory:
 
 
     @staticmethod
-    def _call_openai(messages, json_mode, model_override):
+    def _call_openai(messages, json_mode, model_override, temperature: float = 0.0):
         if not OpenAI:
             raise ImportError("openai library not installed. pip install openai")
         
@@ -134,7 +135,8 @@ class LLMFactory:
         kwargs = {
             "model": model,
             "messages": messages,
-            "timeout": 300.0
+            "timeout": 300.0,
+            "temperature": temperature
         }
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
@@ -149,7 +151,7 @@ class LLMFactory:
         return response.choices[0].message.content, usage
 
     @staticmethod
-    def _call_groq(messages, json_mode, model_override):
+    def _call_groq(messages, json_mode, model_override, temperature: float = 0.0):
         if not Groq:
             raise ImportError("groq library not installed. pip install groq")
         
@@ -164,7 +166,8 @@ class LLMFactory:
         kwargs = {
             "model": model,
             "messages": messages,
-            "timeout": 300.0
+            "timeout": 300.0,
+            "temperature": temperature
         }
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
@@ -180,7 +183,7 @@ class LLMFactory:
         return response.choices[0].message.content, usage
 
     @staticmethod
-    def _call_local(messages, json_mode, model_override):
+    def _call_local(messages, json_mode, model_override, temperature: float = 0.0):
         """Connects to Mac Mini via WireGuard/Tunneling using OpenAI-compatible API."""
         if not OpenAI:
             raise ImportError("openai library not installed. pip install openai")
@@ -193,7 +196,8 @@ class LLMFactory:
         kwargs = {
             "model": model,
             "messages": messages,
-            "timeout": 300.0
+            "timeout": 300.0,
+            "temperature": temperature
         }
         
         if json_mode:

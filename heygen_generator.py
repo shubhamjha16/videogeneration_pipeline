@@ -138,28 +138,131 @@ def generate_heygen_avatar(
 
 
 def _generate_mock_video(prompt: str, output_path: str) -> tuple[str, float]:
-    """Generate a placeholder video when no API key is available."""
+    """Generate a placeholder video when no API key is available using a premium Pillow whiteboard style."""
     try:
-        from moviepy.editor import ColorClip, TextClip, CompositeVideoClip
-
+        from PIL import Image, ImageDraw, ImageFont
+        from moviepy.editor import ImageClip
+        
         duration = max(5.0, len(prompt) / 15.0)  # Rough estimate
         duration = min(duration, 30.0)
-
-        bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
-
-        try:
-            label = TextClip(
-                "HeyGen Mock (No API Key)",
-                fontsize=36, color="white", font="Helvetica",
-            ).set_duration(duration).set_position("center")
-            final = CompositeVideoClip([bg, label])
-        except Exception:
-            final = bg
-
+        
+        w, h = 1280, 720
+        # Create premium off-white/teal background
+        img = Image.new("RGB", (w, h), "#F4F7F7")
+        draw = ImageDraw.Draw(img)
+        
+        # Grid lines
+        grid_spacing = 40
+        for x in range(0, w, grid_spacing):
+            draw.line([(x, 0), (x, h)], fill="#EBF2F2", width=1)
+        for y in range(0, h, grid_spacing):
+            draw.line([(0, y), (w, y)], fill="#EBF2F2", width=1)
+            
+        # Draw frame
+        draw.rounded_rectangle([20, 20, w - 20, h - 20], radius=15, outline="#088A8F", width=4)
+        
+        def get_font(size, bold=False):
+            paths = []
+            if bold:
+                paths = [
+                    "/Library/Fonts/Arial Unicode.ttf",
+                    "/System/Library/Fonts/Helvetica.ttc",
+                    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+                    "/Library/Fonts/Arial Bold.ttf",
+                ]
+            else:
+                paths = [
+                    "/Library/Fonts/Arial Unicode.ttf",
+                    "/System/Library/Fonts/Helvetica.ttc",
+                    "/System/Library/Fonts/Supplemental/Arial.ttf",
+                    "/Library/Fonts/Arial.ttf",
+                ]
+            for p in paths:
+                if os.path.exists(p):
+                    try: return ImageFont.truetype(p, size)
+                    except Exception: continue
+            return ImageFont.load_default()
+            
+        font_title = get_font(32, bold=True)
+        font_body = get_font(20, bold=False)
+        font_dur = get_font(18, bold=True)
+        
+        # Content Card
+        draw.rounded_rectangle([300, 100, 980, 620], radius=12, fill="#FFFFFF", outline="#E2E8F0", width=2)
+        
+        # Avatar Silhouette placeholder in top-center of the card
+        draw.ellipse([600, 130, 680, 210], fill="#E5F4F4", outline="#088A8F", width=2)
+        draw.ellipse([625, 145, 655, 175], fill="#088A8F") # Head
+        draw.chord([610, 175, 670, 215], 180, 360, fill="#088A8F") # Shoulders
+        
+        draw.text((340, 230), "Personalized Avatar Narrator", fill="#088A8F", font=font_title)
+        
+        # Wrapped narration prompt
+        def wrap_text(text, font, max_width):
+            words = text.split()
+            lines = []
+            current_line = []
+            for word in words:
+                test_line = " ".join(current_line + [word])
+                try:
+                    tw = draw.textlength(test_line, font=font)
+                except Exception:
+                    tw = len(test_line) * (font.size * 0.6)
+                if tw <= max_width:
+                    current_line.append(word)
+                else:
+                    if current_line:
+                        lines.append(" ".join(current_line))
+                    current_line = [word]
+            if current_line:
+                lines.append(" ".join(current_line))
+            return lines
+            
+        wrapped = wrap_text(prompt, font_body, 600)
+        curr_y = 290
+        for line in wrapped[:7]: # limit to 7 lines inside mockup
+            draw.text((340, curr_y), line, fill="#2E2E2E", font=font_body)
+            curr_y += 28
+            
+        # Draw duration status at the bottom of the card
+        draw.text((340, 560), f"Status: Mock Agent Active | Estimated Duration: {duration:.1f}s", fill="#088A8F", font=font_dur)
+        
+        temp_img_path = output_path.replace(".mp4", "_mock.png")
+        os.makedirs(os.path.dirname(os.path.abspath(temp_img_path)), exist_ok=True)
+        img.save(temp_img_path)
+        
+        # Overlay logo watermarking if logo file exists
+        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+        if os.path.exists(logo_path):
+            try:
+                slide_img = Image.open(temp_img_path).convert("RGBA")
+                logo_img = Image.open(logo_path).convert("RGBA")
+                
+                target_width = 140
+                w_percent = (target_width / float(logo_img.size[0]))
+                target_height = int((float(logo_img.size[1]) * float(w_percent)))
+                logo_resized = logo_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                
+                pos_x = w - target_width - 30
+                pos_y = h - target_height - 30
+                
+                slide_img.paste(logo_resized, (pos_x, pos_y), logo_resized)
+                slide_img.convert("RGB").save(temp_img_path)
+            except Exception as le:
+                print(f"  [HeyGen Mock] Failed to watermark mock: {le}")
+                
+        # Generate final mock video from static image
+        clip = ImageClip(temp_img_path).set_duration(duration)
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        final.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
-        final.close()
+        clip.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", logger=None)
+        clip.close()
+        
+        if os.path.exists(temp_img_path):
+            os.remove(temp_img_path)
+            
         return output_path, duration
+        
     except Exception as e:
         print(f"  Mock generation failed: {e}")
         return None, 0
+

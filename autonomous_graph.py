@@ -43,6 +43,7 @@ from healer_agent import run_healer
 from knowledge_vector_store import retrieve_related_research
 from nodes.ambient_visual_node import ambient_visual_node
 from explainer_slides_generator import generate_explainer_slides_video
+from explainer_gemini_hybrid_slides_generator import generate_explainer_gemini_hybrid_slides_video
 
 
 # ── Industrial Helpers ───────────────────────────────────────────────────────
@@ -1910,7 +1911,8 @@ def explainer_slides_node(state: TonyState) -> TonyState:
             job_dir, 
             state["topic"],
             job_id=state.get("job_id"),
-            use_elevenlabs=state.get("use_elevenlabs", True)
+            use_elevenlabs=state.get("use_elevenlabs", True),
+            subject=state.get("parsed_facts", {}).get("subject", "default")
         )
         state["output_path"] = os.path.abspath(video_path)
         
@@ -1926,6 +1928,45 @@ def explainer_slides_node(state: TonyState) -> TonyState:
         return _run_presentation_fallback(state, "EXPLAINER_SLIDES")
 
     _log_progress(state, "EXPLAINER_SLIDES", "Structured slide production lifecycle complete.", duration=time.time() - start_t)
+    return state
+
+
+def explainer_gemini_hybrid_slides_node(state: TonyState) -> TonyState:
+    """Explainer Gemini Hybrid Slides — Pillow Text Cards + Clipped Gemini Omni Video."""
+    import copy
+    import time
+    start_t = time.time()
+    state = copy.deepcopy(state)
+    print(f"🎬 [Explainer Gemini Hybrid Slides] Generating structured hybrid slide sequences for: {state['topic']}")
+    
+    job_prefix = f"job_{state.get('job_id', get_topic_safe(state))}"
+    job_dir = os.path.join("output", job_prefix)
+    os.makedirs(job_dir, exist_ok=True)
+
+    try:
+        video_path, metrics = generate_explainer_gemini_hybrid_slides_video(
+            state["scenes"], 
+            job_dir, 
+            state["topic"],
+            job_id=state.get("job_id"),
+            use_elevenlabs=state.get("use_elevenlabs", True),
+            subject=state.get("parsed_facts", {}).get("subject", "default")
+        )
+        state["output_path"] = os.path.abspath(video_path)
+        
+        # INDUSTRIAL LEDGER: Capture ElevenLabs, DALL-E, and Gemini Omni Video (veo) usage
+        state["ledger"] = state.get("ledger", {})
+        state["ledger"]["elevenlabs_chars"] = state["ledger"].get("elevenlabs_chars", 0) + metrics.get("elevenlabs_chars", 0)
+        state["ledger"]["dalle_calls"] = state["ledger"].get("dalle_calls", 0) + metrics.get("dalle_calls", 0)
+        state["ledger"]["veo_calls"] = state["ledger"].get("veo_calls", 0) + metrics.get("veo_calls", 0)
+        
+    except Exception as e:
+        print(f"   ❌ Explainer Gemini Hybrid Slides failed: {e}")
+        _record_error(state, "EXPLAINER_GEMINI_HYBRID_SLIDES", str(e))
+        # Fallback to presentation mode if slides fail
+        return _run_presentation_fallback(state, "EXPLAINER_GEMINI_HYBRID_SLIDES")
+
+    _log_progress(state, "EXPLAINER_GEMINI_HYBRID_SLIDES", "Structured hybrid slide production lifecycle complete.", duration=time.time() - start_t)
     return state
 
 
@@ -2217,6 +2258,8 @@ def route_by_mode(state: TonyState) -> str:
         return "explainer"
     elif mode == "explainer_slides":
         return "explainer_slides"
+    elif mode == "explainer_gemini_hybrid":
+        return "explainer_gemini_hybrid"
     elif mode == "notes":
         return "notes"
     elif mode in {"heygen", "user_generated_video", "user_generated", "human_face"}:
@@ -2296,6 +2339,7 @@ workflow.add_conditional_edges("ambient_visual", route_by_mode, {
     "ppt_planner": "ppt_planner",
     "explainer":   "explainer",
     "explainer_slides": "explainer_slides",
+    "explainer_gemini_hybrid": "explainer_gemini_hybrid",
     "notes":       "notes",
     "heygen":      "heygen",
 })
@@ -2323,6 +2367,10 @@ workflow.add_edge("explainer",     "deploy")
 
 # Path 7: Premium Explainer Slides (Whiteboard Doodle)
 workflow.add_edge("explainer_slides", "deploy")
+
+# Path 8: Explainer Gemini Hybrid Slides
+workflow.add_node("explainer_gemini_hybrid", explainer_gemini_hybrid_slides_node)
+workflow.add_edge("explainer_gemini_hybrid", "deploy")
 
 # Path 5: Premium Study Notes (Ken Burns Infographic)
 workflow.add_edge("notes",         "deploy")

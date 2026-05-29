@@ -71,7 +71,17 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                         bg_path = bg_matches[0]
                 
                 if item_path and os.path.exists(item_path):
-                    scene_clip, sub_to_close = _create_counting_clip(item_path, count, dur, bg_path=bg_path)
+                    # Pre-render the counting text to add it directly to counting layers (no nested CompositeVideoClips)
+                    txt_clip = create_text_clip(
+                        str(v_data.get("count", "")), 
+                        fontsize=120, 
+                        color='white', 
+                        stroke_width=2, 
+                        stroke_color='black',
+                        duration=dur
+                    ).set_position(('center', 0.8), relative=True)
+                    
+                    scene_clip, sub_to_close = _create_counting_clip(item_path, count, dur, bg_path=bg_path, text_clip=txt_clip)
                     video_clips_to_close.extend(sub_to_close)
                 else:
                     scene_clip, fall_close = _create_fallback_clip(f"Count: {count} {item_name}", dur)
@@ -118,18 +128,7 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
                 video_clips_to_close.extend(fall_close)
 
             # 3. Add scene-specific text overlay (optional)
-            if v_type == "counting_metaphor":
-                # Use PIL-based renderer instead of TextClip
-                txt = create_text_clip(
-                    str(v_data.get("count", "")), 
-                    fontsize=120, 
-                    color='white', 
-                    stroke_width=2, 
-                    stroke_color='black',
-                    duration=dur
-                ).set_position(('center', 0.8), relative=True)
-                scene_clip = CompositeVideoClip([scene_clip, txt])
-
+            # (Note: Counting metaphors are now optimized to composite text in a single level, avoiding nesting)
             scene_clip = scene_clip.set_audio(audio_clip)
             clips.append(scene_clip)
 
@@ -181,95 +180,124 @@ def generate_explainer_video(scenes: list, image_paths: dict, output_dir: str, t
 
 def _create_zoom_clip(img_path, duration):
     """Applies a smooth randomized Ken Burns scale/pan effect."""
-    # Choose a random "start" and "end" anchor to make it feel cinematic
-    anchors = [
-        ('center', 'center'), 
-        ('left', 'top'), ('right', 'bottom'), 
-        ('left', 'bottom'), ('right', 'top')
-    ]
-    start_pos, end_pos = random.sample(anchors, 2)
-    
-    clip = ImageClip(img_path).set_duration(duration).resize(width=1400) # Slightly larger for padding
-    
-    # Zoom from 1.0 to 1.1 over duration
-    def zoom_fn(t):
-        return 1.0 + 0.1 * (t / duration)
-    
-    final_clip = clip.resize(zoom_fn).set_position('center')
-    return final_clip, [clip, final_clip]
+    to_close = []
+    try:
+        # Choose a random "start" and "end" anchor to make it feel cinematic
+        anchors = [
+            ('center', 'center'), 
+            ('left', 'top'), ('right', 'bottom'), 
+            ('left', 'bottom'), ('right', 'top')
+        ]
+        start_pos, end_pos = random.sample(anchors, 2)
+        
+        clip = ImageClip(img_path).set_duration(duration).resize(width=1400) # Slightly larger for padding
+        to_close.append(clip)
+        
+        # Zoom from 1.0 to 1.1 over duration
+        def zoom_fn(t):
+            return 1.0 + 0.1 * (t / duration)
+        
+        final_clip = clip.resize(zoom_fn).set_position('center')
+        to_close.append(final_clip)
+        return final_clip, to_close
+    except Exception as e:
+        for c in to_close:
+            try: c.close()
+            except Exception: pass
+        raise e
 
-def _create_counting_clip(item_path, count, duration, bg_path=None):
+def _create_counting_clip(item_path, count, duration, bg_path=None, text_clip=None):
     """Composites items with a staggered kinetic pop-in effect over a cinematic background."""
     to_close = []
-    if bg_path and os.path.exists(bg_path):
-        # Use existing zoom_clip logic for the background if it's an image
-        if bg_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-            bg, bg_to_close = _create_zoom_clip(bg_path, duration)
-            to_close.extend(bg_to_close)
-        else:
-            # Fallback for video backgrounds (with corruption guard)
-            try:
-                bg = VideoFileClip(bg_path).set_duration(duration).resize(height=720)
-            except Exception as e:
-                print(f"   ⚠️ Corrupt background video detected ({bg_path}): {e}. Falling back to clean slate.")
-                bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
-    else:
-        bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
-    
-    # Item template
-    base_item = ImageClip(item_path).resize(height=180)
-    to_close.append(base_item)
-    if isinstance(bg, (ImageClip, VideoFileClip)):
-        to_close.append(bg)
-    
-    positions = [
-        (0.5, 0.4), (0.4, 0.5), (0.6, 0.5), 
-        (0.3, 0.3), (0.7, 0.3), (0.5, 0.65),
-        (0.2, 0.6), (0.8, 0.6), (0.4, 0.2), (0.6, 0.2)
-    ]
-    
-    layers = [bg]
-    stagger_delay = 0.4 # Seconds between pops
-    
-    for i in range(min(count, 10)):
-        start_t = i * stagger_delay
-        if start_t >= duration: break
-        
-        pos = positions[i]
-        
-        # Create a "pop" animation: scale from 0 to 1 quickly
-        pop_duration = 0.3
-        def make_pop(t, _st=start_t):
-            if t < _st: return 0.01 # Invisible
-            progress = min((t - _st) / pop_duration, 1.0)
-            # Subtle overshoot for "snap" feel
-            if progress < 0.8:
-                return max(progress * 1.4, 0.01) # Increased snap, forced positive
+    try:
+        if bg_path and os.path.exists(bg_path):
+            # Use existing zoom_clip logic for the background if it's an image
+            if bg_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+                bg, bg_to_close = _create_zoom_clip(bg_path, duration)
+                to_close.extend(bg_to_close)
             else:
-                return 1.4 - (progress - 0.8) * 2.0 # Settles to 1.0
-                
-        animated_item = base_item.resize(make_pop).set_start(start_t).set_duration(duration - start_t).set_position(pos, relative=True)
-        layers.append(animated_item)
-        to_close.append(animated_item)
+                # Fallback for video backgrounds (with corruption guard)
+                try:
+                    bg = VideoFileClip(bg_path).set_duration(duration).resize(height=720)
+                except Exception as e:
+                    print(f"   ⚠️ Corrupt background video detected ({bg_path}): {e}. Falling back to clean slate.")
+                    bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
+        else:
+            bg = ColorClip(size=(1280, 720), color=(15, 15, 30), duration=duration)
         
-    final_comp = CompositeVideoClip(layers).set_duration(duration)
-    to_close.append(final_comp)
-    return final_comp, to_close
+        to_close.append(bg)
+        
+        # Item template
+        base_item = ImageClip(item_path).resize(height=180)
+        to_close.append(base_item)
+        
+        positions = [
+            (0.5, 0.4), (0.4, 0.5), (0.6, 0.5), 
+            (0.3, 0.3), (0.7, 0.3), (0.5, 0.65),
+            (0.2, 0.6), (0.8, 0.6), (0.4, 0.2), (0.6, 0.2)
+        ]
+        
+        layers = [bg]
+        stagger_delay = 0.4 # Seconds between pops
+        
+        for i in range(min(count, 10)):
+            start_t = i * stagger_delay
+            if start_t >= duration: break
+            
+            pos = positions[i]
+            
+            # Create a "pop" animation: scale from 0 to 1 quickly
+            pop_duration = 0.3
+            def make_pop(t, _st=start_t):
+                if t < _st: return 0.01 # Invisible
+                progress = min((t - _st) / pop_duration, 1.0)
+                # Subtle overshoot for "snap" feel
+                if progress < 0.8:
+                    return max(progress * 1.4, 0.01) # Increased snap, forced positive
+                else:
+                    return 1.4 - (progress - 0.8) * 2.0 # Settles to 1.0
+                    
+            animated_item = base_item.resize(make_pop).set_start(start_t).set_duration(duration - start_t).set_position(pos, relative=True)
+            layers.append(animated_item)
+            to_close.append(animated_item)
+            
+        if text_clip:
+            layers.append(text_clip)
+            to_close.append(text_clip)
+            
+        final_comp = CompositeVideoClip(layers).set_duration(duration)
+        to_close.append(final_comp)
+        return final_comp, to_close
+    except Exception as e:
+        for c in to_close:
+            try: c.close()
+            except Exception: pass
+        raise e
 
 def _create_fallback_clip(text, duration):
     """Deep Blue Kinetic Fallback Card."""
-    # Create an aesthetic dark gradient card instead of a plain color or 'cellauto'
-    bg = ColorClip(size=(1280, 720), color=(13, 13, 26), duration=duration)
-    
-    # Use PIL-based renderer instead of TextClip
-    txt = create_text_clip(
-        text, 
-        fontsize=46, 
-        color='white',
-        stroke_width=1,
-        stroke_color='black',
-        duration=duration
-    ).set_position('center')
-    
-    final_comp = CompositeVideoClip([bg, txt])
-    return final_comp, [bg, txt, final_comp]
+    to_close = []
+    try:
+        # Create an aesthetic dark gradient card instead of a plain color or 'cellauto'
+        bg = ColorClip(size=(1280, 720), color=(13, 13, 26), duration=duration)
+        to_close.append(bg)
+        
+        # Use PIL-based renderer instead of TextClip
+        txt = create_text_clip(
+            text, 
+            fontsize=46, 
+            color='white',
+            stroke_width=1,
+            stroke_color='black',
+            duration=duration
+        ).set_position('center')
+        to_close.append(txt)
+        
+        final_comp = CompositeVideoClip([bg, txt])
+        to_close.append(final_comp)
+        return final_comp, to_close
+    except Exception as e:
+        for c in to_close:
+            try: c.close()
+            except Exception: pass
+        raise e

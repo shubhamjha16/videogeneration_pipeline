@@ -34,6 +34,10 @@ def generate_audio(text: str, scene_idx: int, output_dir: str = ".", use_elevenl
         os.makedirs(output_dir, exist_ok=True)
     output_filename = os.path.join(output_dir, f"scene_{scene_idx}.m4a")
     
+    if os.path.exists(output_filename) and os.path.getsize(output_filename) > 0:
+        print(f"   ℹ️  TTS narration file already exists: {output_filename}. Bypassing ElevenLabs call.")
+        return output_filename, 0
+    
     # 1. Determine preference
     force_local = os.environ.get("FORCE_LOCAL_TTS", "false").lower() == "true"
     
