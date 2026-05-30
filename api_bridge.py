@@ -562,6 +562,8 @@ def _idempotency_register(key: str, job_id: str):
 
 DLQ_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webhook_dlq.json")
 
+_dlq_lock = threading.Lock()
+
 def _dlq_persist(job_id: str, payload: dict, webhook_url: str = "", last_status_code: int | None = None, last_error: str = ""):
     """Append a failed webhook payload to the dead-letter queue file."""
     entry = {
@@ -573,17 +575,18 @@ def _dlq_persist(job_id: str, payload: dict, webhook_url: str = "", last_status_
         "last_error": last_error,
         "retries_exhausted": True,
     }
-    try:
-        existing = []
-        if os.path.exists(DLQ_FILE):
-            with open(DLQ_FILE, "r") as f:
-                existing = json.load(f)
-        existing.append(entry)
-        with open(DLQ_FILE, "w") as f:
-            json.dump(existing, f, indent=2)
-        print(f"📬 [DLQ] Persisted failed webhook for job {job_id}")
-    except Exception as e:
-        print(f"⚠️  [DLQ] Failed to persist webhook for job {job_id}: {e}")
+    with _dlq_lock:
+        try:
+            existing = []
+            if os.path.exists(DLQ_FILE):
+                with open(DLQ_FILE, "r") as f:
+                    existing = json.load(f)
+            existing.append(entry)
+            with open(DLQ_FILE, "w") as f:
+                json.dump(existing, f, indent=2)
+            print(f"📬 [DLQ] Persisted failed webhook for job {job_id}")
+        except Exception as e:
+            print(f"⚠️  [DLQ] Failed to persist webhook for job {job_id}: {e}")
 
 
 def _sanitize_stalled_jobs():
