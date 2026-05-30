@@ -5,6 +5,12 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Optional
 
+try:
+    import fcntl
+except ImportError:
+    # Windows/Dev fallback
+    fcntl = None
+
 class TokenUsage(BaseModel):
     """Normalized per-call token usage across providers."""
     input_tokens: int = 0
@@ -49,11 +55,22 @@ MODELS_PRICING = {
     # Local Models (Free)
     "gemma:4b": Pricing(input_per_mtok=0.0, output_per_mtok=0.0),
     "gemma:7b": Pricing(input_per_mtok=0.0, output_per_mtok=0.0),
+    
     # Search & Vision (Flat fee logic)
     "searxng": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.005), # $0.005 per metasearch
     "gpt-4o-vision": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.02), # $0.02 per grounding call
     "eleven-lip-sync": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.20), # $0.20 per lip-sync call
     "elevenlabs": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.0), # Handled by characters logic
+    
+    # Image Generation flat fees
+    "dall-e-3": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.040),
+    "gpt-image-2": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.040),
+    
+    # Google Gemini Veo / Video generation models (Flat fee used as price per second)
+    "gemini-omni-flash": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.020),
+    "veo-3.1-lite": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.020),
+    "veo-3.1-lite-preview": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.020),
+    "veo-3.0-fast-generate-001": Pricing(input_per_mtok=0, output_per_mtok=0, flat_fee=0.020),
 }
 
 class LedgerEntry(BaseModel):
@@ -90,9 +107,24 @@ class LedgerManager:
     def record_cost(cls, entry: LedgerEntry):
         path = cls.get_ledger_path()
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with cls._lock:
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(entry.model_dump_json() + "\n")
+        
+        lock_file = path + ".lock"
+        try:
+            # Cross-process exclusive file locking protection
+            with open(lock_file, "w") as lf:
+                if fcntl:
+                    fcntl.flock(lf, fcntl.LOCK_EX)
+                
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(entry.model_dump_json() + "\n")
+                    
+                if fcntl:
+                    fcntl.flock(lf, fcntl.LOCK_UN)
+        except Exception as e:
+            print(f"⚠️ [cost_tracker] cross-process lock failed, falling back to local: {e}")
+            with cls._lock:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(entry.model_dump_json() + "\n")
         
         # DB Persistence: Record usage to MySQL
         try:
@@ -227,14 +259,31 @@ class LedgerManager:
         })
 
     @classmethod
-    def record_dalle_call(cls, job_id: Optional[str], model: str = "dall-e-3", cost: float = 0.04):
-        """Record DALL-E 3 image generation cost. Pricing depends on size/quality."""
+    def record_dalle_call(cls, job_id: Optional[str], model: str = "dall-e-3", cost: Optional[float] = None):
+        """Record DALL-E 3 image generation cost. Pricing dynamically queried from pricing map."""
+        if cost is None:
+            pricing = MODELS_PRICING.get(model)
+            cost = pricing.flat_fee if pricing else 0.04
+            
         cls._log_entry({
             "job_id": job_id,
             "provider": "openai",
             "model": model,
             "call_type": "image",
             "api_cost_usd": cost
+        })
+
+    @classmethod
+    def record_veo_call(cls, job_id: Optional[str], duration_seconds: float, model_name: str = "gemini-omni-flash"):
+        """Record Google Gemini Omni / Veo video generation cost. Pricing dynamically configured."""
+        pricing = MODELS_PRICING.get(model_name)
+        cost_multiplier = pricing.flat_fee if pricing else 0.0200
+        cls._log_entry({
+            "job_id": job_id,
+            "provider": "google",
+            "model": model_name,
+            "call_type": "video",
+            "api_cost_usd": duration_seconds * cost_multiplier
         })
 
     @classmethod

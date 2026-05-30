@@ -304,7 +304,7 @@ def generate_concept_image(
     # Record cost if job_id is provided
     try:
         from cost_tracker import LedgerManager
-        LedgerManager.record_dalle_call(job_id, cost=0.04) # DALL-E 3 Standard price
+        LedgerManager.record_dalle_call(job_id, model="gpt-image-2")
     except Exception as e:
         print(f"⚠️ Failed to log image cost: {e}")
 

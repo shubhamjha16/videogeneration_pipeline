@@ -478,20 +478,8 @@ def generate_gemini_omni_concept_video(
 
         # Record Cost entry for Gemini Omni Video Generation
         try:
-            from cost_tracker import LedgerManager, LedgerEntry
-            from datetime import datetime, timezone
-            # Gemini Omni / Veo is priced at $0.0200 per second of video generated ($0.10 per 5s)
-            omni_cost = duration * 0.0200
-            entry = LedgerEntry(
-                ts=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                job_id=job_id or "local-omni",
-                provider="google",
-                model=model_name,
-                call_type="video",
-                input_tokens=1,
-                cost_usd=omni_cost
-            )
-            LedgerManager.record_cost(entry)
+            from cost_tracker import LedgerManager
+            LedgerManager.record_veo_call(job_id, duration, model_name)
         except Exception as e:
             print(f"⚠️ Failed to record cost for Gemini Video call: {e}")
 
