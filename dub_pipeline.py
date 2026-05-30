@@ -146,7 +146,7 @@ def run_dub_pipeline(job_id: str, target_language: str = "hindi") -> dict:
         raise ValueError(f"Unsupported language: {target_language}. Supported: {list(SUPPORTED_LANGUAGES.keys())}")
     
     # Find job directory
-    output_root = "output"
+    output_root = os.environ.get("MANIM_MEDIA_DIR", "output")
     job_dir = None
     for d in os.listdir(output_root):
         if job_id in d:
