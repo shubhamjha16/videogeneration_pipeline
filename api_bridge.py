@@ -342,7 +342,10 @@ class CentralizedJobStore(dict):
                             del self._sync_timers[job_id]
                         self._last_db_sync[job_id] = time.time()
                     # Execute on background thread pool
-                    self._executor.submit(self._sync_job_to_db, job_id, latest_dict)
+                    try:
+                        self._executor.submit(self._sync_job_to_db, job_id, latest_dict)
+                    except RuntimeError:
+                        pass
                     
                 timer = threading.Timer(delay, deferred_sync)
                 self._sync_timers[job_id] = timer
@@ -362,15 +365,23 @@ class CentralizedJobStore(dict):
                 job = session.query(RenderJob).filter(RenderJob.job_id == job_id).first()
                 if not job:
                     # Create job record if it doesn't exist
-                    job = RenderJob(
-                        job_id=job_id,
-                        topic=job_dict.get("topic", "N/A"),
-                        source_type=job_dict.get("source_type", "html"),
-                        priority=job_dict.get("priority", 100),
-                        callback_url=job_dict.get("webhook_url", ""),
-                        status=job_dict.get("status", "queued")
-                    )
-                    session.add(job)
+                    try:
+                        job = RenderJob(
+                            job_id=job_id,
+                            topic=job_dict.get("topic", "N/A"),
+                            source_type=job_dict.get("source_type", "html"),
+                            priority=job_dict.get("priority", 100),
+                            callback_url=job_dict.get("webhook_url", ""),
+                            status=job_dict.get("status", "queued")
+                        )
+                        session.add(job)
+                        session.commit()
+                    except Exception as commit_err:
+                        # Another concurrent thread already inserted it. Rollback, re-fetch, and update.
+                        session.rollback()
+                        job = session.query(RenderJob).filter(RenderJob.job_id == job_id).first()
+                        if not job:
+                            raise commit_err
                 
                 # Update status
                 status = job_dict.get("status", "queued")
@@ -1268,9 +1279,10 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
             except Exception as e:
                 pass
             
-            _notify_webhook_with_retry(
-                job_id=job_id,
-                status_data={
+            import threading
+            threading.Thread(
+                target=_notify_webhook_with_retry,
+                args=(job_id, {
                     "job_id": job_id,
                     "status": "failed",
                     "error": f"[{error_category}] {error_detail}",
@@ -1279,8 +1291,10 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                     "usd_cost": sunk_cost,
                     "webhook_url": jobs[job_id].get("webhook_url"),
                     "updated_at": utcnow().isoformat() + "Z"
-                }
-            )
+                }),
+                daemon=True,
+                name=f"webhook_fail_{job_id}"
+            ).start()
             return
 
         # ── Post-Render Phase (Network I/O) ──
@@ -1352,10 +1366,13 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
     with _jobs_lock:
         final_payload = dict(jobs[job_id])
     
-    _notify_webhook_with_retry(
-        job_id=job_id,
-        status_data=final_payload
-    )
+    import threading
+    threading.Thread(
+        target=_notify_webhook_with_retry,
+        args=(job_id, final_payload),
+        daemon=True,
+        name=f"webhook_{job_id}"
+    ).start()
 
 
     # RECURSIVE HYGIENE: Final check to ensure failed/successful job dirs are purged from EFS
