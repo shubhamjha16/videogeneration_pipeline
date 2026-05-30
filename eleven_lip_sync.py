@@ -70,7 +70,7 @@ def generate_lip_sync(video_path, audio_path, output_path, job_id: str = None):
                     # Record cost if job_id is provided
                     try:
                         from cost_tracker import LedgerManager
-                        LedgerManager.record_vision_call(job_id, model="eleven-lip-sync") # Use vision call logic for now or add specific
+                        LedgerManager.record_lipsync_call(job_id)
                     except Exception as e:
                         print(f"⚠️ Failed to log lip-sync cost: {e}")
 

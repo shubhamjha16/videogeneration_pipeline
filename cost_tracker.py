@@ -259,6 +259,19 @@ class LedgerManager:
         })
 
     @classmethod
+    def record_lipsync_call(cls, job_id: Optional[str], model: str = "eleven-lip-sync"):
+        """Record ElevenLabs Lip-Sync cost. Pricing dynamically resolved from configuration."""
+        pricing = MODELS_PRICING.get(model)
+        cost = pricing.flat_fee if pricing else 0.20
+        cls._log_entry({
+            "job_id": job_id,
+            "provider": "elevenlabs",
+            "model": model,
+            "call_type": "video",
+            "api_cost_usd": cost
+        })
+
+    @classmethod
     def record_dalle_call(cls, job_id: Optional[str], model: str = "dall-e-3", cost: Optional[float] = None):
         """Record DALL-E 3 image generation cost. Pricing dynamically queried from pricing map."""
         if cost is None:
