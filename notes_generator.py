@@ -96,7 +96,7 @@ def _generate_notes_image(topic: str, content_summary: str, output_dir: str, job
     # Ledger the image cost
     try:
         from cost_tracker import LedgerManager
-        LedgerManager.record_higgsfield_call(job_id, cost_per_call=0.08)  # DALL-E 3 HD 1024x1792
+        LedgerManager.record_dalle_call(job_id, model="gpt-image-2", cost=0.08)  # DALL-E 3 HD 1024x1792
     except Exception as e:
         print(f"  Failed to log notes image cost: {e}")
     from openai import Timeout

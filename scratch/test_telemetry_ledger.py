@@ -30,6 +30,21 @@ def clear_test_ledger():
     if os.path.exists(lock_path):
         os.remove(lock_path)
     print(f"🧹 Cleared existing test ledger files at {ledger_path}")
+    
+    # Pristine DB state: clear database records from previous runs
+    session = get_session()
+    if session:
+        try:
+            from db.models import RenderJob
+            session.query(JobTokenUsage).filter_by(job_id=TEST_JOB_ID).delete()
+            session.query(RenderJob).filter_by(job_id=TEST_JOB_ID).delete()
+            session.commit()
+            print(f"🧹 Cleared DB records for test job {TEST_JOB_ID}")
+        except Exception as e:
+            session.rollback()
+            print(f"⚠️ Failed to clear DB records: {e}")
+        finally:
+            session.close()
 
 def run_worker(worker_id: int, num_operations: int):
     """Worker process simulation generating concurrent cost tracking calls."""
@@ -140,9 +155,9 @@ def main():
         print("❌ DB init failed.")
         sys.exit(1)
         
-    create_job(job_id=TEST_JOB_ID, topic="Concurrency Ledger verification", source_type="test")
-    
     clear_test_ledger()
+    
+    create_job(job_id=TEST_JOB_ID, topic="Concurrency Ledger verification", source_type="test")
     
     num_workers = 8
     ops_per_worker = 125 # Total 1000 operations
