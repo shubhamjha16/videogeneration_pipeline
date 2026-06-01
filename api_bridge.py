@@ -799,6 +799,254 @@ def _safe_save_jobs(context: str, fatal: bool = False) -> bool:
 # ── Load persisted job store from disk into CentralizedJobStore ──────────────
 _load_jobs()
 
+def _start_telegram_bot_loop():
+    """Runs a daemon thread to poll the Telegram Bot API and handle interactive commands securely."""
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id_target = os.environ.get("TELEGRAM_CHAT_ID")
+    
+    if not bot_token or not chat_id_target:
+        print("ℹ️ Telegram Bot Loop skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured.")
+        return
+        
+    print("🤖 Starting interactive Telegram Bot thread...")
+    
+    import time
+    import uuid
+    import threading
+    import copy
+    offset = 0
+    
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+            params = {"offset": offset, "timeout": 20}
+            resp = requests.get(url, params=params, timeout=30)
+            
+            if resp.status_code != 200:
+                time.sleep(10)
+                continue
+                
+            updates = resp.json().get("result", [])
+            for update in updates:
+                offset = update.get("update_id", 0) + 1
+                
+                message = update.get("message")
+                if not message:
+                    continue
+                    
+                chat = message.get("chat", {})
+                chat_id = str(chat.get("id", ""))
+                text = str(message.get("text", "")).strip()
+                
+                if chat_id != str(chat_id_target):
+                    # Unauthorized: Reply with a denial to prevent abuse
+                    try:
+                        deny_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                        requests.post(deny_url, json={
+                            "chat_id": chat_id,
+                            "text": "❌ <b>Unauthorized access.</b> Contact administrator to whitelist your Chat ID.",
+                            "parse_mode": "HTML"
+                        }, timeout=5)
+                    except Exception:
+                        pass
+                    continue
+                    
+                # Authorized commands
+                if not text.startswith("/"):
+                    continue
+                    
+                parts = text.split(maxsplit=1)
+                cmd = parts[0].lower().split("@")[0]
+                arg = parts[1].strip() if len(parts) > 1 else ""
+                
+                reply_text = ""
+
+                
+                if cmd in ["/start", "/help"]:
+                    reply_text = (
+                        "👋 <b>Welcome to the EaseToLearn Video Factory Bot!</b>\n\n"
+                        "Use me to monitor and control your explainer video compilation pipeline in real-time.\n\n"
+                        "<b>Available Commands:</b>\n"
+                        "• <code>/status</code> - List active & recent compilation jobs\n"
+                        "• <code>/cost</code> - View standard ledgers & API pricing\n"
+                        "• <code>/draft &lt;topic&gt;</code> - Get instant AI storyboard drafts\n"
+                        "• <code>/render &lt;topic&gt;</code> - Dispatch full HD video compile\n"
+                    )
+                elif cmd == "/status":
+                    _load_jobs()
+                    job_list = list(jobs.items())
+                    if not job_list:
+                        reply_text = "ℹ️ No compilation jobs in registry."
+                    else:
+                        reply_text = "<b>📋 Recent Compilation Queue:</b>\n\n"
+                        for j_id, j_data in sorted(job_list, key=lambda x: x[1].get("created_at", ""), reverse=True)[:5]:
+                            status = j_data.get("status", "unknown").upper()
+                            topic = j_data.get("topic", "N/A")
+                            cost = j_data.get("usd_cost", 0.0)
+                            prog = j_data.get("progress", 0)
+                            
+                            emoji = "⏳"
+                            if status == "COMPLETED": emoji = "✅"
+                            elif status == "FAILED": emoji = "❌"
+                            elif status == "COMPILING": emoji = "⚙️"
+                            
+                            reply_text += f"{emoji} <b>Job ID:</b> <code>{j_id}</code>\n"
+                            reply_text += f"   <b>Topic:</b> {topic}\n"
+                            reply_text += f"   <b>Status:</b> {status} ({prog}%)\n"
+                            reply_text += f"   <b>Cost:</b> ${cost:.4f}\n\n"
+                elif cmd == "/cost":
+                    reply_text = (
+                        "<b>💳 EaseToLearn Live Cost Ledgers:</b>\n\n"
+                        "• <b>Groq LLM Tokens:</b> $0.00015 / 1k tokens\n"
+                        "• <b>ElevenLabs TTS:</b> $0.00030 / character\n"
+                        "• <b>DALL-E Doodles:</b> $0.04000 / slide\n"
+                        "• <b>HeyGen Lip-Sync:</b> $0.15000 / video-sec\n"
+                    )
+                elif cmd == "/draft":
+                    if not arg:
+                        reply_text = "⚠️ <b>Usage:</b> <code>/draft &lt;topic&gt;</code>\nExample: <code>/draft Pythagorean Theorem</code>"
+                    else:
+                        try:
+                            # Send initial placeholder reply to indicate work
+                            interim_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                            requests.post(interim_url, json={
+                                "chat_id": chat_id,
+                                "text": f"⏳ <i>Drafting storyboard blueprint for topic: \"{arg}\"...</i>",
+                                "parse_mode": "HTML"
+                            }, timeout=5)
+                            
+                            # Run parser & director
+                            from html_parser import parse_tony_html
+                            parsed = parse_tony_html(f"<h1>{arg}</h1><p>Generate a comprehensive explainer tutorial.</p>", topic_hint=arg)
+                            
+                            from director_agent import run_director
+                            director_output, _ = run_director(
+                                parsed_facts=parsed,
+                                job_id="tg-draft"
+                            )
+                            
+                            scenes = director_output.scenes
+                            reply_text = f"<b>📝 Storyboard Draft for: \"{arg}\"</b>\n"
+                            reply_text += f"Proposed render path: <code>{director_output.render_mode}</code>\n\n"
+                            
+                            for i, s in enumerate(scenes[:4]): # limit to 4 to prevent message overflow
+                                reply_text += f"<b>Slide {i+1} ({s.visual_type}):</b>\n"
+                                reply_text += f"🎙️ <i>\"{s.narration_text[:60]}...\"</i>\n"
+                                if s.tony_pose:
+                                    reply_text += f"👤 Pose: <code>{s.tony_pose}</code>\n"
+                                reply_text += "\n"
+                            if len(scenes) > 4:
+                                reply_text += f"<i>...and {len(scenes)-4} more slides.</i>"
+                        except Exception as e:
+                            reply_text = f"❌ <b>Drafting failed:</b> {e}"
+                elif cmd == "/render":
+                    if not arg:
+                        reply_text = "⚠️ <b>Usage:</b> <code>/render &lt;topic&gt;</code>\nExample: <code>/render Pythagorean Theorem</code>"
+                    else:
+                        try:
+                            interim_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                            requests.post(interim_url, json={
+                                "chat_id": chat_id,
+                                "text": f"🚀 <i>Initializing HD Video Compile for: \"{arg}\"...</i>",
+                                "parse_mode": "HTML"
+                            }, timeout=5)
+                            
+                            # Build standard request payload and dispatch
+                            from html_parser import parse_tony_html
+                            parsed = parse_tony_html(f"<h1>{arg}</h1><p>Interactive tutorial outline.</p>", topic_hint=arg)
+                            
+                            from director_agent import run_director
+                            director_output, _ = run_director(
+                                parsed_facts=parsed,
+                                job_id="tg-render"
+                            )
+                            
+                            # Generate a unique job ID
+                            new_job_id = str(uuid.uuid4())[:12]
+                            now_iso = utcnow().isoformat() + "Z"
+                            
+                            # Construct initial state
+                            job_data = {
+                                "job_id":       new_job_id,
+                                "status":       "queued",
+                                "video_url":    "",
+                                "thumbnail_url": "",
+                                "error":        "",
+                                "progress":     0,
+                                "current_step": "Initializing",
+                                "render_mode":  director_output.render_mode or "auto",
+                                "with_avatar":  True,
+                                "avatar_type":  "tony_cartoon",
+                                "avatar_id":    None,
+                                "video_type":   None,
+                                "use_elevenlabs": True,
+                                "image_path":   None,
+                                "webhook_url":  None,
+                                "created_at":   now_iso,
+                                "updated_at":   now_iso,
+                                "topic":        arg,
+                                "raw_html":     parsed["html_content"],
+                                "storyboard":   [s.model_dump() if hasattr(s, "model_dump") else s for s in director_output.scenes],
+                                "overrides":    None,
+                                "logs":         [{"node": "SYSTEM", "msg": "🚀 Job initialized via Telegram Bot", "type": "info"}]
+                            }
+                            
+                            with _jobs_lock:
+                                jobs[new_job_id] = job_data
+                            
+                            # DB Persistence
+                            try:
+                                from db.repository import create_job
+                                create_job(
+                                    job_id=new_job_id,
+                                    topic=arg,
+                                    source_type="html",
+                                    render_mode_requested=director_output.render_mode or "auto",
+                                    with_avatar=True,
+                                    avatar_type="tony_cartoon",
+                                    callback_url=None
+                                )
+                            except Exception:
+                                pass
+                                
+                            _save_jobs()
+                            
+                            # Start thread
+                            t = threading.Thread(
+                                target=_run_pipeline,
+                                args=(new_job_id, arg, parsed["html_content"], "html", None),
+                                name=f"compile_{new_job_id}"
+                            )
+                            t.daemon = True
+                            t.start()
+                            
+                            reply_text = (
+                                f"🚀 <b>HD Compile Dispatched successfully!</b>\n\n"
+                                f"<b>Job ID:</b> <code>{new_job_id}</code>\n"
+                                f"<b>Topic:</b> {arg}\n"
+                                f"Use <code>/status</code> to check progress!"
+                            )
+                        except Exception as e:
+                            reply_text = f"❌ <b>Compilation launch failed:</b> {e}"
+                else:
+                    reply_text = "❌ <b>Unknown command.</b> Use <code>/help</code> to see all options."
+                    
+                if reply_text:
+                    try:
+                        send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                        requests.post(send_url, json={
+                            "chat_id": chat_id,
+                            "text": reply_text,
+                            "parse_mode": "HTML"
+                        }, timeout=10)
+                    except Exception as e:
+                        print(f"⚠️ Failed to send Telegram reply: {e}")
+                        
+        except Exception as e:
+            print(f"⚠️ Telegram Bot loop error: {e}")
+            time.sleep(5)
+
+
 def start_industrial_services():
     """Starts the background janitor and sanitizes stalled jobs."""
     _sanitize_stalled_jobs()
@@ -808,9 +1056,76 @@ if __name__ == "__main__":
     start_industrial_services()
 
 
+@app.on_event("startup")
+def on_startup():
+    """FastAPI startup hook to initialize industrial services and Telegram interactive bot."""
+    print("🚀 FastAPI App Startup Initializing...")
+    try:
+        _sanitize_stalled_jobs()
+    except Exception as e:
+        print(f"⚠️ Failed to sanitize stalled jobs: {e}")
+        
+    # Start interactive Telegram Bot loop in background thread
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id_target = os.environ.get("TELEGRAM_CHAT_ID")
+    if bot_token and chat_id_target:
+        import threading
+        bot_thread = threading.Thread(target=_start_telegram_bot_loop, name="telegram_bot")
+        bot_thread.daemon = True
+        bot_thread.start()
+        print("🤖 Interactive Telegram Bot thread dispatched successfully.")
+
+
+
+
+def _send_telegram_notification(job_id: str, status_data: dict):
+    """Sends a premium, highly formatted real-time status alert to Telegram when a video job completes or fails."""
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    
+    if not bot_token or not chat_id:
+        return
+        
+    status = status_data.get("status", "unknown").upper()
+    topic = status_data.get("topic", "N/A")
+    video_url = status_data.get("video_url", "")
+    cost = status_data.get("usd_cost", 0.0)
+    error = status_data.get("error", "")
+    
+    emoji = "✅" if status == "COMPLETED" else "❌"
+    
+    msg = f"<b>{emoji} EaseToLearn Video Factory Job Update</b>\n\n"
+    msg += f"<b>Job ID:</b> <code>{job_id}</code>\n"
+    msg += f"<b>Topic:</b> {topic}\n"
+    msg += f"<b>Status:</b> <code>{status}</code>\n"
+    msg += f"<b>Incurred Cost:</b> ${cost:.4f}\n"
+    
+    if status == "COMPLETED" and video_url:
+        msg += f"\n🎬 <b>Watch Video:</b> {video_url}\n"
+    elif error:
+        msg += f"\n⚠️ <b>Error Details:</b> <code>{error}</code>\n"
+        
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": msg,
+            "parse_mode": "HTML"
+        }
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code < 300:
+            print(f"✈️  Telegram notification sent successfully for job {job_id}")
+        else:
+            print(f"⚠️  Telegram API returned status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        print(f"⚠️  Failed to send Telegram notification: {e}")
+
 
 def _notify_webhook_with_retry(job_id: str, status_data: dict):
     """Industrial Sentinel: Robust notification with exponential backoff and full payload parity."""
+    # Send Telegram notification if configured
+    _send_telegram_notification(job_id, status_data)
+    
     # Priority: 1. Request-specific URL | 2. Registry value | 3. Global Env
     webhook_url = status_data.get("webhook_url") or os.environ.get("WEBHOOK_URL")
     
@@ -819,6 +1134,7 @@ def _notify_webhook_with_retry(job_id: str, status_data: dict):
 
     import time
     max_retries = 5
+
     last_status_code = None
     last_error = ""
     for attempt in range(max_retries):
@@ -876,6 +1192,7 @@ class RenderRequest(BaseModel):
     image_path:  Optional[str] = None
     webhook_url: Optional[str] = None
     use_elevenlabs: bool = False # Direct per-request switch (Industrial Cost Control)
+    storyboard: Optional[list[dict]] = Field(None, description="Custom storyboard scene blueprints from Editor Studio")
     overrides: Optional[RenderOverrides] = Field(None, description="Manual control toggles to override autonomous logic")
 
     class Config:
@@ -1232,6 +1549,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                 "use_elevenlabs":     job.get("use_elevenlabs", False),
                 "avatar_type":        job.get("avatar_type"),
                 "avatar_id":          job.get("avatar_id"),
+                "storyboard":         job.get("storyboard"),
             })
         except ImportError as e:
             error_category = "DEPENDENCY"
@@ -1393,6 +1711,60 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+@app.post("/storyboard/draft", dependencies=[SecurityDep], tags=["Core"], summary="Draft storyboard blueprint", description="Drafts a storyboard outline (render_mode, reasoning, scenes) using the Director Agent without compiling a video. The result can be reviewed and edited in the Storyboard Studio.")
+def draft_storyboard(request: RenderRequest):
+    combined_inputs = []
+    source_labels = []
+    
+    if request.json_data:
+        combined_inputs.append(request.json_data)
+        source_labels.append("json")
+    if request.html:
+        combined_inputs.append(request.html)
+        source_labels.append("html")
+    if request.markdown:
+        combined_inputs.append(request.markdown)
+        source_labels.append("markdown")
+    if request.solution_v2:
+        combined_inputs.append(request.solution_v2)
+        source_labels.append("solution_v2")
+
+    if not combined_inputs:
+        raise HTTPException(status_code=400, detail="At least one content source (html, json_data, or markdown) is required")
+
+    if len(combined_inputs) == 1:
+        raw_content = combined_inputs[0]
+    else:
+        raw_content = combined_inputs
+
+    from html_parser import parse_tony_html
+    parsed = parse_tony_html(raw_content, topic_hint=request.topic)
+
+    # Inject solution_v2 as knowledge if available
+    knowledge_base = None
+    if isinstance(raw_content, list) and all(isinstance(item, dict) and "title" in item for item in raw_content):
+        from knowledge_manager import inject_solution_v2_as_knowledge
+        knowledge_base = inject_solution_v2_as_knowledge(request.topic, raw_content)
+
+    from director_agent import run_director
+    director_output, usage = run_director(
+        parsed,
+        knowledge_base=knowledge_base,
+        avatar_type=request.avatar_type,
+        with_avatar=request.with_avatar
+    )
+
+    scenes = [
+        (s.model_dump() if hasattr(s, "model_dump") else s.dict()) 
+        for s in director_output.scenes
+    ]
+
+    return {
+        "render_mode": request.render_mode or director_output.render_mode,
+        "decision_reasoning": director_output.decision_reasoning,
+        "scenes": scenes
+    }
+
 @app.post("/render", response_model=JobStatus, dependencies=[SecurityDep], tags=["Core"], summary="Submit single job", description="Accepts lesson HTML, JSON, or Markdown to queue a single video production job. Returns a job_id immediately while rendering proceeds in a background thread.")
 def start_render(
     request: RenderRequest = Body(
@@ -1524,6 +1896,7 @@ def start_render(
             "updated_at":   now_iso,
             "topic":        request.topic,
             "raw_html":     raw_content,
+            "storyboard":    request.storyboard,
             "overrides":    request.overrides.model_dump() if request.overrides else None,
             "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}]
         }

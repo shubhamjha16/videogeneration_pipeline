@@ -8,8 +8,9 @@ from tts_generator import generate_audio
 from image_generator import generate_concept_image
 from gemini_omni_slides_generator import (
     generate_gemini_omni_concept_video, format_math_for_pillow, 
-    render_gemini_mcq_slide, apply_logo_watermark
+    render_gemini_mcq_slide
 )
+from explainer_slides_generator import apply_logo_watermark
 from manim_generator import generate_manim_video
 from PIL import Image, ImageDraw, ImageFont
 
@@ -78,7 +79,8 @@ def render_hybrid_slide_template(
     title: str,
     subtitle: str,
     bullets: list,
-    output_path: str
+    output_path: str,
+    tony_pose_path: str = None
 ):
     """
     Renders a widescreen premium slide background and text card on the right,
@@ -154,9 +156,9 @@ def render_hybrid_slide_template(
         if current_line:
             lines.append(" ".join(current_line))
         return lines
-
+ 
     from gemini_omni_slides_generator import draw_rich_math_text
-
+ 
     # Draw Title
     title_text = format_math_for_pillow(title)
     title_lines = wrap_text(title_text, font_title, 540)
@@ -191,6 +193,33 @@ def render_hybrid_slide_template(
             curr_y += 26
         curr_y += 12
         
+    # ─── TONY CARTOON AVATAR OVERLAY ─────────────────────────
+    if tony_pose_path and os.path.exists(tony_pose_path):
+        try:
+            print(f"   [tony-hybrid] compositing {os.path.basename(tony_pose_path)} onto text card")
+            with Image.open(tony_pose_path) as pose:
+                pose = pose.convert("RGBA")
+                # Tony should sit in the bottom right corner of the right content card
+                # Right content card is [640, 40, 1240, 680].
+                # We want Tony to be about 220px wide and 260px high.
+                target_w, target_h = 220, 260
+                pose.thumbnail((target_w, target_h), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS)
+                
+                # Overlay on top of template
+                overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+                
+                actual_w, actual_h = pose.size
+                # Place at the bottom right corner of the right card (x ≈ 1240 - actual_w - 20, y ≈ 680 - actual_h)
+                x = 1240 - actual_w - 20
+                y = 680 - actual_h
+                
+                overlay.paste(pose, (x, y))
+                
+                img_rgba = img.convert("RGBA")
+                img = Image.alpha_composite(img_rgba, overlay).convert("RGB")
+        except Exception as e:
+            print(f"⚠️ [tony-hybrid] failed to composite Tony: {e}")
+
     img.save(output_path)
     apply_logo_watermark(output_path)
     print(f"✅ Premium Slide Card rendered locally: {output_path}")
@@ -202,7 +231,9 @@ def generate_explainer_gemini_hybrid_slides_video(
     topic: str,
     job_id: str = None,
     use_elevenlabs: bool = True,
-    subject: str = "default"
+    subject: str = "default",
+    avatar_type: str = None,
+    with_avatar: bool = False
 ) -> tuple[str, dict]:
     """
     Explainer Gemini Hybrid Slides Engine
@@ -259,8 +290,21 @@ def generate_explainer_gemini_hybrid_slides_video(
             bullets = v_data.get("bullets", [])
             objects = v_data.get("objects", [])
             
+            # Determine Tony pose path
+            tony_pose_path = None
+            if avatar_type == "tony_cartoon" and with_avatar:
+                pose_name = scene.get("tony_pose")
+                if pose_name:
+                    if not pose_name.endswith(".png"):
+                        pose_name = f"tony_{pose_name}.png"
+                    tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", pose_name)
+                    if not os.path.exists(tony_pose_path):
+                        tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", "tony_desk_happy.png")
+                else:
+                    tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", "tony_desk_happy.png")
+
             # Render standard template with Pillow
-            render_hybrid_slide_template(title, subtitle, bullets, slide_img_path)
+            render_hybrid_slide_template(title, subtitle, bullets, slide_img_path, tony_pose_path=tony_pose_path)
             
             # Create base image clip from template
             base_clip = ImageClip(slide_img_path).set_duration(dur)

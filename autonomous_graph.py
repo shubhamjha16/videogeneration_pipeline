@@ -44,6 +44,7 @@ from knowledge_vector_store import retrieve_related_research
 from nodes.ambient_visual_node import ambient_visual_node
 from explainer_slides_generator import generate_explainer_slides_video
 from explainer_gemini_hybrid_slides_generator import generate_explainer_gemini_hybrid_slides_video
+from explainer_slides_marketing_generator import explainer_slides_marketing_node
 
 
 # ── Industrial Helpers ───────────────────────────────────────────────────────
@@ -290,6 +291,7 @@ class TonyState(TypedDict):
     use_elevenlabs: bool # Cost control switch
     avatar_type: Optional[str] # 'logo' | 'human' | 'pro' | 'user' | 'heygen'
     avatar_id:   Optional[str] # Specific HeyGen avatar ID
+    storyboard:  Optional[list] # Custom storyboard from Studio Editor
     overrides:   Optional[dict] # Manual toggles (from RenderOverrides model)
 
     # ── After director_node ────────────────────────────
@@ -347,6 +349,35 @@ def director_node(state: TonyState) -> TonyState:
     import re
     start_t = time.time()
     state = copy.deepcopy(state)
+
+    # ── Storyboard Studio Bypass ──
+    storyboard = state.get("storyboard")
+    if storyboard and isinstance(storyboard, list) and len(storyboard) > 0:
+        print(f"   🎯 Storyboard Studio: Preserving custom storyboard with {len(storyboard)} scenes!")
+        _log_progress(state, "DIRECTOR", f"Applying custom storyboard containing {len(storyboard)} scenes.")
+        
+        # Hard map scenes directly
+        state["scenes"] = storyboard
+        
+        # Process overrides
+        overrides = state.get("overrides") or {}
+        forced_mode = overrides.get("render_mode")
+        user_mode = (state.get("render_mode") or "auto").lower().strip()
+        
+        if "language" in overrides:
+            state["language"] = overrides["language"]
+        if "use_elevenlabs" in overrides:
+            state["use_elevenlabs"] = overrides["use_elevenlabs"]
+            
+        if forced_mode:
+            state["render_mode"] = forced_mode
+        elif user_mode not in ["auto", ""]:
+            state["render_mode"] = user_mode
+        else:
+            state["render_mode"] = "manim" # default fallback
+            
+        _log_progress(state, "DIRECTOR", f"Custom storyboard loaded. Render mode: {state['render_mode']}")
+        return state
     
     # Initializing Ledger (Phase 6)
     if "ledger" not in state or state["ledger"] is None:
@@ -1912,7 +1943,9 @@ def explainer_slides_node(state: TonyState) -> TonyState:
             state["topic"],
             job_id=state.get("job_id"),
             use_elevenlabs=state.get("use_elevenlabs", True),
-            subject=state.get("parsed_facts", {}).get("subject", "default")
+            subject=state.get("parsed_facts", {}).get("subject", "default"),
+            avatar_type=state.get("avatar_type"),
+            with_avatar=state.get("with_avatar", False)
         )
         state["output_path"] = os.path.abspath(video_path)
         
@@ -1950,7 +1983,9 @@ def explainer_gemini_hybrid_slides_node(state: TonyState) -> TonyState:
             state["topic"],
             job_id=state.get("job_id"),
             use_elevenlabs=state.get("use_elevenlabs", True),
-            subject=state.get("parsed_facts", {}).get("subject", "default")
+            subject=state.get("parsed_facts", {}).get("subject", "default"),
+            avatar_type=state.get("avatar_type"),
+            with_avatar=state.get("with_avatar", False)
         )
         state["output_path"] = os.path.abspath(video_path)
         
@@ -2250,7 +2285,7 @@ def should_research(state: TonyState) -> str:
     return "vision"
 
 def route_by_mode(state: TonyState) -> str:
-    """After vision — branch to one of the 5 paths."""
+    """After vision — branch to one of the paths."""
     mode = (state.get("render_mode") or "").strip().lower()
     if mode == "presentation":
         return "ppt_planner"
@@ -2258,6 +2293,8 @@ def route_by_mode(state: TonyState) -> str:
         return "explainer"
     elif mode == "explainer_slides":
         return "explainer_slides"
+    elif mode == "explainer_slides_marketing":
+        return "explainer_slides_marketing"
     elif mode == "explainer_gemini_hybrid":
         return "explainer_gemini_hybrid"
     elif mode == "notes":
@@ -2315,6 +2352,7 @@ workflow.add_node("ppt_tts",       ppt_tts_node)
 workflow.add_node("ppt_video",     ppt_video_node)
 workflow.add_node("explainer",     explainer_node)
 workflow.add_node("explainer_slides", explainer_slides_node)
+workflow.add_node("explainer_slides_marketing", explainer_slides_marketing_node)
 workflow.add_node("notes",         notes_node)
 workflow.add_node("heygen",        heygen_node)
 workflow.add_node("subtitles",     subtitle_node)
@@ -2339,6 +2377,7 @@ workflow.add_conditional_edges("ambient_visual", route_by_mode, {
     "ppt_planner": "ppt_planner",
     "explainer":   "explainer",
     "explainer_slides": "explainer_slides",
+    "explainer_slides_marketing": "explainer_slides_marketing",
     "explainer_gemini_hybrid": "explainer_gemini_hybrid",
     "notes":       "notes",
     "heygen":      "heygen",
@@ -2367,6 +2406,7 @@ workflow.add_edge("explainer",     "deploy")
 
 # Path 7: Premium Explainer Slides (Whiteboard Doodle)
 workflow.add_edge("explainer_slides", "deploy")
+workflow.add_edge("explainer_slides_marketing", "deploy")
 
 # Path 8: Explainer Gemini Hybrid Slides
 workflow.add_node("explainer_gemini_hybrid", explainer_gemini_hybrid_slides_node)

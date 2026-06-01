@@ -470,7 +470,10 @@ def format_math_for_pillow(text: str) -> str:
 def render_explainer_mcq_slide(
     visual_type: str,
     visual_data: dict,
-    output_path: str
+    output_path: str,
+    avatar_type: str = None,
+    with_avatar: bool = False,
+    tony_pose_path: str = None
 ):
     """
     Renders high-contrast, premium, 100% correct MCQ Option Analysis slides
@@ -478,6 +481,9 @@ def render_explainer_mcq_slide(
     and a wowed academic/clinical interface matching the provided templates.
     """
     w, h = 1024, 1024
+    
+    has_tony = (avatar_type == "tony_cartoon" and with_avatar and tony_pose_path and os.path.exists(tony_pose_path))
+    right_margin = 280 if has_tony else 40
     
     # 1. Background (Light Teal/Off-white grid background)
     img = Image.new("RGB", (w, h), "#F5F8F8")
@@ -549,10 +555,10 @@ def render_explainer_mcq_slide(
             lines.append(" ".join(current_line))
         return lines
         
-    q_lines = wrap_text(question, font_q, w - 240)
+    q_lines = wrap_text(question, font_q, w - right_margin - 80)
     
     # Draw question card
-    draw.rounded_rectangle([40, 40, w - 40, 200], radius=15, fill="#EBF5F5", outline="#0D7A7F", width=2)
+    draw.rounded_rectangle([40, 40, w - right_margin, 200], radius=15, fill="#EBF5F5", outline="#0D7A7F", width=2)
     q_y = 65
     for line in q_lines[:3]: # limit to 3 lines
         draw_rich_math_text(draw, (60, q_y), line, font_q, "#0D7A7F")
@@ -644,7 +650,7 @@ def render_explainer_mcq_slide(
             draw_x_mark = True
             
         # Draw option card rounded rectangle
-        card_box = [40, opt_y, w - 40, opt_y + 120]
+        card_box = [40, opt_y, w - right_margin, opt_y + 120]
         draw.rounded_rectangle(card_box, radius=12, fill=card_fill, outline=card_outline, width=card_border_w)
         
         # Draw Letter Circle
@@ -653,7 +659,7 @@ def render_explainer_mcq_slide(
         draw_rich_math_text(draw, (77, opt_y + 45), letter, font_opt_letter, letter_fill)
         
         # Draw Option Text
-        opt_lines = wrap_text(opt_text, font_opt, w - 240)
+        opt_lines = wrap_text(opt_text, font_opt, w - right_margin - 200)
         line_y = opt_y + 40 if len(opt_lines) == 1 else opt_y + 25
         for line in opt_lines[:2]:
             draw_rich_math_text(draw, (140, line_y), line, font_opt, text_fill)
@@ -661,11 +667,11 @@ def render_explainer_mcq_slide(
             
         # Draw dynamic status icons
         if draw_x_mark:
-            draw.line([(w - 100, opt_y + 40), (w - 60, opt_y + 80)], fill="#EF4444", width=4)
-            draw.line([(w - 60, opt_y + 40), (w - 100, opt_y + 80)], fill="#EF4444", width=4)
+            draw.line([(w - right_margin - 60, opt_y + 40), (w - right_margin - 20, opt_y + 80)], fill="#EF4444", width=4)
+            draw.line([(w - right_margin - 20, opt_y + 40), (w - right_margin - 60, opt_y + 80)], fill="#EF4444", width=4)
         elif draw_check_mark:
-            draw.line([(w - 95, opt_y + 60), (w - 80, opt_y + 75)], fill="#22C55E", width=5)
-            draw.line([(w - 80, opt_y + 75), (w - 60, opt_y + 45)], fill="#22C55E", width=5)
+            draw.line([(w - right_margin - 55, opt_y + 60), (w - right_margin - 40, opt_y + 75)], fill="#22C55E", width=5)
+            draw.line([(w - right_margin - 40, opt_y + 75), (w - right_margin - 20, opt_y + 45)], fill="#22C55E", width=5)
             
         opt_y += 140
         
@@ -673,9 +679,9 @@ def render_explainer_mcq_slide(
     if is_reveal:
         explanation = format_math_for_pillow(visual_data.get("explanation") or "")
         if explanation:
-            exp_lines = wrap_text(explanation, font_exp, w - 240)
+            exp_lines = wrap_text(explanation, font_exp, w - right_margin - 80)
             exp_y = 810
-            draw.rounded_rectangle([40, 790, w - 40, h - 40], radius=10, fill="#ECFDF5", outline="#34D399", width=2)
+            draw.rounded_rectangle([40, 790, w - right_margin, h - 40], radius=10, fill="#ECFDF5", outline="#34D399", width=2)
             
             if is_none_of_above:
                 font_exp_bold = get_font(20, bold=True)
@@ -686,6 +692,33 @@ def render_explainer_mcq_slide(
                 draw_rich_math_text(draw, (60, exp_y), line, font_exp, "#065F46")
                 exp_y += 25
                 
+    # ─── TONY CARTOON AVATAR OVERLAY ─────────────────────────
+    if has_tony:
+        try:
+            print(f"   [tony-mcq] compositing {os.path.basename(tony_pose_path)} onto MCQ slide")
+            with Image.open(tony_pose_path) as pose:
+                pose = pose.convert("RGBA")
+                # Scale Tony to fit in the right-side vertical column
+                # Vertical column: x = 760 to 1004 (width 244), y = 220 to 980
+                target_w, target_h = 240, 360
+                pose.thumbnail((target_w, target_h), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS)
+                
+                overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+                actual_w, actual_h = pose.size
+                
+                # Center horizontally in the 240px slot (slot starts at x = 760)
+                x = 760 + (240 - actual_w) // 2
+                # Align bottom with the bottom of the card content (y = 980)
+                y = 980 - actual_h
+                
+                print(f"   [tony-mcq] pasting at ({x}, {y}) size {pose.size}")
+                overlay.paste(pose, (x, y))
+                
+                img_rgba = img.convert("RGBA")
+                img = Image.alpha_composite(img_rgba, overlay).convert("RGB")
+        except Exception as e:
+            print(f"⚠️ [tony-mcq] failed to composite Tony: {e}")
+
     img.save(output_path)
     print(f"✅ Handcrafted MCQ slide ({visual_type}) rendered successfully to {output_path}")
 
@@ -706,10 +739,10 @@ def apply_logo_watermark(img_path: str):
         target_height = int((float(logo_img.size[1]) * float(w_percent)))
         logo_resized = logo_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
         
-        # Position logo: Bottom Right corner with 30px padding
+        # Position logo: Top Right corner with 30px padding
         slide_w, slide_h = slide_img.size
         pos_x = slide_w - target_width - 30
-        pos_y = slide_h - target_height - 30
+        pos_y = 30
         
         # Paste logo using its alpha channel as a mask for perfect transparency rendering
         slide_img.paste(logo_resized, (pos_x, pos_y), logo_resized)
@@ -721,7 +754,67 @@ def apply_logo_watermark(img_path: str):
         print(f"⚠️ Failed to apply watermark to {img_path}: {e}")
 
 
-def generate_explainer_slides_video(scenes: list, output_dir: str, topic: str, job_id: str = None, use_elevenlabs: bool = True, subject: str = "default") -> tuple[str, dict]:
+def composite_tony_pose_whiteboard(
+    base: Image.Image,
+    pose_path: str,
+    layout_type: str = "whiteboard"
+) -> Image.Image:
+    """
+    Composites the Tony RGBA pose onto a square 1024x1024 whiteboard slide.
+    Places him in the bottom-right corner (or bottom-left depending on layout).
+    """
+    if not pose_path or not os.path.exists(pose_path):
+        return base
+    
+    # By default, for whiteboard slides, we place Tony in the bottom right corner.
+    # W: 1024, H: 1024.
+    # Tony should be about 250-280px wide and 300-320px high.
+    # Bottom right: x = 1024 - 280 - 40 = 704, y = 1024 - 320 - 40 = 664.
+    pos = (700, 660)
+    size = (280, 320)
+    
+    if layout_type == "chaos_chapter":
+        pos = (40, 660) # Bottom left
+    
+    try:
+        print(f"   [tony] attempting whiteboard composite {os.path.basename(pose_path)} for layout {layout_type}")
+        with Image.open(pose_path) as pose:
+            pose = pose.convert("RGBA")
+            # Resize keeping aspect ratio
+            w, h = size
+            pose.thumbnail((w, h), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS)
+            
+            # Create transparent overlay same size as base
+            overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+            
+            # Center the thumbnail in the reserved slot
+            actual_w, actual_h = pose.size
+            x, y = pos
+            # Adjust y to keep it on the bottom floor
+            adjusted_y = y + (h - actual_h)
+            
+            print(f"   [tony] placing at ({x}, {adjusted_y}) with size {pose.size}")
+            overlay.paste(pose, (x, adjusted_y))
+            
+            # Alpha composite onto base
+            base_rgba = base.convert("RGBA")
+            combined = Image.alpha_composite(base_rgba, overlay)
+            return combined.convert("RGB")
+    except Exception as e:
+        print(f"   ❌ [tony] error in whiteboard composite: {e}")
+        return base
+
+
+def generate_explainer_slides_video(
+    scenes: list, 
+    output_dir: str, 
+    topic: str, 
+    job_id: str = None, 
+    use_elevenlabs: bool = True, 
+    subject: str = "default",
+    avatar_type: str = None,
+    with_avatar: bool = False
+) -> tuple[str, dict]:
     """
     Explainer Slides Engine v2.0
     Generates a premium, numbered whiteboard sequence synced to ElevenLabs narration.
@@ -757,7 +850,20 @@ def generate_explainer_slides_video(scenes: list, output_dir: str, topic: str, j
             
             # MCQ options-analysis visual types are drawn locally via Pillow for high legibility
             if v_type in ["mcq_layout", "option_highlight", "cross_out", "answer_reveal"]:
-                render_explainer_mcq_slide(v_type, v_data, img_path)
+                # Resolve Tony pose path to pass directly to render_explainer_mcq_slide
+                tony_pose_path = None
+                if avatar_type == "tony_cartoon" and with_avatar:
+                    pose_name = scene.get("tony_pose")
+                    if pose_name:
+                        if not pose_name.endswith(".png"):
+                            pose_name = f"tony_{pose_name}.png"
+                        tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", pose_name)
+                        if not os.path.exists(tony_pose_path):
+                            tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", "tony_desk_happy.png")
+                    else:
+                        tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", "tony_desk_happy.png")
+                
+                render_explainer_mcq_slide(v_type, v_data, img_path, avatar_type=avatar_type, with_avatar=with_avatar, tony_pose_path=tony_pose_path)
             else:
                 # Core whiteboard slide contents
                 title = v_data.get("title") or v_data.get("heading") or topic
@@ -795,6 +901,27 @@ def generate_explainer_slides_video(scenes: list, output_dir: str, topic: str, j
                     job_id=job_id
                 )
                 ledger["dalle_calls"] += 1
+                
+                # Composite Tony character onto DALL-E AI slides if active
+                if avatar_type == "tony_cartoon" and with_avatar:
+                    pose_name = scene.get("tony_pose")
+                    if pose_name:
+                        if not pose_name.endswith(".png"):
+                            pose_name = f"tony_{pose_name}.png"
+                        tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", pose_name)
+                        if not os.path.exists(tony_pose_path):
+                            tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", "tony_desk_happy.png")
+                    else:
+                        tony_pose_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tony_avatars_poses", "tony_desk_happy.png")
+                    
+                    if os.path.exists(tony_pose_path):
+                        try:
+                            print(f"   [tony-dalle] compositing pose '{os.path.basename(tony_pose_path)}' onto AI slide {img_path}")
+                            with Image.open(img_path) as base_img:
+                                composited_img = composite_tony_pose_whiteboard(base_img, tony_pose_path, layout_type=v_type)
+                                composited_img.save(img_path)
+                        except Exception as e:
+                            print(f"⚠️ [tony-dalle] failed to composite Tony: {e}")
             
             # Apply watermark dynamically
             apply_logo_watermark(img_path)

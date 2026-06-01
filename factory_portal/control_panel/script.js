@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupModals();
     setupDispatcher();
     setupSystemHalt();
+    setupStudioWorkspace();
     
     // Start Polling
     pollJobs();
@@ -747,4 +748,369 @@ function updateVault(jobs) {
     if (completedStat) {
         completedStat.innerHTML = `<i data-lucide="video" style="width:14px; height:14px; vertical-align:middle; margin-right:4px;"></i> ${completed.length} Masterclasses`;
     }
+}
+
+// Local Storyboard Storage
+let currentStoryboard = [];
+
+// Setup Storyboard Studio Workspace
+function setupStudioWorkspace() {
+    const studioDraftBtn = document.getElementById('studioDraftBtn');
+    const studioCompileBtn = document.getElementById('studioCompileBtn');
+    const studioAddSlideBtn = document.getElementById('studioAddSlideBtn');
+    
+    if (studioDraftBtn) {
+        studioDraftBtn.addEventListener('click', async () => {
+            const topic = document.getElementById('studioTopicInput').value.trim();
+            const content = document.getElementById('studioContentInput').value.trim();
+            const subject = document.getElementById('studioSubjectSelect').value;
+            const renderMode = document.getElementById('studioStrategySelect').value;
+            const withAvatar = document.getElementById('studioWithAvatar').checked;
+            const useElevenlabs = document.getElementById('studioUseElevenlabs').checked;
+            
+            if (!topic) {
+                alert('Please enter a lesson topic.');
+                return;
+            }
+            if (!content) {
+                alert('Please enter some curriculum content / facts.');
+                return;
+            }
+            
+            studioDraftBtn.disabled = true;
+            studioDraftBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Drafting Blueprint...';
+            lucide.createIcons();
+            
+            try {
+                const response = await fetch(`${API_BASE}/storyboard/draft`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({
+                        topic: topic,
+                        markdown: content,
+                        render_mode: renderMode,
+                        with_avatar: withAvatar,
+                        use_elevenlabs: useElevenlabs,
+                        avatar_type: withAvatar ? "tony_cartoon" : null
+                    })
+                });
+                
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Failed to draft storyboard.');
+                }
+                
+                const draft = await response.json();
+                currentStoryboard = draft.scenes || [];
+                
+                renderStoryboardWorkspace(currentStoryboard);
+                
+                // Show slide counts and footer
+                document.getElementById('studioIdleState').style.display = 'none';
+                document.getElementById('studioSlidesDeck').style.display = 'flex';
+                document.getElementById('studioDispatchFooter').style.display = 'flex';
+                document.getElementById('studioSlideCount').style.display = 'inline-block';
+                document.getElementById('studioAddSlideBtn').style.display = 'flex';
+                
+                // Update stats
+                document.getElementById('studioSlideCount').textContent = `${currentStoryboard.length} slides`;
+                updateEstCosts();
+            } catch (e) {
+                alert(`Drafting Error: ${e.message}`);
+            } finally {
+                studioDraftBtn.disabled = false;
+                studioDraftBtn.innerHTML = '<i data-lucide="sparkles"></i> Draft Storyboard Outline';
+                lucide.createIcons();
+            }
+        });
+    }
+    
+    if (studioAddSlideBtn) {
+        studioAddSlideBtn.addEventListener('click', () => {
+            // Push a default blank concept bullet slide
+            currentStoryboard.push({
+                visual_type: "concept_bullets",
+                tony_pose: "explaining",
+                visual_data: {
+                    title: "New Concept",
+                    bullets: ["Key learning point 1"]
+                },
+                narration_text: "Let's explore this next concept in detail. We will analyze the core facts and properties here."
+            });
+            renderStoryboardWorkspace(currentStoryboard);
+            updateEstCosts();
+            
+            // Scroll to bottom of deck
+            const deck = document.getElementById('studioSlidesDeck');
+            setTimeout(() => deck.scrollTop = deck.scrollHeight, 100);
+        });
+    }
+    
+    if (studioCompileBtn) {
+        studioCompileBtn.addEventListener('click', async () => {
+            const topic = document.getElementById('studioTopicInput').value.trim();
+            const content = document.getElementById('studioContentInput').value.trim();
+            const renderMode = document.getElementById('studioStrategySelect').value;
+            const withAvatar = document.getElementById('studioWithAvatar').checked;
+            const useElevenlabs = document.getElementById('studioUseElevenlabs').checked;
+            
+            if (currentStoryboard.length === 0) {
+                alert('No storyboard scenes exist to compile.');
+                return;
+            }
+            
+            studioCompileBtn.disabled = true;
+            studioCompileBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Launching Production...';
+            lucide.createIcons();
+            
+            try {
+                const response = await fetch(`${API_BASE}/render`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({
+                        topic: topic,
+                        markdown: content,
+                        render_mode: renderMode,
+                        with_avatar: withAvatar,
+                        use_elevenlabs: useElevenlabs,
+                        avatar_type: withAvatar ? "tony_cartoon" : null,
+                        storyboard: currentStoryboard
+                    })
+                });
+                
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'HD Render dispatch failed.');
+                }
+                
+                alert('Success! Custom video compilation job dispatched successfully.');
+                
+                // Reset studio fields
+                document.getElementById('studioTopicInput').value = '';
+                document.getElementById('studioContentInput').value = '';
+                currentStoryboard = [];
+                
+                // Reset Studio view back to idle
+                document.getElementById('studioSlidesDeck').style.display = 'none';
+                document.getElementById('studioSlidesDeck').innerHTML = '';
+                document.getElementById('studioDispatchFooter').style.display = 'none';
+                document.getElementById('studioSlideCount').style.display = 'none';
+                document.getElementById('studioAddSlideBtn').style.display = 'none';
+                document.getElementById('studioIdleState').style.display = 'flex';
+                
+                // Redirect to Mission Control tab
+                const missionBtn = document.querySelector('[data-tab="mission"]');
+                if (missionBtn) missionBtn.click();
+                pollJobs(); // Refresh grid immediately
+            } catch (e) {
+                alert(`Render Error: ${e.message}`);
+            } finally {
+                studioCompileBtn.disabled = false;
+                studioCompileBtn.innerHTML = '<i data-lucide="play-circle"></i> Compile HD Video Masterclass';
+                lucide.createIcons();
+            }
+        });
+    }
+}
+
+// Render the scrollable editor workspace cards
+function renderStoryboardWorkspace(scenes) {
+    const deck = document.getElementById('studioSlidesDeck');
+    if (!deck) return;
+    
+    deck.innerHTML = '';
+    
+    scenes.forEach((scene, index) => {
+        const card = document.createElement('div');
+        card.className = 'studio-slide-card glass';
+        card.setAttribute('data-index', index);
+        
+        const title = scene.visual_data.title || scene.visual_data.heading || "Slide Title";
+        const bulletsText = scene.visual_data.bullets ? scene.visual_data.bullets.join('\n') : '';
+        const objectsText = scene.visual_data.objects ? scene.visual_data.objects.join(', ') : '';
+        const narration = scene.narration_text || '';
+        
+        // Match visual icon based on slide type
+        let mockIcon = 'presentation';
+        let mockLabel = 'Slide Layout';
+        let mockDesc = 'Whiteboard card layout';
+        
+        const type = scene.visual_type;
+        if (type === 'title_card') {
+            mockIcon = 'file-text';
+            mockLabel = 'Title Slide';
+            mockDesc = 'Introduction title card';
+        } else if (type.includes('formula')) {
+            mockIcon = 'binary';
+            mockLabel = 'Math Derivation';
+            mockDesc = 'LaTeX safe Manim equations';
+        } else if (type.includes('mcq') || type === 'answer_reveal' || type === 'cross_out' || type === 'option_highlight') {
+            mockIcon = 'help-circle';
+            mockLabel = 'MCQ Sequence';
+            mockDesc = 'Atomic MCQ layout card';
+        } else if (type === 'annotated_image') {
+            mockIcon = 'image';
+            mockLabel = 'Concept Diagram';
+            mockDesc = 'Splitted label illustration';
+        } else if (type === 'b_roll_clip' || type === 'generative_video') {
+            mockIcon = 'clapperboard';
+            mockLabel = 'Cinematic Video';
+            mockDesc = 'Dynamic generative B-roll';
+        } else if (type === 'counting_metaphor') {
+            mockIcon = 'layers';
+            mockLabel = 'Metaphor Counting';
+            mockDesc = 'Animated stylized counting';
+        }
+        
+        const poses = [
+            { id: 'desk_happy', label: 'Happy (desk)' },
+            { id: 'standing_point_up', label: 'Point Up' },
+            { id: 'thinking', label: 'Thinking' },
+            { id: 'confused', label: 'Confused' },
+            { id: 'explaining', label: 'Explaining' },
+            { id: 'idea', label: 'Eureka Idea' },
+            { id: 'reading', label: 'Reading Case' },
+            { id: 'excited', label: 'Excited Accent' },
+            { id: 'victory', label: 'Triumphant Victory' }
+        ];
+        
+        const poseOptions = poses.map(p => {
+            const sel = (scene.tony_pose === p.id) ? 'selected' : '';
+            return `<option value="${p.id}" ${sel}>${p.label}</option>`;
+        }).join('');
+        
+        card.innerHTML = `
+            <div class="slide-card-header">
+                <span class="slide-num-badge">SLIDE ${index + 1}</span>
+                <div class="slide-card-actions">
+                    <span class="status-pill manual">${scene.visual_type.toUpperCase().replace('_', ' ')}</span>
+                    <button class="btn-card-danger" onclick="deleteStudioSlide(${index})">Delete</button>
+                </div>
+            </div>
+            
+            <div class="slide-visual-editor">
+                <!-- Left aspect-ratio 16:9 widescreen mockup -->
+                <div class="slide-mockup-left">
+                    <i data-lucide="${mockIcon}" class="mockup-icon"></i>
+                    <span class="mockup-label">${mockLabel}</span>
+                    <p class="mockup-desc">${mockDesc}</p>
+                    <span class="tony-mock-pose" id="pose-preview-${index}">${scene.tony_pose || 'desk_happy'}</span>
+                </div>
+                
+                <!-- Right slide details form -->
+                <div class="slide-mockup-right">
+                    <div class="slide-input-group">
+                        <label>Slide Title / Heading</label>
+                        <input type="text" class="input-slide-title" value="${escapeHtml(title)}" oninput="updateSlideData(${index}, 'title', this.value)">
+                    </div>
+                    
+                    <div class="slide-input-group">
+                        <label>Bullet Points (One per line)</label>
+                        <textarea class="textarea-slide-bullets" placeholder="Point 1&#10;Point 2...">${escapeHtml(bulletsText)}</textarea>
+                    </div>
+                    
+                    <div class="editor-pose-doodles">
+                        <div class="slide-input-group">
+                            <label>Tutor Pose Gesture</label>
+                            <select class="glass selector" style="width: 100%; padding: 4px;" onchange="updateSlidePose(${index}, this.value)">
+                                <option value="" ${!scene.tony_pose ? 'selected' : ''}>None (Disabled)</option>
+                                ${poseOptions}
+                            </select>
+                        </div>
+                        <div class="slide-input-group">
+                            <label>Doodles / Objects to Draw</label>
+                            <input type="text" class="input-slide-title" value="${escapeHtml(objectsText)}" placeholder="e.g. atoms, heart, chart..." oninput="updateSlideDoodles(${index}, this.value)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bottom narration script editor -->
+            <div class="slide-narration-editor">
+                <label>Narration / spoken Voiceover Script</label>
+                <textarea class="textarea-narration-script" oninput="updateSlideNarration(${index}, this.value)">${escapeHtml(narration)}</textarea>
+            </div>
+        `;
+        
+        // Listen to bullets textarea specifically
+        const bulletsArea = card.querySelector('.textarea-slide-bullets');
+        bulletsArea.addEventListener('input', () => {
+            const bullets = bulletsArea.value.split('\n').map(b => b.trim()).filter(b => b.length > 0);
+            scene.visual_data.bullets = bullets;
+            updateEstCosts();
+        });
+        
+        deck.appendChild(card);
+    });
+    
+    // Update stats count in headers
+    document.getElementById('studioSlideCount').textContent = `${scenes.length} slides`;
+    lucide.createIcons();
+}
+
+// Global functions for inline mutations
+window.deleteStudioSlide = function(index) {
+    currentStoryboard.splice(index, 1);
+    renderStoryboardWorkspace(currentStoryboard);
+    updateEstCosts();
+};
+
+window.updateSlideData = function(index, field, value) {
+    if (currentStoryboard[index] && currentStoryboard[index].visual_data) {
+        currentStoryboard[index].visual_data[field] = value;
+    }
+};
+
+window.updateSlidePose = function(index, value) {
+    if (currentStoryboard[index]) {
+        currentStoryboard[index].tony_pose = value || null;
+        const preview = document.getElementById(`pose-preview-${index}`);
+        if (preview) preview.textContent = value || 'disabled';
+    }
+};
+
+window.updateSlideDoodles = function(index, value) {
+    if (currentStoryboard[index] && currentStoryboard[index].visual_data) {
+        currentStoryboard[index].visual_data.objects = value.split(',').map(o => o.trim()).filter(o => o.length > 0);
+    }
+};
+
+window.updateSlideNarration = function(index, value) {
+    if (currentStoryboard[index]) {
+        currentStoryboard[index].narration_text = value;
+        updateEstCosts();
+    }
+};
+
+// Calculate cost estimations live based on narration word counts
+function updateEstCosts() {
+    let charCount = 0;
+    currentStoryboard.forEach(s => {
+        charCount += (s.narration_text || '').length;
+    });
+    
+    // Estimates: LLM draft ($0.10) + ElevenLabs ($0.03 per 1k chars) + DALL-E ($0.04 per slide)
+    const voiceCost = charCount * 0.00003;
+    const assetsCost = currentStoryboard.length * 0.04;
+    const est = 0.10 + voiceCost + assetsCost;
+    
+    const costText = document.getElementById('studioEstCost');
+    if (costText) costText.textContent = `$${est.toFixed(2)}`;
+    
+    const timeText = document.getElementById('studioEstTime');
+    if (timeText) {
+        const buildTime = currentStoryboard.length * 20; // 20s average per slide
+        timeText.textContent = `~${buildTime}s`;
+    }
+}
+
+// Escape HTML utility
+function escapeHtml(text) {
+    if (!text) return '';
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }

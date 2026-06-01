@@ -26,6 +26,9 @@
             <button class="nav-btn" data-tab="vault">
                 <i data-lucide="database"></i> Curriculum Vault
             </button>
+            <button class="nav-btn" data-tab="studio" id="studioBtn">
+                <i data-lucide="clapperboard"></i> Storyboard Studio
+            </button>
             <button class="nav-btn" data-tab="settings" id="settingsBtn">
                 <i data-lucide="settings"></i> System Settings
             </button>
@@ -209,6 +212,120 @@
                             <i data-lucide="plus-circle"></i>
                             <p>Ingest New Curriculum Chapter</p>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- STORYBOARD STUDIO TAB -->
+        <section id="studioTab" class="tab-content">
+            <div class="studio-container">
+                <!-- Configuration panel (Left) -->
+                <div class="studio-config-panel glass">
+                    <div class="panel-header">
+                        <h2><span class="gradient-text">Storyboard</span> Architect</h2>
+                        <p class="subtitle-mini">Draft and fine-tune curriculum scripts</p>
+                    </div>
+                    
+                    <div class="form-group-studio">
+                        <label>Lesson Topic</label>
+                        <input type="text" id="studioTopicInput" class="glass input-full" placeholder="e.g. Permutations & Combinations, ILIAC Vessel Branching...">
+                    </div>
+                    
+                    <div class="form-group-studio">
+                        <label>Curriculum Syllabus Markdown / Text</label>
+                        <textarea id="studioContentInput" class="glass textarea-full" placeholder="### 1. Concept Introduction&#10;Write the curriculum syllabus facts here. You can include definitions, MCQs, or mathematical equations..."></textarea>
+                    </div>
+
+                    <div class="grid-2-col">
+                        <div class="form-group-studio">
+                            <label>Target Subject</label>
+                            <select id="studioSubjectSelect" class="glass selector w-full">
+                                <option value="default">Default</option>
+                                <option value="maths">Mathematics</option>
+                                <option value="physics">Physics</option>
+                                <option value="chemistry">Chemistry</option>
+                                <option value="medical">Medical / Biology</option>
+                                <option value="english">Humanities / English</option>
+                            </select>
+                        </div>
+                        <div class="form-group-studio">
+                            <label>Visual Strategy</label>
+                            <select id="studioStrategySelect" class="glass selector w-full">
+                                <option value="auto">AUTO (AI Decision)</option>
+                                <option value="manim">MANIM (Hard Math/Science)</option>
+                                <option value="presentation">PRESENTATION (Whiteboard Slide)</option>
+                                <option value="explainer">EXPLAINER (Multimodal Cinematic)</option>
+                                <option value="user_generated_video">UGV (HeyGen Avatar + Subs)</option>
+                                <option value="notes">NOTES (Ken Burns Infographic)</option>
+                                <option value="explainer_slides">EXPLAINER SLIDES (Whiteboard Doodle)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="studio-toggles-grid">
+                        <div class="studio-toggle-row">
+                            <div class="label-box">
+                                <span class="title">Cartoon Tutor Overlay</span>
+                                <span class="desc">Overlay character on whiteboard</span>
+                            </div>
+                            <label class="toggle scale-85">
+                                <input type="checkbox" id="studioWithAvatar" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="studio-toggle-row">
+                            <div class="label-box">
+                                <span class="title">ElevenLabs HD Voice</span>
+                                <span class="desc">High fidelity neural narration</span>
+                            </div>
+                            <label class="toggle scale-85">
+                                <input type="checkbox" id="studioUseElevenlabs" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary w-full justify-center ripple" id="studioDraftBtn" style="padding: 12px; margin-top: 10px;">
+                        <i data-lucide="sparkles"></i> Draft Storyboard Outline
+                    </button>
+                </div>
+
+                <!-- Storyboard Workspace (Right) -->
+                <div class="studio-workspace-panel glass">
+                    <div class="workspace-header">
+                        <h2>Storyboard Workspace</h2>
+                        <div class="workspace-actions">
+                            <button class="btn btn-secondary btn-small" id="studioAddSlideBtn" style="display: none;">
+                                <i data-lucide="plus"></i> Add Slide
+                            </button>
+                            <span class="slide-count-badge" id="studioSlideCount" style="display: none;">0 slides</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Idle State -->
+                    <div class="studio-idle-state" id="studioIdleState">
+                        <div class="idle-prompt">
+                            <i data-lucide="clapperboard" class="pulse-icon"></i>
+                            <h3>Blueprint Draft Deck</h3>
+                            <p>Enter a lesson topic, syllabus text, and generate a draft blueprint storyboard. You can review slide mockups, edit scripts, change character gestures, and dispatch HD renders.</p>
+                        </div>
+                    </div>
+
+                    <!-- Scrollable Workspace Deck -->
+                    <div class="studio-slides-deck" id="studioSlidesDeck" style="display: none;">
+                        <!-- Slide card editors render here -->
+                    </div>
+
+                    <!-- Dispatch Action Footer -->
+                    <div class="studio-dispatch-footer" id="studioDispatchFooter" style="display: none;">
+                        <div class="dispatch-stats">
+                            <div class="stat-pill"><i data-lucide="database"></i> Estimated Cost: <span class="stat-val" id="studioEstCost">$0.00</span></div>
+                            <div class="stat-pill"><i data-lucide="clock"></i> Est. Build Time: <span class="stat-val" id="studioEstTime">~120s</span></div>
+                        </div>
+                        <button class="btn btn-primary ripple animate-pulse" id="studioCompileBtn" style="padding: 12px 24px; font-weight: 700;">
+                            <i data-lucide="play-circle"></i> Compile HD Video Masterclass
+                        </button>
                     </div>
                 </div>
             </div>
