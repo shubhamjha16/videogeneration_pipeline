@@ -2742,6 +2742,17 @@ def test_webhook():
         }
 
 
+@app.post("/test/webhook/receiver", tags=["Operational"], summary="Local test webhook receiver", description="A mock endpoint that receives and logs the video factory's callback payloads. Useful for local debugging and end-to-end testing without external webhook targets.")
+def receive_mock_webhook(payload: dict = Body(...)):
+    """Receives and logs mock webhook payloads locally for testing."""
+    print("\n" + "📬" * 40)
+    print("🔔 RECEIVED MOCK WEBHOOK CALLBACK PAYLOAD:")
+    print(json.dumps(payload, indent=2))
+    print("📬" * 40 + "\n")
+    return {"status": "received", "timestamp": utcnow().isoformat() + "Z"}
+
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
