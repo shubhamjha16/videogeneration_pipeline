@@ -67,7 +67,7 @@ class GeneratedScene(Scene):
         text_str = {json.dumps(text)}
         wrapped_text = textwrap.fill(text_str, width=45)
         text_obj = Text(wrapped_text, font_size=36)
-        self.play(Write(text_obj), run_time=int(len(text_str)*0.05))
+        self.play(Write(text_obj), run_time=max(1, int(len(text_str)*0.05)))
         self.wait(2)
 """
 

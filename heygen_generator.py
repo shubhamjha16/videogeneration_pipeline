@@ -169,6 +169,10 @@ def _generate_mock_video(prompt: str, output_path: str) -> tuple[str, float]:
                     "/System/Library/Fonts/Helvetica.ttc",
                     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
                     "/Library/Fonts/Arial Bold.ttf",
+                    "/System/Library/Fonts/HelveticaNeue.dfont",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
                 ]
             else:
                 paths = [
@@ -176,6 +180,10 @@ def _generate_mock_video(prompt: str, output_path: str) -> tuple[str, float]:
                     "/System/Library/Fonts/Helvetica.ttc",
                     "/System/Library/Fonts/Supplemental/Arial.ttf",
                     "/Library/Fonts/Arial.ttf",
+                    "/System/Library/Fonts/Helvetica.dfont",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
                 ]
             for p in paths:
                 if os.path.exists(p):

@@ -17,9 +17,9 @@ services:
       # Target Production S3 Bucket
       - S3_BUCKET=easetolearn-video-assets
       
-      # Connection endpoints (External RDS MySQL & Redis/ElastiCache)
+      # Connection endpoints (External RDS PostgreSQL & Redis/ElastiCache)
       # These should be overridden by actual cloud secret values, but standard environment formats are set here:
-      - DATABASE_URL=mysql+pymysql://${DB_USER}:${DB_PASS}@${DB_HOST}:3306/etl_video_generation
+      - DATABASE_URL=postgresql+psycopg2://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/etl_video_generation
       - REDIS_URL=redis://redis-prod:6379/0
       - SEARXNG_URL=http://searxng:8080
       - FACTORY_API_KEY=${FACTORY_API_KEY}

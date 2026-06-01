@@ -88,7 +88,7 @@ def verify_production_dependencies():
     # 1. Critical Environment Variables Check
     required_env_vars = {
         "FACTORY_API_KEY": "Required to secure the REST APIs from unauthorized access.",
-        "DATABASE_URL": "Required for production MySQL database persistence."
+        "DATABASE_URL": "Required for production PostgreSQL database persistence."
     }
     
     # Check LLM specific API Keys
@@ -105,14 +105,14 @@ def verify_production_dependencies():
         if not val:
             errors.append(f"❌ Missing environment variable: {var}\n   Reason: {desc}")
         elif var == "DATABASE_URL" and val.startswith("sqlite"):
-            errors.append(f"❌ DATABASE_URL uses SQLite fallback in production/staging: '{val}'\n   Reason: Production/Staging requires a robust centralized relational database (e.g. MySQL).")
+            errors.append(f"❌ DATABASE_URL uses SQLite fallback in production/staging: '{val}'\n   Reason: Production/Staging requires a robust centralized relational database (e.g. PostgreSQL).")
 
     # 2. Critical Module Dependencies Check
     required_modules = [
         ("redis", "Used for centralized distributed job synchronization and caching."),
         ("fcntl", "Required for Unix-based cross-process file-level locking."),
         ("sqlalchemy", "SQLAlchemy ORM for database connectivity."),
-        ("pymysql", "Pure Python MySQL driver for database connectivity."),
+        ("psycopg2", "PostgreSQL driver for database connectivity."),
         ("groq", "Groq Python SDK for fast LLM inference."),
         ("openai", "OpenAI Python SDK."),
     ]

@@ -305,6 +305,10 @@ def _create_fallback_video(prompt: str, output_path: str, duration: float = 5.0)
                 "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
                 "/Library/Fonts/Arial Bold.ttf",
+                "/System/Library/Fonts/HelveticaNeue.dfont",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             ]
         else:
             paths = [
@@ -312,6 +316,10 @@ def _create_fallback_video(prompt: str, output_path: str, duration: float = 5.0)
                 "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial.ttf",
                 "/Library/Fonts/Arial.ttf",
+                "/System/Library/Fonts/Helvetica.dfont",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
             ]
         for p in paths:
             if os.path.exists(p):
@@ -629,7 +637,8 @@ def render_gemini_mcq_slide(
     visual_type: str,
     visual_data: dict,
     output_path: str,
-    duration: float = 5.0
+    duration: float = 5.0,
+    tony_pose: str = None
 ):
     """
     Renders high-contrast, premium MCQ Option Analysis slides matching the
@@ -658,6 +667,10 @@ def render_gemini_mcq_slide(
                 "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
                 "/Library/Fonts/Arial Bold.ttf",
+                "/System/Library/Fonts/HelveticaNeue.dfont",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             ]
         else:
             paths = [
@@ -665,6 +678,10 @@ def render_gemini_mcq_slide(
                 "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial.ttf",
                 "/Library/Fonts/Arial.ttf",
+                "/System/Library/Fonts/Helvetica.dfont",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
             ]
         for p in paths:
             if os.path.exists(p):
@@ -828,7 +845,7 @@ def render_gemini_mcq_slide(
                 exp_y += 22
                 
     img.save(temp_img_path)
-    apply_logo_watermark(temp_img_path)
+    apply_logo_watermark(temp_img_path, pose_name=tony_pose)
     
     # Save as static MP4 clip using MoviePy
     try:
@@ -843,33 +860,61 @@ def render_gemini_mcq_slide(
     print(f"✅ NotebookLM MCQ slide video saved successfully: {output_path}")
 
 
-def apply_logo_watermark(img_path: str):
-    """Pastes the EaseToLearn transparent logo at the bottom-right corner of the slide."""
-    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
-    if not os.path.exists(logo_path):
+def apply_logo_watermark(img_path: str, pose_name: str = None):
+    """
+    Pastes either the EaseToLearn logo or the resolved Tony AI pose variant
+    as a semi-transparent brand watermark in the corner of the slide.
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    watermark_path = None
+    
+    # 1. Contextual Lookup: Check if a specific Tony AI pose was resolved for this scene
+    if pose_name:
+        p_name = pose_name.lower().strip()
+        if not p_name.startswith("tony_"):
+            p_name = f"tony_{p_name}"
+        if not p_name.endswith(".png"):
+            p_name = f"{p_name}.png"
+            
+        candidate_path = os.path.join(base_dir, "tony_avatars_poses", p_name)
+        if os.path.exists(candidate_path):
+            watermark_path = candidate_path
+            
+    # 2. Fallback: Load standard high-DPI transparent logo
+    if not watermark_path:
+        watermark_path = os.path.join(base_dir, "assets", "logo.png")
+        
+    if not os.path.exists(watermark_path):
         return
         
     try:
         slide_img = Image.open(img_path).convert("RGBA")
-        logo_img = Image.open(logo_path).convert("RGBA")
+        wt_img = Image.open(watermark_path).convert("RGBA")
         
-        # Resize logo to standard watermark size (140px width, keeping aspect ratio)
-        target_width = 140
-        w_percent = (target_width / float(logo_img.size[0]))
-        target_height = int((float(logo_img.size[1]) * float(w_percent)))
-        logo_resized = logo_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        is_pose = "tony_" in os.path.basename(watermark_path)
         
-        # Position logo: Bottom Right corner with 30px padding
+        # Widescreen branding watermark sizing (miniature 90px for avatar bugs, 140px for logo bugs)
+        target_width = 90 if is_pose else 140
+        w_percent = (target_width / float(wt_img.size[0]))
+        target_height = int((float(wt_img.size[1]) * float(w_percent)))
+        wt_resized = wt_img.resize((target_width, target_height), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS)
+        
+        # Reduce alpha channel for subtle, high-class broadcast watermarking
+        r, g, b, a = wt_resized.split()
+        a = a.point(lambda p: int(p * 0.45 if is_pose else p * 0.80))
+        wt_resized = Image.merge("RGBA", (r, g, b, a))
+        
+        # Position logo: Top Right corner with 30px padding
         slide_w, slide_h = slide_img.size
         pos_x = slide_w - target_width - 30
-        pos_y = slide_h - target_height - 30
+        pos_y = 30
         
         # Paste logo using its alpha channel as a mask for perfect transparency rendering
-        slide_img.paste(logo_resized, (pos_x, pos_y), logo_resized)
+        slide_img.paste(wt_resized, (pos_x, pos_y), wt_resized)
         
         # Save back as RGB
         slide_img.convert("RGB").save(img_path)
-        print(f"💧 Successfully applied watermark to: {os.path.basename(img_path)}")
+        print(f"💧 Context Watermark ({os.path.basename(watermark_path)}) successfully applied to: {os.path.basename(img_path)}")
     except Exception as e:
         print(f"⚠️ Failed to apply watermark to {img_path}: {e}")
 
@@ -922,7 +967,7 @@ def generate_gemini_omni_slides_video(
             
             if v_type in ["mcq_layout", "option_highlight", "cross_out", "answer_reveal"]:
                 # Option analysis is drawn locally via Pillow for high legibility
-                render_gemini_mcq_slide(v_type, v_data, clip_path, duration=dur)
+                render_gemini_mcq_slide(v_type, v_data, clip_path, duration=dur, tony_pose=scene.get("tony_pose"))
             else:
                 # Core 3D concept slide generated via Google Veo / Gemini Video API
                 title = v_data.get("title") or v_data.get("heading") or topic

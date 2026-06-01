@@ -508,6 +508,9 @@ def render_explainer_mcq_slide(
                 "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
                 "/Library/Fonts/Arial Bold.ttf",
                 "/System/Library/Fonts/HelveticaNeue.dfont",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             ]
         else:
             paths = [
@@ -516,6 +519,9 @@ def render_explainer_mcq_slide(
                 "/System/Library/Fonts/Supplemental/Arial.ttf",
                 "/Library/Fonts/Arial.ttf",
                 "/System/Library/Fonts/Helvetica.dfont",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
             ]
         for p in paths:
             if os.path.exists(p):
@@ -524,6 +530,7 @@ def render_explainer_mcq_slide(
                 except Exception as e:
                     print(f"⚠️ [explainer_slides] font load failed for {p}: {e}")
         return ImageFont.load_default()
+
         
     font_q = get_font(28, bold=True)
     font_opt = get_font(20, bold=False)
@@ -723,21 +730,49 @@ def render_explainer_mcq_slide(
     print(f"✅ Handcrafted MCQ slide ({visual_type}) rendered successfully to {output_path}")
 
 
-def apply_logo_watermark(img_path: str):
-    """Pastes the EaseToLearn transparent logo at the top-right corner of the slide."""
-    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
-    if not os.path.exists(logo_path):
+def apply_logo_watermark(img_path: str, pose_name: str = None):
+    """
+    Pastes either the EaseToLearn logo or the resolved Tony AI pose variant
+    as a semi-transparent brand watermark in the corner of the slide.
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    watermark_path = None
+    
+    # 1. Contextual Lookup: Check if a specific Tony AI pose was resolved for this scene
+    if pose_name:
+        p_name = pose_name.lower().strip()
+        if not p_name.startswith("tony_"):
+            p_name = f"tony_{p_name}"
+        if not p_name.endswith(".png"):
+            p_name = f"{p_name}.png"
+            
+        candidate_path = os.path.join(base_dir, "tony_avatars_poses", p_name)
+        if os.path.exists(candidate_path):
+            watermark_path = candidate_path
+            
+    # 2. Fallback: Load standard high-DPI transparent logo
+    if not watermark_path:
+        watermark_path = os.path.join(base_dir, "assets", "logo.png")
+        
+    if not os.path.exists(watermark_path):
         return
         
     try:
         slide_img = Image.open(img_path).convert("RGBA")
-        logo_img = Image.open(logo_path).convert("RGBA")
+        wt_img = Image.open(watermark_path).convert("RGBA")
         
-        # Resize logo to standard watermark size (140px width, keeping aspect ratio)
-        target_width = 140
-        w_percent = (target_width / float(logo_img.size[0]))
-        target_height = int((float(logo_img.size[1]) * float(w_percent)))
-        logo_resized = logo_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        is_pose = "tony_" in os.path.basename(watermark_path)
+        
+        # Widescreen branding watermark sizing (miniature 90px for avatar bugs, 140px for logo bugs)
+        target_width = 90 if is_pose else 140
+        w_percent = (target_width / float(wt_img.size[0]))
+        target_height = int((float(wt_img.size[1]) * float(w_percent)))
+        wt_resized = wt_img.resize((target_width, target_height), Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.ANTIALIAS)
+        
+        # Reduce alpha channel for subtle, high-class broadcast watermarking
+        r, g, b, a = wt_resized.split()
+        a = a.point(lambda p: int(p * 0.45 if is_pose else p * 0.80))
+        wt_resized = Image.merge("RGBA", (r, g, b, a))
         
         # Position logo: Top Right corner with 30px padding
         slide_w, slide_h = slide_img.size
@@ -745,11 +780,11 @@ def apply_logo_watermark(img_path: str):
         pos_y = 30
         
         # Paste logo using its alpha channel as a mask for perfect transparency rendering
-        slide_img.paste(logo_resized, (pos_x, pos_y), logo_resized)
+        slide_img.paste(wt_resized, (pos_x, pos_y), wt_resized)
         
         # Save back as RGB
         slide_img.convert("RGB").save(img_path)
-        print(f"💧 Successfully applied watermark to: {os.path.basename(img_path)}")
+        print(f"💧 Context Watermark ({os.path.basename(watermark_path)}) successfully applied to: {os.path.basename(img_path)}")
     except Exception as e:
         print(f"⚠️ Failed to apply watermark to {img_path}: {e}")
 
@@ -924,7 +959,7 @@ def generate_explainer_slides_video(
                             print(f"⚠️ [tony-dalle] failed to composite Tony: {e}")
             
             # Apply watermark dynamically
-            apply_logo_watermark(img_path)
+            apply_logo_watermark(img_path, pose_name=scene.get("tony_pose"))
             
             # 3. Create clip
             slide_clip = ImageClip(img_path).set_duration(dur).set_audio(audio_clip)

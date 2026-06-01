@@ -1,7 +1,7 @@
 """
 Data Access Layer (Repository Pattern) for the Video Factory.
 
-Provides clean, high-level functions for MySQL persistence.
+Provides clean, high-level functions for PostgreSQL persistence.
 All functions include try/except blocks to ensure that database 
 failures never crash the primary video generation pipeline.
 """

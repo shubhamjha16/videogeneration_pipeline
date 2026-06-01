@@ -3,7 +3,7 @@ Database Engine & Session Factory
 
 Connection lifecycle:
     - Reads DATABASE_URL from environment
-    - Production (ENV=production): MUST be mysql+pymysql://...  — fails loudly if missing
+    - Production (ENV=production): MUST be postgresql+psycopg2://...  — fails loudly if missing
     - Development (ENV=dev or unset): Falls back to SQLite for zero-config local dev
     - init_db() creates tables via Base.metadata.create_all() (safe to call multiple times)
 
@@ -32,7 +32,7 @@ def _get_database_url() -> str:
     if env == "production":
         print(
             "🔴 FATAL: DATABASE_URL is not set in production. "
-            "The factory CANNOT persist job data without MySQL. "
+            "The factory CANNOT persist job data without PostgreSQL. "
             "Set DATABASE_URL in Secrets Manager or environment.",
             file=sys.stderr,
         )
@@ -58,7 +58,7 @@ def _build_engine():
         connect_args = {"check_same_thread": False}
         pool_kwargs = {"pool_pre_ping": True}
     else:
-        # MySQL pool settings for ECS Fargate
+        # PostgreSQL pool settings for ECS Fargate
         pool_kwargs = {
             "pool_size": 5,
             "max_overflow": 10,

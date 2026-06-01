@@ -110,6 +110,9 @@ def render_hybrid_slide_template(
                 "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
                 "/Library/Fonts/Arial Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             ]
         else:
             paths = [
@@ -117,12 +120,16 @@ def render_hybrid_slide_template(
                 "/System/Library/Fonts/Helvetica.ttc",
                 "/System/Library/Fonts/Supplemental/Arial.ttf",
                 "/Library/Fonts/Arial.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
             ]
         for p in paths:
             if os.path.exists(p):
                 try: return ImageFont.truetype(p, size)
                 except Exception: continue
         return ImageFont.load_default()
+
         
     font_title = get_font(32, bold=True)
     font_sub = get_font(20, bold=False)
@@ -221,7 +228,8 @@ def render_hybrid_slide_template(
             print(f"⚠️ [tony-hybrid] failed to composite Tony: {e}")
 
     img.save(output_path)
-    apply_logo_watermark(output_path)
+    pose_name = os.path.basename(tony_pose_path) if tony_pose_path else None
+    apply_logo_watermark(output_path, pose_name=pose_name)
     print(f"✅ Premium Slide Card rendered locally: {output_path}")
 
 
