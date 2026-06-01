@@ -23,6 +23,7 @@ from sqlalchemy import (
     DateTime,
     Numeric,
     SmallInteger,
+    Index,
 )
 from sqlalchemy.orm import DeclarativeBase
 
@@ -38,7 +39,7 @@ class RenderJob(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     job_id = Column(String(100), nullable=False, unique=True, index=True)
-    question_id = Column(Integer, nullable=True)
+    question_id = Column(Integer, nullable=True, index=True)
     topic = Column(String(500), nullable=True)
     source_type = Column(String(50), nullable=True)  # html|json|markdown|composite
     render_mode_requested = Column(String(50), nullable=True)
@@ -80,7 +81,7 @@ class JobCondition(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     job_id = Column(String(100), nullable=False, unique=True, index=True)
-    question_id = Column(Integer, nullable=True)
+    question_id = Column(Integer, nullable=True, index=True)
 
     # Spring Boot hint flags (sent via RenderOverrides)
     has_image_in_body = Column(SmallInteger, nullable=False, default=0)
@@ -139,6 +140,10 @@ class VideoCache(Base):
     """Completed videos for Spring Boot lookups — maps to `video_cache` table."""
 
     __tablename__ = "video_cache"
+
+    __table_args__ = (
+        Index("idx_video_cache_entity", "related_entity_type", "related_entity_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     job_id = Column(String(100), nullable=False, unique=True, index=True)
