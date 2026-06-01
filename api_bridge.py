@@ -1677,17 +1677,11 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                 duration_seconds=total_duration
             )
             
-            if v_url:
-                upsert_video_cache(
-                    job_id=job_id,
-                    video_url=v_url,
-                    thumbnail_url=t_url,
-                    render_mode=jobs[job_id].get("render_mode", "auto"),
-                    topic=topic,
-                    total_cost_usd=sunk_cost,
-                    duration_seconds=int(total_duration),
-                    status="ready"
-                )
+            # Note: direct write to Spring's video_cache table (upsert_video_cache) has been retired
+            # to establish a strict, single-writer schema ownership model. Spring Boot is the sole
+            # writer of the video_cache table, updating it via the webhook callback. Python factory
+            # only writes to its own render_jobs table via update_job_status.
+            pass
         except Exception as e:
             pass
 
