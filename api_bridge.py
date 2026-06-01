@@ -1075,6 +1075,14 @@ def on_startup():
         bot_thread.start()
         print("🤖 Interactive Telegram Bot thread dispatched successfully.")
 
+    # Start RabbitMQ consumer (if RABBITMQ_URL / RABBITMQ_HOST is configured)
+    try:
+        from mq.consumer import start_consumer
+        start_consumer(pipeline_fn=_run_pipeline)
+    except Exception as e:
+        print(f"⚠️  MQ Consumer startup skipped: {e}")
+
+
 
 
 

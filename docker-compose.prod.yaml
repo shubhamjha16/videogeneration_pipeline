@@ -23,6 +23,15 @@ services:
       - REDIS_URL=redis://redis-prod:6379/0
       - SEARXNG_URL=http://searxng:8080
       - FACTORY_API_KEY=${FACTORY_API_KEY}
+      # RabbitMQ — async job bus (shared company instance)
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - RABBITMQ_USER=${RABBITMQ_USER}
+      - RABBITMQ_PASS=${RABBITMQ_PASS}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+      # Qdrant — organizational knowledge vector database
+      - QDRANT_HOST=${QDRANT_HOST}
+      - QDRANT_PORT=${QDRANT_PORT:-6333}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
     
     # Restrict resource allocation to avoid container crashes during intensive rendering tasks
     deploy:

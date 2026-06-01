@@ -11,6 +11,12 @@ services:
       - SEARXNG_URL=http://searxng:8080
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql+psycopg2://root:localdev@postgres:5432/etl_video_generation
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=etl
+      - RABBITMQ_PASS=localdev
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:/}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
       - ENV=dev
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -28,6 +34,10 @@ services:
       searxng:
         condition: service_started
       postgres:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
         condition: service_started
     restart: always
 
@@ -48,11 +58,16 @@ services:
       - DB_URL=jdbc:postgresql://postgres:5432/etl_video_generation?sslmode=disable
       - DB_USERNAME=root
       - DB_PASSWORD=localdev
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=etl
+      - RABBITMQ_PASS=localdev
     depends_on:
       postgres:
         condition: service_started
       factory-api:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     restart: always
 
   # ── 3. The Memory: Redis Cache ─────────────────────────────────────────────────
@@ -94,9 +109,41 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: always
 
+  # ── 6. The Message Bus: RabbitMQ ────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: easetolearn-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=etl
+      - RABBITMQ_DEFAULT_PASS=localdev
+      - RABBITMQ_DEFAULT_VHOST=/
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  # ── 7. The Knowledge Layer: Qdrant Vector Database ──────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.9.3
+    container_name: easetolearn-qdrant
+    ports:
+      - "6333:6333"   # HTTP / gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
 volumes:
   redis_data:
   postgres_data:
+  rabbitmq_data:
+  qdrant_data:
 
 networks:
   default:
