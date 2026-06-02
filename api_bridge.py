@@ -439,8 +439,29 @@ class CentralizedJobStore(dict):
             
             if source_dict is None:
                 if job_id not in self._local_jobs:
-                    raise KeyError(job_id)
-                source_dict = self._local_jobs[job_id]
+                    try:
+                        from db.repository import get_job_by_id
+                        db_job = get_job_by_id(job_id)
+                        if db_job:
+                            source_dict = {
+                                "job_id":       db_job["job_id"],
+                                "status":       db_job["status"],
+                                "video_url":    db_job["video_url"] or "",
+                                "thumbnail_url": db_job["thumbnail_url"] or "",
+                                "error":        db_job["error_message"] or "",
+                                "progress":     100 if db_job["status"] == "completed" else 0,
+                                "topic":        db_job["topic"],
+                                "render_mode":  "auto",
+                                "logs":         []
+                            }
+                            self._local_jobs[job_id] = source_dict
+                    except Exception as e:
+                        print(f"⚠️ CentralizedJobStore: Postgres fallback read failed for {job_id}: {e}")
+
+                if source_dict is None:
+                    if job_id not in self._local_jobs:
+                        raise KeyError(job_id)
+                    source_dict = self._local_jobs[job_id]
 
             # Create ObservedDict; callback serializes the observed dict itself
             observed = ObservedDict(source_dict, lambda: None)  # placeholder
@@ -475,7 +496,13 @@ class CentralizedJobStore(dict):
                     return bool(self._redis_client.sismember("factory:job_keys", job_id))
                 except Exception as e:
                     print(f"⚠️ CentralizedJobStore: Redis sismember failed for job {job_id}: {e}")
-            return job_id in self._local_jobs
+            if job_id in self._local_jobs:
+                return True
+            try:
+                from db.repository import get_job_by_id
+                return get_job_by_id(job_id) is not None
+            except Exception as e:
+                return False
 
     def get(self, job_id, default=None):
         try:
@@ -538,15 +565,22 @@ RENDER_SEMAPHORE = threading.BoundedSemaphore(2)
 
 _IDEMPOTENCY_TTL_SECONDS = int(os.environ.get("IDEMPOTENCY_TTL", 3600))
 
-def _idempotency_lookup(key: str) -> str | None:
+def _idempotency_lookup(key: str, topic: str | None = None) -> str | None:
     """Return existing job_id if a non-expired entry exists for this key."""
     if not key:
         return None
     cache = get_cache()
-    if not cache.available:
-        return None # Graceful degradation
+    if cache.available:
+        return cache.get(f"idempotency:{key}")
     
-    return cache.get(f"idempotency:{key}")
+    # Postgres Fallback
+    if topic:
+        try:
+            from db.repository import get_active_job_by_topic
+            return get_active_job_by_topic(topic)
+        except Exception as e:
+            print(f"⚠️ Postgres fallback idempotency lookup failed: {e}")
+    return None
 
 def _idempotency_register(key: str, job_id: str):
     """Store a new idempotency mapping in the persistent cache."""
@@ -555,6 +589,53 @@ def _idempotency_register(key: str, job_id: str):
     cache = get_cache()
     if cache.available:
         cache.set(f"idempotency:{key}", job_id, ttl_seconds=_IDEMPOTENCY_TTL_SECONDS)
+
+def _idempotency_acquire_or_get(
+    key: str,
+    job_id: str,
+    topic: str | None = None,
+    source_type: str = "html",
+    render_mode: str | None = None,
+    with_avatar: bool = False,
+    avatar_type: str | None = None,
+    callback_url: str | None = None
+) -> tuple[bool, str]:
+    """
+    Atomically acquire the idempotency lock for this key, or return the existing job_id.
+    """
+    if not key:
+        return True, job_id
+        
+    cache = get_cache()
+    if cache.available:
+        success = cache.set_nx(f"idempotency:{key}", job_id, ttl_seconds=_IDEMPOTENCY_TTL_SECONDS)
+        if success:
+            return True, job_id
+        else:
+            existing = cache.get(f"idempotency:{key}")
+            return False, existing or job_id
+            
+    # Postgres Fallover Fallback (Atomic check-and-insert via advisory lock):
+    if topic:
+        try:
+            from db.repository import acquire_active_job_slot_pg
+            acquired, active_id = acquire_active_job_slot_pg(
+                topic=topic,
+                job_id=job_id,
+                source_type=source_type,
+                render_mode=render_mode,
+                with_avatar=with_avatar,
+                avatar_type=avatar_type,
+                callback_url=callback_url
+            )
+            if not acquired:
+                return False, active_id or job_id
+            else:
+                return True, job_id
+        except Exception as e:
+            print(f"⚠️ Postgres fallback idempotency acquire failed: {e}")
+            
+    return True, job_id
 
 
 # ── Webhook Dead-Letter Queue (DLQ) ──────────────────────────────────────────
@@ -1666,6 +1747,7 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                 error = jobs[job_id]["error"]
                 v_url = jobs[job_id]["video_url"]
                 t_url = jobs[job_id]["thumbnail_url"]
+                idem_key = jobs[job_id].get("idempotency_key")
             
             update_job_status(
                 job_id=job_id,
@@ -1676,6 +1758,14 @@ def _run_pipeline(job_id: str, topic: str, html: str, source_type: str = "html",
                 total_cost_usd=sunk_cost,
                 duration_seconds=total_duration
             )
+            
+            # Explicit lock release on completion/failure to allow safe future retries
+            if idem_key:
+                try:
+                    cache = get_cache()
+                    cache.delete(f"idempotency:{idem_key}")
+                except Exception as e:
+                    print(f"⚠️ Failed to release idempotency key {idem_key}: {e}")
             
             # Note: direct write to Spring's video_cache table (upsert_video_cache) has been retired
             # to establish a strict, single-writer schema ownership model. Spring Boot is the sole
@@ -1806,24 +1896,6 @@ def start_render(
     ),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
-    # ── 0. Idempotency Guard ──
-    # Industrial Hardening: Use payload-based hash if header is missing
-    effective_key = idempotency_key or generate_idempotency_key(
-        request.model_dump(exclude={"overrides"}), 
-        request.render_mode, 
-        request.overrides.model_dump() if request.overrides else None
-    )
-    
-    existing_job_id = _idempotency_lookup(effective_key)
-    if existing_job_id:
-        _load_jobs()
-        with _jobs_lock:
-            if existing_job_id in jobs:
-                print(f"🔁 Idempotency hit: key={effective_key} → job={existing_job_id}")
-                res = copy.deepcopy(jobs[existing_job_id])
-                res["from_cache"] = True
-                return res
-
     # ── 1. [NEW] Polymorphic Appender (Priority & Concatenation) ──
     # Industrial Requirement: Support mixed input schemas (JSON + HTML + Markdown) appended in order.
     combined_inputs = []
@@ -1856,6 +1928,39 @@ def start_render(
     if not request.topic or not raw_content:
         raise HTTPException(status_code=400, detail="topic and at least one content source (html, json_data, or markdown) are required")
 
+    # ── 0. Idempotency Guard ──
+    # Industrial Hardening: Use payload-based hash if header is missing
+    effective_key = idempotency_key or generate_idempotency_key(
+        request.model_dump(exclude={"overrides"}), 
+        request.render_mode, 
+        request.overrides.model_dump() if request.overrides else None
+    )
+    
+    proposed_job_id = str(uuid.uuid4())[:12]
+    
+    cache = get_cache()
+    db_already_created = not cache.available
+    
+    acquired, existing_job_id = _idempotency_acquire_or_get(
+        effective_key, 
+        proposed_job_id, 
+        request.topic,
+        source_type=source_type,
+        render_mode=request.render_mode,
+        with_avatar=request.with_avatar,
+        avatar_type=request.avatar_type,
+        callback_url=request.webhook_url
+    )
+    
+    if not acquired:
+        _load_jobs()
+        with _jobs_lock:
+            if existing_job_id in jobs:
+                print(f"🔁 Idempotency hit: key={effective_key} → job={existing_job_id}")
+                res = copy.deepcopy(jobs[existing_job_id])
+                res["from_cache"] = True
+                return res
+
     # 🛡️ MEDIA HARDENING: Validate image assets before enqueuing
     if request.image_path:
         _validate_image_asset(request.image_path)
@@ -1863,15 +1968,8 @@ def start_render(
     # INDUSTRIAL SENTINEL: Refresh memory state before collision check
     _load_jobs()
     
-    # Industrial Sentinel: UUID Collision Guard for Infinite Scale
-    while True:
-        job_id = str(uuid.uuid4())[:12]
-        with _jobs_lock:
-            if job_id not in jobs:
-                break
-    
-    # Register the job ID with the idempotency key before starting
-    _idempotency_register(effective_key, job_id)
+    # Use the atomically pre-registered proposed_job_id
+    job_id = proposed_job_id
 
 
     now_iso = utcnow().isoformat() + "Z"
@@ -1900,23 +1998,25 @@ def start_render(
             "raw_html":     raw_content,
             "storyboard":    request.storyboard,
             "overrides":    request.overrides.model_dump() if request.overrides else None,
+            "idempotency_key": effective_key,
             "logs":         [{"node": "SYSTEM", "msg": init_msg, "type": "info"}]
         }
 
     # DB Persistence: Hook 1 - Job Submitted
-    try:
-        from db.repository import create_job
-        create_job(
-            job_id=job_id,
-            topic=request.topic,
-            source_type=source_type,
-            render_mode_requested=request.render_mode or "auto",
-            with_avatar=request.with_avatar,
-            avatar_type=request.avatar_type,
-            callback_url=request.webhook_url
-        )
-    except Exception as e:
-        pass
+    if not db_already_created:
+        try:
+            from db.repository import create_job
+            create_job(
+                job_id=job_id,
+                topic=request.topic,
+                source_type=source_type,
+                render_mode_requested=request.render_mode or "auto",
+                with_avatar=request.with_avatar,
+                avatar_type=request.avatar_type,
+                callback_url=request.webhook_url
+            )
+        except Exception as e:
+            pass
 
 
     thread = threading.Thread(
@@ -1944,12 +2044,15 @@ async def bulk_render(
 ):
     """Accept a JSON file and queue all lessons as separate jobs."""
     # ── Idempotency Guard ──
-    existing_job_id = _idempotency_lookup(idempotency_key)
-    if existing_job_id:
-        # For bulk, we stored a comma-separated list of job_ids as the "job_id"
-        cached_ids = existing_job_id.split(",")
-        print(f"🔁 Bulk idempotency hit: key={idempotency_key} → {len(cached_ids)} jobs")
-        return {"job_ids": cached_ids, "total": len(cached_ids), "status": "queued"}
+    placeholder_lock_value = "LOCK_ACQUIRING"
+    acquired, existing_job_id = _idempotency_acquire_or_get(idempotency_key, placeholder_lock_value)
+    if not acquired:
+        if existing_job_id != "LOCK_ACQUIRING":
+            cached_ids = existing_job_id.split(",")
+            print(f"🔁 Bulk idempotency hit: key={idempotency_key} → {len(cached_ids)} jobs")
+            return {"job_ids": cached_ids, "total": len(cached_ids), "status": "queued"}
+        else:
+            raise HTTPException(status_code=409, detail="A bulk render request with this key is already in progress.")
 
     content = await file.read()
     

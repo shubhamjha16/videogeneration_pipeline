@@ -50,10 +50,12 @@ class LLMFactory:
         if system_prompt:
             full_messages = [{"role": "system", "content": system_prompt}] + messages
 
+        effective_cacheable = cacheable and (temperature == 0.0)
+
         # ── LLM CACHE LOOKUP ──────────────────────────────────────────────────
         cache = get_cache()
         cache_key = None
-        if cache.available and cacheable:
+        if cache.available and effective_cacheable:
             # We use a default temperature of 0.0 for deterministic educational content
             cache_key = generate_llm_cache_key(model, str(system_prompt or ""), str(messages), temperature)
             cached_res = cache.get(cache_key)
@@ -106,7 +108,7 @@ class LLMFactory:
                 time.sleep(sleep_sec)
 
         # ── PERSIST TO CACHE ──────────────────────────────────────────────────
-        if cache.available and cacheable and cache_key:
+        if cache.available and effective_cacheable and cache_key:
             cache.set(cache_key, {"content": content, "usage": usage}, ttl_seconds=86400 * 7) # 7 Day TTL
 
         usage["from_cache"] = False

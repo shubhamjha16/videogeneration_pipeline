@@ -233,3 +233,143 @@ def upsert_video_cache(
         return False
     finally:
         session.close()
+
+
+def get_active_job_by_topic(topic: str) -> Optional[str]:
+    """Helper to find any currently active enqueued or processing job for this topic context."""
+    session = get_session()
+    if not session:
+        return None
+    try:
+        job = session.query(RenderJob).filter(
+            RenderJob.topic == topic,
+            RenderJob.status.in_(["queued", "processing"])
+        ).first()
+        return job.job_id if job else None
+    except Exception as e:
+        logger.warning(f"DB Error (get_active_job_by_topic): {e}")
+        return None
+    finally:
+        session.close()
+
+
+def get_job_by_id(job_id: str) -> Optional[dict]:
+    """Helper to fetch render job state details directly from Postgres."""
+    session = get_session()
+    if not session:
+        return None
+    try:
+        job = session.query(RenderJob).filter(RenderJob.job_id == job_id).first()
+        if job:
+            return {
+                "job_id": job.job_id,
+                "topic": job.topic,
+                "status": job.status,
+                "video_url": job.final_video_url,
+                "thumbnail_url": job.thumbnail_url,
+                "error_node": job.error_node,
+                "error_message": job.error_message,
+                "duration_seconds": float(job.duration_seconds) if job.duration_seconds else 0.0,
+                "total_cost_usd": float(job.total_cost_usd) if job.total_cost_usd else 0.0,
+            }
+        return None
+    except Exception as e:
+        logger.warning(f"DB Error (get_job_by_id): {e}")
+        return None
+    finally:
+        session.close()
+
+
+import threading
+_sqlite_fallback_lock = threading.Lock()
+
+def acquire_active_job_slot_pg(
+    topic: str,
+    job_id: str,
+    source_type: str = "html",
+    render_mode: Optional[str] = None,
+    with_avatar: bool = False,
+    avatar_type: Optional[str] = None,
+    callback_url: Optional[str] = None
+) -> tuple[bool, Optional[str]]:
+    """
+    Atomically check if an active job for the topic exists, and if not, create one.
+    Uses PostgreSQL session-level advisory locking (or normal transaction checks for SQLite fallback).
+    Returns (acquired, active_job_id).
+    """
+    import zlib
+    from sqlalchemy import text
+    
+    # Calculate a unique 32-bit signed integer hash for the topic
+    lock_id = zlib.crc32(f"active_job_slot:{topic}".encode('utf-8')) & 0x7fffffff
+    
+    session = get_session()
+    if not session:
+        return False, None
+        
+    try:
+        # SQLite dialect check
+        if session.bind.dialect.name == "sqlite":
+            with _sqlite_fallback_lock:
+                active_job = session.query(RenderJob).filter(
+                    RenderJob.topic == topic,
+                    RenderJob.status.in_(["queued", "processing"])
+                ).first()
+                if active_job:
+                    return False, active_job.job_id
+                    
+                job = RenderJob(
+                    job_id=job_id,
+                    topic=topic,
+                    source_type=source_type,
+                    render_mode_requested=render_mode or "auto",
+                    with_avatar=1 if with_avatar else 0,
+                    avatar_type=avatar_type,
+                    callback_url=callback_url,
+                    status="queued",
+                    queued_at=utcnow()
+                )
+                session.add(job)
+                session.commit()
+                return True, job_id
+            
+        # PostgreSQL Advisory Lock path
+        locked = session.execute(text("SELECT pg_try_advisory_lock(:lock_id)"), {"lock_id": lock_id}).scalar()
+        if not locked:
+            # Another concurrent request is currently enqueuing for this topic
+            return False, None
+            
+        try:
+            active_job = session.query(RenderJob).filter(
+                RenderJob.topic == topic,
+                RenderJob.status.in_(["queued", "processing"])
+            ).first()
+            if active_job:
+                return False, active_job.job_id
+                
+            job = RenderJob(
+                job_id=job_id,
+                topic=topic,
+                source_type=source_type,
+                render_mode_requested=render_mode or "auto",
+                with_avatar=1 if with_avatar else 0,
+                avatar_type=avatar_type,
+                callback_url=callback_url,
+                status="queued",
+                queued_at=utcnow()
+            )
+            session.add(job)
+            session.commit()
+            return True, job_id
+        finally:
+            session.execute(text("SELECT pg_advisory_unlock(:lock_id)"), {"lock_id": lock_id})
+            session.commit()
+            
+    except Exception as e:
+        logger.warning(f"DB Error (acquire_active_job_slot_pg): {e}")
+        session.rollback()
+        return False, None
+    finally:
+        session.close()
+
+

@@ -67,6 +67,16 @@ class Cache:
             logger.warning(f"⚠️ Cache Set failed for {key}: {e}")
             return False
 
+    def set_nx(self, key: str, value: Any, ttl_seconds: int) -> bool:
+        """Atomically set key only if it does not already exist (NX) with a TTL."""
+        if not self.available:
+            return False
+        try:
+            return bool(self.client.set(key, json.dumps(value), ex=ttl_seconds, nx=True))
+        except redis.RedisError as e:
+            logger.warning(f"⚠️ Cache SetNX failed for {key}: {e}")
+            return False
+
     def delete(self, key: str) -> bool:
         if not self.available:
             return False

@@ -66,3 +66,15 @@ Manual action usually required:
 - Persistent Manim/FFmpeg failures.
 - Repeated provider auth/permission failures.
 - Missing core assets across multiple nodes.
+
+## 6) Cache Lifecycle & Run Isolation Constraints
+
+To maintain the integrity of the transactional-atomic state machine between Spring Boot and the Python Factory, future developers and administrators must strictly adhere to the following **run isolation rule**:
+
+> [!IMPORTANT]
+> **Never reset an existing `video_cache` row back to `pending` or `rendering` in-place.**
+> 
+> * **Why**: Spring Boot enforces an atomic database-level status update guard that only transitions rows forward from `pending`/`rendering` to terminal `ready`/`failed` states. Webhooks from the Python factory are asynchronous and have retries (at-least-once delivery). 
+> * **The Risk**: If an admin or background script resets a completed row back to `pending` or `rendering` in-place (reusing the same `job_id` for a re-render), a late or delayed duplicate webhook from the *first* run will land on the reset row, satisfy the `pending`/`rendering` status check, and write the old/stale URLs—silently corrupting the active second run.
+> * **The Safe Way**: If a video needs to be invalidated, re-rendered, or retried, **always delete the existing row from the `video_cache` table** (or create a brand-new row with a **fresh `job_id` UUID**). This guarantees that stale duplicate webhooks from the old run will target the old job UUID (returning `0` rows affected) and can never corrupt or interfere with the new run.
+

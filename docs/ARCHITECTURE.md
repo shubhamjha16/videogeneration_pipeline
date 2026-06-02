@@ -1,107 +1,34 @@
-# EaseToLearn — Video Generation Architecture
+# Master Architecture Documentation - EaseToLearn Video Generation Suite
 
-This document defines the industrial architecture of the Autonomous Video Factory. The system uses an **Adaptive Agentic RAG** orchestration to generate high-fidelity educational content with zero human intervention.
+The architecture is centered around **Spring Boot** acting as the orchestration and business layer of the entire platform. Tony AI generates the Study Room JSON, which contains information such as the topic, subject, difficulty level, learning objectives, educational metadata, and lesson requirements. This JSON is sent to the Spring Boot backend, which becomes responsible for managing business workflows, user requests, authentication, course management, generation requests, status tracking, educational constraints, and organizational rules. Spring Boot serves as the central coordinator between the user-facing platform and the AI content generation system.
 
-## 🫀 The Master Graph (Technical Schematic)
+For persistent storage, the platform uses **PostgreSQL** as its transactional database. PostgreSQL stores users, courses, study rooms, generated videos, generation jobs, status information, storage URLs, logs, and other application data. Rather than treating the database as a shared writable surface, the platform enforces a strict single-writer ownership model across services. Spring Boot is the sole writer of the user-facing video cache, creating each job record when a generation is triggered and finalizing it to a completed or failed state only in response to lifecycle callbacks. The AI generation service writes exclusively to its own job-tracking tables, recording pipeline telemetry, cost statistics, and token usage, and holds no write access to Spring Boot's tables. This ownership boundary keeps the services loosely coupled, eliminates cross-service schema drift, and removes the possibility of one service silently corrupting another's state, while still allowing each service to read from the database where appropriate.
 
-```text
-========================================================================================
-                      EASETOLEARN AI VIDEO FACTORY - SYSTEM BLUEPRINT
-========================================================================================
+For external knowledge retrieval, the system utilizes **SearXNG**. When educational content requires supporting information, examples, references, recent developments, or additional context, SearXNG performs metasearch operations across multiple sources on the internet. This enables the platform to enrich lessons with fresh and relevant information that may not exist within its internal knowledge base.
 
-    [ EXTERNAL INPUT ]             [ INTELLIGENCE LAYER ]            [ OBSERVABILITY ]
-    Curriculum HTML  ──────┐        (Gemma 4 Orchestration)          (Mission Control)
-                           │                                                 │
-                           ▼                                                 ▼
-    ┌────────────────────────────────────────────────────────┐       ┌───────────────┐
-    │                  THE DIRECTOR AGENT                    │◀─────▶│ LIVE TELEMETRY │
-    │           (Powered by Gemma 4 Intelligence)            │       └───────────────┘
-    └──────────────────────────┬─────────────────────────────┘
-                               │
-            ┌──────────────────┴──────────────────┐
-            │        ADAPTIVE RESEARCH LOOP       │
-            ▼                                     ▼
-    ┌───────────────┐                     ┌───────────────┐
-    │ RESEARCH NODE │────────────────────▶│ DISTILLATION  │
-    │ (SearXNG 70+) │                     │   (Gemma 4)   │
-    └───────┬───────┘                     └───────┬───────┘
-            │                                     │
-            ▼                                     ▼
-    ┌───────────────┐                     ┌───────────────┐
-    │   OPEN WEB    │                     │KNOWLEDGE BASE │
-    │ (Global Brain)│                     │(Local Memory) │
-    └───────────────┘                     └───────┬───────┘
-                                                  │
-            ┌─────────────────────────────────────┘
-            ▼
-    ┌───────────────┐        ┌───────────────┐        ┌───────────────┐
-    │  VISION NODE  │───────▶│  PATH ROUTER  │───────▶│ MEDIA ENGINE  │
-    │ (Imagen / SD) │        │ (Mode Logic)  │        │ (FFmpeg/Glue) │
-    └───────────────┘        └──────┬────────┘        └──────┬────────┘
-                                    │                        │
-            ┌───────────────────────┼────────────────────────┴───────┐
-            ▼                       ▼                                ▼
-    ┌───────────────┐       ┌───────────────┐                ┌───────────────┐
-    │  MANIM PATH   │       │   PPT PATH    │                │ HEYGEN PATH   │
-    │ (Scientific)  │       │ (Educational) │                │ (Talking Head)│
-    └───────┬───────┘       └───────┬───────┘                └───────┬───────┘
-            │                       │                                │
-            ▼                       ▼                                ▼
-    ┌───────────────┐       ┌───────────────┐                ┌───────────────┐
-    │ HEALER AGENT  │       │  PPT CRITIC   │                │ SUBTITLE ENG  │
-    │ (Self-Repair) │       │ (QC Review)   │                │ (Kinetic)     │
-    └───────┬───────┘       └───────┬───────┘                └───────┬───────┘
-            │                       │                                │
-            └───────────────────────┼────────────────────────────────┘
-                                    ▼
-                          ┌───────────────────┐
-                          │    S3 GATEWAY     │
-                          │ (ap-south-1 IDR)  │
-                          └─────────┬─────────┘
-                                    ▼
-                          [ WEBHOOK HANDOVER ]
-========================================================================================
-```
+To support organization-specific knowledge retrieval, the architecture can incorporate **Qdrant** as a vector database. Qdrant serves as the internal knowledge layer and stores embeddings generated from approved lesson scripts, teacher notes, curriculum documents, transcripts, PDFs, previously generated content, and other educational assets. Before generating a lesson, relevant content can be retrieved from Qdrant to ensure that the generated material aligns with organizational teaching standards, curriculum requirements, and established educational methodologies.
 
----
+The AI generation layer is implemented as a **LangGraph-based multi-agent system** running within the Python service. Rather than relying on a single model call, lesson generation is performed by a collection of specialized agents collaborating through a state machine. The Director Agent acts as the primary decision-maker, analyzing lesson requirements, determining the optimal rendering pathway, and producing scene-level educational scripts. When additional information is required, the Research Agent retrieves knowledge from SearXNG and vector memory systems before passing the results back into the generation workflow.
 
-## 🛠 Production Path Specifications
+The visual generation subsystem consists of specialized agents responsible for educational imagery and visual reasoning. The **Vision Agent** generates concept illustrations, diagrams, educational imagery, and visual metaphors while also supporting visual grounding tasks. The **Ambient Visual Agent** generates atmospheric and supporting background imagery that enhances presentation-based educational content.
 
-### 1. MANIM PATH (Scientific Accuracy)
-*   **Target**: Maths, Physics, Biology, Medical (FMGE/NEET).
-*   **Visuals**: Mathematical animations, anatomical diagrams.
-*   **Self-Healing**: Uses the **Healer Agent** to autonomously fix Python rendering errors by searching web documentation.
+Based on the lesson type selected by the Director Agent, the workflow dynamically routes into one of several specialized production pipelines. Mathematical and scientific lessons are routed through the **Manim pipeline**, where the Architect Agent converts educational content into deterministic Manim animations synchronized with generated narration. The Supervisor Agent renders the final animations and assembles the completed video, while the Healer Agent automatically diagnoses and repairs rendering failures when they occur.
 
-### 2. PRESENTATION PATH (High Efficiency)
-*   **Target**: UPSC, History, Geography, Case Studies.
-*   **Visuals**: Animated "Doodle" slides with kinetic bullet points.
-*   **Control**: Uses the **PPT Critic** to peer-review slide layouts before final export.
+Presentation-oriented lessons are processed through a dedicated **slide generation pipeline**. The PPT Planner Agent creates structured slide plans, the PPT Critic Agent performs educational quality reviews and feedback loops, the PPT Renderer Agent generates visual slides, the PPT TTS Agent creates narration audio, and the PPT Video Agent combines all assets into a final presentation-based video.
 
-### 3. EXPLAINER PATH (Generative Narrative)
-*   **Target**: Abstract concepts and high-impact storytelling.
-*   **Visuals**: Cinematographic metaphors (e.g., ticking clocks, molecular vistas) using generative video strategies.
+The system also supports cinematic explainer content through multiple specialized rendering pathways. These include B-roll-driven explainer videos, doodle-style educational explainers, marketing-focused presentation variants, Gemini-powered hybrid videos, infographic-based study notes videos, and avatar-driven talking-head experiences powered by HeyGen. Each rendering path is optimized for a different educational presentation style while operating under a unified orchestration framework.
 
-### 4. PERSONALIZED PATH (Human Avatars)
-*   **Target**: Personal tutor engagements and short motivational snippets.
-*   **Visuals**: HeyGen AI Avatars with lip-synced narration and kinetic subtitles.
+To support scalability and long-running workloads, the platform uses **RabbitMQ** as its asynchronous job-processing layer. Rather than invoking AI generation workflows synchronously and waiting for completion, Spring Boot publishes generation requests to a durable RabbitMQ exchange, from which independent worker processes in the Python service consume and execute them. Jobs that fail or cannot be processed are routed to a dead-letter queue for inspection and recovery rather than being silently lost. A direct HTTP dispatch path to the generation service is retained as a development fallback for environments where the message broker is not running, but message-based dispatch is the canonical production path. This design allows the platform to scale horizontally, apply backpressure, recover gracefully from failures, and maintain responsiveness under heavy demand.
 
----
+Complementing this asynchronous layer, the platform employs **Redis** as a high-performance in-memory layer supporting the horizontally scaled generation workers, serving three distinct roles:
+1. **Response Caching**: Caches deterministic language-model responses. When an agent issues a model call at zero temperature, the request is hashed into a cache key so that an identical subsequent call is served from memory in milliseconds rather than re-incurring the API latency and cost, while creative, higher-temperature calls deliberately bypass the cache so that natural variation is never frozen and replayed, and cache hits are recorded against the cost ledger at zero spend so that usage figures are never inflated.
+2. **Cross-Worker Coordination**: Provides fast cross-worker coordination, allowing any worker instance to see which jobs are actively being processed so that work can be distributed safely across many parallel render nodes.
+3. **Idempotency Locks**: Backs an idempotency mechanism that uses atomic locks to ensure that a duplicated trigger, such as a double-click or a network retry, does not launch a second render of the same request.
 
-## 📊 External Intelligence Matrix
+Crucially, Redis accelerates and coordinates but is never the authoritative record: PostgreSQL remains the durable source of truth for job state, and the system is designed to degrade gracefully if Redis becomes unavailable, falling back to database-level coordination and atomic locking so that correctness is preserved and only the performance benefit of the in-memory layer is lost, not the integrity of the job lifecycle.
 
-| Service | Role | Model/Provider |
-| :--- | :--- | :--- |
-| **Gemma 4** | Director | Agentic orchestration (Local) |
-| **SearXNG** | Research | Privacy-focused Metasearch |
-| **Gemini / Imagen** | Vision | Generative concept diagrams |
-| **ElevenLabs** | TTS | Neural voice synthesis (Neha) |
-| **HeyGen** | Avatars | AI Video Avatars |
-| **AWS S3** | Cloud | Persistent storage (ap-south-1) |
+The Python service itself operates as a fully independent AI production microservice. It hosts the LangGraph workflow engine, specialized agents, retrieval systems, image generation pipelines, narration generation, animation rendering, slide rendering, video composition, quality validation, and deployment logic. This separation allows the Python ecosystem to leverage AI, media processing, and generative technologies while keeping business operations isolated within the Java backend.
 
----
+Upon completion of content generation, a deployment layer uploads generated assets to cloud storage and performs cleanup operations. The final generation status, video URLs, thumbnails, metadata, and processing results are then communicated back to Spring Boot through a webhook mechanism delivered with jittered retries, escalating to a dead-letter path only after repeated delivery failures. Spring Boot applies each callback through a forward-only state transition enforced atomically at the database layer: only jobs still in a pending or rendering state may advance to a terminal ready or failed state, so that terminal states are permanent and any late or duplicate callbacks are recognized and discarded without effect. Because each generation request is allocated a fresh, unique job identifier, retries and re-renders are treated as fully independent runs and cannot corrupt one another's state. Spring Boot updates PostgreSQL accordingly and exposes the completed educational content to students through the platform.
 
-## 🛰 Observability
-All internal events are streamed via the **Factory Portal**. 
-- **🔍 Research**: Telemetry highlighted in Golden Yellow.
-- **📚 Knowledge**: Telemetry highlighted in Emerald Green.
-- **🚨 Healer**: Pulsing Red alerts when self-repair is active.
+Overall, the architecture combines Spring Boot for orchestration and business logic, PostgreSQL for transactional storage, Redis for in-memory caching, cross-worker coordination, and idempotency, SearXNG for external retrieval, Qdrant for internal knowledge retrieval, LangGraph for multi-agent orchestration, LLMs for reasoning and content generation, RabbitMQ for asynchronous processing, specialized AI agents for planning and rendering, cloud storage for asset management, and webhooks for idempotent lifecycle communication. The result is an AI-first educational content factory capable of autonomously researching, planning, generating, reviewing, rendering, validating, and deploying educational videos across multiple presentation styles while maintaining organizational control, horizontal scalability, and a strict single-writer data ownership model that keeps its services decoupled and its job lifecycle race-free.
