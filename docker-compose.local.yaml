@@ -14,7 +14,7 @@ services:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_USER=etl
       - RABBITMQ_PASS=localdev
-      - RABBITMQ_VHOST=${RABBITMQ_VHOST:/}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - ENV=dev
