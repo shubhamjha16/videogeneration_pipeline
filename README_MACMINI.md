@@ -1,53 +1,101 @@
-# Mac Mini Staging — Setup Runbook
+# Mac Mini Staging — Setup Runbook (DevOps & Management Coordination)
 
 Stand up the EaseToLearn Video Factory on the office Mac Mini (Apple Silicon, reached over WireGuard). Internal staging only — not student-facing.
 
-All files in this bundle go at the **factory repo root**, alongside the `Dockerfile` and `searxng_standalone/`.
+All files in this bundle reside at the **factory repo root** (`/Users/apple/Desktop/easetolearn.videogeneration` or the designated installation directory on the Mac Mini), alongside the `Dockerfile` and `searxng_standalone/`.
 
-## 1. Prerequisites (one-time)
-1. Install the runtime (lighter than Docker Desktop, headless-friendly):
+---
+
+## 👥 Roles & Responsibilities Matrix
+
+To prevent confusion between the **DevOps Engineer** and the **Project Owner/User**, tasks are partitioned as follows:
+
+| Role | Responsibility | Tasks |
+| :--- | :--- | :--- |
+| **DevOps Engineer** | Infrastructure & Daemons | Install runtimes, configure LaunchAgent path mappings, verify container health, set up local database schemas. |
+| **Project Owner / User** | Secrets & Validation | Fill in the LLM / TTS / External API provider keys, verify the portal, run smoke tests. |
+
+---
+
+## 🛠️ Step-by-Step Deployment Guide
+
+### Step 1: Infrastructure Setup (DevOps Engineer)
+
+1. **Install Runtimes**:
+   Install Colima and Docker CLI on the Mac Mini (lighter, headless-friendly alternative to Docker Desktop):
    ```bash
    brew install colima docker docker-compose
    ```
-2. Enable **auto-login** for the box's user (System Settings → Users & Groups → Login Options). The LaunchAgent needs a user session for colima.
-3. Make the start script executable: `chmod +x start-factory.sh`
-4. If the repo isn't at `/Users/easetolearn/factory`, update the path in **both** `start-factory.sh` and `com.easetolearn.factory.plist`.
+2. **Configure Auto-Login**:
+   On macOS, go to **System Settings → Users & Groups → Login Options** and set **Automatic Login** to the system user. This is necessary because Colima requires an active GUI user session to spin up on boot.
+3. **Repository Directory Structure**:
+   Clone or pull this repository on the Mac Mini. 
+   > [!IMPORTANT]
+   > The default configuration scripts assume the repository is located at `/Users/easetolearn/factory`. If you put it in a different path (e.g. `/Users/apple/Desktop/easetolearn.videogeneration`), you **must** update the directory path in:
+   > - `start-factory.sh` (line 13: `FACTORY_DIR="/your/custom/path"`)
+   > - `com.easetolearn.factory.plist` (lines 17, 24, 26: update `/Users/easetolearn/factory` to `/your/custom/path`)
 
-## 2. Configure
-1. `cp .env.macmini.template .env`
-2. Set `LOCAL_CDN_URL` to the Mini's **WireGuard IP** (e.g. `http://10.8.0.3:8000`) — not localhost. This is the single setting that makes Portal playback and Tony AI callbacks work over the tunnel.
-3. Fill in the provider keys, plus `FACTORY_API_KEY` and `FACTORY_WEBHOOK_SECRET` (these two must match Tony AI's Spring Boot config).
+---
 
-## 3. Phase 0 — verify the callback direction
-WireGuard transport is up; confirm the factory can *initiate* back to Tony AI:
-```bash
-curl http://<tony-ai-wg-host>:<port>/health
-```
-If that returns, the trigger→callback round-trip is clear.
+### Step 2: Environment Configuration (User & DevOps Collaboration)
 
-## 4. First start (manual)
-```bash
-colima start --cpu 6 --memory 12 --disk 60   # tune to the Mini's specs
-docker compose -f docker-compose.macmini.yaml up -d --build
-```
-Confirm:
-- `curl http://localhost:8000/health` → ok
-- Open `http://<mini-wg-ip>:8000/portal` from another machine on the tunnel — the Curriculum Vault is where editors review renders.
-- RabbitMQ management UI (optional): `http://<mini-wg-ip>:15672`
+1. **Initialize `.env`**:
+   On the Mac Mini, copy the template to the active `.env` file:
+   ```bash
+   cp .env.macmini.template .env
+   ```
+2. **Configure WireGuard IP (DevOps)**:
+   Ensure the Mac Mini's WireGuard VPN interface is connected.
+   * On this network, the **Mac Mini's WireGuard IP is `10.0.1.1`** (the host running the API).
+   * Inside `.env`, set `LOCAL_CDN_URL`:
+     ```ini
+     LOCAL_CDN_URL=http://10.0.1.1:8000
+     ```
+3. **Fill in Secrets (User/Project Owner)**:
+   Open `.env` and fill in the active API provider credentials:
+   ```ini
+   # --- Integration Security ---
+   FACTORY_API_KEY=your_secure_api_key
+   FACTORY_WEBHOOK_SECRET=your_secure_webhook_secret
 
-## 5. Auto-start on reboot
-```bash
-mkdir -p ~/factory/logs
-cp com.easetolearn.factory.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.easetolearn.factory.plist
-```
-Then **reboot the Mini and confirm the stack comes back unattended** — this is the resilience test the launchd setup exists for.
+   # --- Provider Keys ---
+   ANTHROPIC_API_KEY=sk-ant-...
+   GROQ_API_KEY=gsk_...
+   GEMINI_API_KEY=AIzaSy...
+   ELEVENLABS_API_KEY=...
+   HEYGEN_API_KEY=...
+   OPENAI_API_KEY=sk-proj-...
+   ```
 
-## 6. Validate (Phases 3–4)
-- First real job in **Presentation mode** (proven path); play it back from the Portal to confirm `LOCAL_CDN_URL` resolves.
-- Then Manim → Explainer → Notes → HeyGen (last; external API).
-- Spring Boot trigger→callback round-trip over the tunnel.
-- Failure-injection pass (pull a provider key, force a Manim timeout) → confirm the Healer fires and the red alert shows in the Portal.
+---
 
-## AWS migration (when greenlit)
-This stack is a mirror of the AWS task definition. Cutover = push the same `factory-api` image to ECR, repoint env vars at managed endpoints (RDS / ElastiCache / Amazon MQ / Qdrant), move `.env` values into Secrets Manager, set `ENV=production` + `S3_BUCKET`. No code change. See the portability plan for the full step list and the go/no-go gate.
+### Step 3: Launch & Unattended Recovery (DevOps Engineer)
+
+1. **Verify Launch Script Executability**:
+   ```bash
+   chmod +x start-factory.sh
+   ```
+2. **Load LaunchAgent Daemon**:
+   Make the stack persistent across reboots:
+   ```bash
+   mkdir -p ~/factory/logs
+   cp com.easetolearn.factory.plist ~/Library/LaunchAgents/
+   launchctl load ~/Library/LaunchAgents/com.easetolearn.factory.plist
+   ```
+3. **Reboot Test**:
+   Reboot the Mac Mini. Verify that Colima starts up and the containers recover automatically without logging in manually.
+
+---
+
+### Step 4: Verification (User & DevOps)
+
+1. **Local Health Check (DevOps)**:
+   Run on the Mac Mini:
+   ```bash
+   curl http://localhost:8000/health
+   ```
+2. **Remote Portal Verification (User)**:
+   From your MacBook Air (`10.0.1.10`) or any machine connected to the WireGuard VPN, open:
+   `http://10.0.1.1:8000/portal`
+   Verify that the curriculum vault loads and mock slides can be rendered/previewed.
+
