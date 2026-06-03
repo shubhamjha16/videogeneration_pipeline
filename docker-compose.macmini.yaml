@@ -137,6 +137,8 @@ services:
   searxng:
     build: ./searxng_standalone
     container_name: etl-searxng-macmini
+    environment:
+      - SEARXNG_SECRET=easetolearnvideogenerationfactorysecretkeysecret
     restart: always
 
 volumes:
