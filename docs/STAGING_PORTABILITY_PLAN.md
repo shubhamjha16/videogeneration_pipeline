@@ -101,7 +101,21 @@ Meeting this gate is the signal that the AWS bet is safe.
 ---
 
 ## 6. AWS Cutover — The Green-Light Path
-When approved, going live reduces to mechanical infrastructure steps. No factory code is touched:
+
+When approved, migrating to production requires the following architectural splits and infrastructure adjustments:
+
+### A. Web / Worker Service Split (Fargate Tasks)
+To protect the system from resource starvation, the single staging container image must be split into two distinct AWS ECS Fargate roles:
+1. **API/Web Task**: Runs Uvicorn (`uvicorn api_bridge:app`). Serves the `/portal` dashboard, responds to status polls, and **publishes** incoming `/render` requests directly to RabbitMQ instead of starting a local `threading.Thread`.
+2. **Heavy Worker Task**: Runs the RabbitMQ consumer (`python -m mq.consumer`). It consumes messages, runs the pipeline, writes to the output mount, and posts completion webhooks.
+
+### B. Queue Hardening & Safety Requirements
+Before exposing the worker queue to production traffic, the following safety gates must be configured:
+* **Prefetch (QoS)**: Enforce a prefetch limit (`channel.basic_qos(prefetch_count=1)`) on the worker. This becomes the system's global concurrency throttle, replacing the in-process semaphore.
+* **Manual ACKs**: Enforce manual message acknowledgments. If a worker container crashes mid-render, RabbitMQ will safely put the task back on the queue rather than losing it.
+* **Dead Letter Queue (DLQ)**: Configure a DLQ (`etl.video.render.dlq`) with a max-retry limit (e.g., 3 attempts) to route corrupted payloads out of the main queue, preventing infinite loops that waste LLM and TTS api credits.
+
+### C. Deployment Checklist
 1. Push the container images to **AWS ECR** (build multi-arch or target arm64 Graviton Fargate).
 2. Point your environment variables to your managed cloud endpoints (Amazon RDS, Amazon ElastiCache, Amazon MQ, Qdrant).
 3. Move the `.env` values directly into **AWS Secrets Manager** (variable names match 1:1).
