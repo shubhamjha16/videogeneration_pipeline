@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  EaseToLearn Factory — LaunchAgent
+  Install to ~/Library/LaunchAgents/ and load with launchctl.
+  Runs at user login, so the box's user must have AUTO-LOGIN enabled
+  (colima needs a user session). Container-level recovery is handled by
+  `restart: always` in the compose file; this just brings colima + compose
+  up after a reboot. Edit the paths to match the repo location on the Mini.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.easetolearn.factory</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/easetolearn/factory/start-factory.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/easetolearn/factory/logs/factory-boot.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/easetolearn/factory/logs/factory-boot.err</string>
+</dict>
+</plist>

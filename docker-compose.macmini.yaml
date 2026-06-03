@@ -1,0 +1,150 @@
+# =============================================================================
+# EaseToLearn Video Factory — Mac Mini Staging Stack
+# -----------------------------------------------------------------------------
+# Internal staging only. Reached over WireGuard. NOT student-facing.
+#
+# Written as a deliberate MIRROR of the AWS Fargate task definition:
+#   - The factory-api container is IDENTICAL to what ships to AWS.
+#   - The ONLY differences vs production are:
+#       (a) ENV=dev
+#       (b) S3_BUCKET unset  -> local /stream storage, no S3 cost
+#       (c) sidecars run as containers here instead of managed AWS services
+#   - Migrating to AWS = repoint the env vars + flip ENV + set S3_BUCKET.
+#     No code change. No image change.
+# =============================================================================
+
+services:
+
+  # ── Video Factory API (byte-identical to the AWS image) ─────────────────────
+  factory-api:
+    build: .
+    image: easetolearn-factory-api:latest
+    container_name: etl-factory-api-macmini
+    ports:
+      - "8000:8000"
+    environment:
+      # --- Environment ---
+      - ENV=dev                               # AWS: production
+      # --- Storage (local SSD; no S3 cost while internal) ---
+      # S3_BUCKET intentionally UNSET -> _upload_to_s3 returns /stream/ URLs.
+      # On AWS: set S3_BUCKET and the SAME code path uploads to S3.
+      - LOCAL_CDN_URL=${LOCAL_CDN_URL}        # MUST be the Mini's WireGuard URL
+      - MANIM_MEDIA_DIR=/app/output
+      # --- Data plane (containers now -> managed services on AWS) ---
+      - DATABASE_URL=postgresql+psycopg2://etl:${POSTGRES_PASSWORD}@postgres:5432/etl_video_generation   # AWS: RDS endpoint
+      - REDIS_URL=redis://redis:6379/0        # AWS: ElastiCache endpoint
+      - SEARXNG_URL=http://searxng:8080       # AWS: searxng sidecar on ECS
+      - RABBITMQ_HOST=rabbitmq                # AWS: Amazon MQ host
+      - RABBITMQ_USER=${RABBITMQ_USER}
+      - RABBITMQ_PASS=${RABBITMQ_PASS}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+      - QDRANT_HOST=qdrant                    # AWS: Qdrant on ECS
+      - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # --- Integration security (names identical to AWS Secrets Manager) ---
+      - FACTORY_API_KEY=${FACTORY_API_KEY}
+      - FACTORY_WEBHOOK_SECRET=${FACTORY_WEBHOOK_SECRET}
+      # --- Provider keys (.env now -> Secrets Manager on AWS) ---
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
+      - HIGGSFIELD_API_KEY=${HIGGSFIELD_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./output:/app/output                  # rendered videos persist on the Mini's SSD
+      - ./jobs.json:/app/jobs.json            # job registry persists across restarts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      searxng:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 6G      # Manim + FFmpeg are memory-hungry; headroom for sidecars + macOS
+        reservations:
+          cpus: '2.0'
+          memory: 3G
+    restart: always
+
+  # ── Relational DB (container now -> RDS on AWS via DATABASE_URL) ────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: etl-postgres-macmini
+    environment:
+      - POSTGRES_USER=etl
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=etl_video_generation
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etl -d etl_video_generation"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # ── Cache (container now -> ElastiCache on AWS via REDIS_URL) ───────────────
+  redis:
+    image: redis:7-alpine
+    container_name: etl-redis-macmini
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+
+  # ── Job bus (container now -> Amazon MQ on AWS via RABBITMQ_HOST) ───────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: etl-rabbitmq-macmini
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+    ports:
+      - "15672:15672"   # management UI — useful for watching the job bus during staging
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  # ── Vector DB (container now -> Qdrant on ECS on AWS via QDRANT_HOST) ───────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: etl-qdrant-macmini
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+  # ── Search (sidecar now AND on AWS via SEARXNG_URL) ─────────────────────────
+  searxng:
+    build: ./searxng_standalone
+    container_name: etl-searxng-macmini
+    restart: always
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  qdrant_data:
+
+networks:
+  default:
+    name: easetolearn-macmini-network
