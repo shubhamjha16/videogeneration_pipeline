@@ -26,9 +26,14 @@ To prevent confusion between the **DevOps Engineer** and the **Project Owner/Use
    ```bash
    brew install colima docker docker-compose
    ```
-2. **Configure Auto-Login**:
-   On macOS, go to **System Settings → Users & Groups → Login Options** and set **Automatic Login** to the system user. This is necessary because Colima requires an active GUI user session to spin up on boot.
-3. **Repository Directory Structure**:
+2. **Initial Colima VM Sizing**:
+   The default Colima VM allocation (2 CPUs, 2GB RAM) is too small for our video engine + sidecars. You **must** size the VM with sufficient resources (we recommend 6 CPUs, 12GB RAM, and 60GB disk):
+   ```bash
+   colima start --cpu 6 --memory 12 --disk 60
+   ```
+3. **Configure Auto-Login**:
+   On macOS, go to **System Settings → Users & Groups → Login Options** and set **Automatic Login** to the system user. This is necessary because Colima runs inside a macOS user session and will not start until that user logs in.
+4. **Repository Directory Structure**:
    Clone or pull this repository on the Mac Mini. 
    > [!IMPORTANT]
    > The default configuration scripts assume the repository is located at `/Users/easetolearn/factory`. If you put it in a different path (e.g. `/Users/apple/Desktop/easetolearn.videogeneration`), you **must** update the directory path in:
