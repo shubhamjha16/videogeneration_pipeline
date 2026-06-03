@@ -849,11 +849,15 @@ def _save_jobs():
                 else:
                     disk_state[jid] = jval
 
-            # 4. Atomic Write
-            with open(tmp_file, "w", encoding='utf-8') as f:
-                json.dump(disk_state, f, indent=2, ensure_ascii=False)
-            
-            os.replace(tmp_file, JOBS_FILE)
+            # 4. Atomic Write with Docker single-file mount fallback
+            try:
+                os.replace(tmp_file, JOBS_FILE)
+            except OSError as replace_err:
+                if replace_err.errno == 16:  # Device or resource busy (Docker mount limitation)
+                    with open(JOBS_FILE, "w", encoding='utf-8') as f:
+                        json.dump(disk_state, f, indent=2, ensure_ascii=False)
+                else:
+                    raise
             if fcntl: fcntl.flock(lf, fcntl.LOCK_UN)
             
         return True
