@@ -17,7 +17,7 @@ def run_local_smoke_test():
     print(f"📍 Model:    {config.LOCAL_LLM_MODEL}")
     
     # 1. Load the lesson content
-    with open("linear_patterns.html", "r") as f:
+    with open("academic_presets/linear_patterns.html", "r") as f:
         html_content = f.read()
     
     # 2. Setup job metadata

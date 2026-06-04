@@ -12,9 +12,10 @@ import json
 import time
 from datetime import datetime
 
-FACTORY_URL = "http://localhost:8000"
+import os
+FACTORY_URL = os.environ.get("FACTORY_URL", "http://10.0.1.1:8000")
 FACTORY_API_KEY = "etl_factory_prod_8291_secret"
-SPRING_BOOT_WEBHOOK = "http://localhost:8081/api/v1/videos/webhook"
+SPRING_BOOT_WEBHOOK = os.environ.get("SPRING_BOOT_WEBHOOK", "http://10.0.1.10:8081/api/v1/videos/webhook")
 
 def test_springboot_integration():
     """Test the exact payload shape that Spring Boot would send."""
@@ -32,7 +33,7 @@ def test_springboot_integration():
     #
     # Internal metadata (jobId, purpose, etc.) is NOT sent to factory (marked @JsonProperty WRITE_ONLY)
     render_payload = {
-        "topic": "Solve the Quadratic Equation",  # Required by factory
+        "topic": "Solve the Quadratic Equation v2",  # Required by factory
         "html": "<h3>Quadratic Equation Basics</h3><p>For ax² + bx + c = 0, use the quadratic formula...</p>",  # Required (one of: html|solution_v2|json_data|markdown)
         "render_mode": "manim",  # Optional (factory AI chooses if null)
         "webhook_url": f"{SPRING_BOOT_WEBHOOK}",  # Where factory POSTs results
@@ -86,7 +87,7 @@ def test_springboot_integration():
                 time.sleep(2)
 
                 status_response = requests.get(
-                    f"{FACTORY_URL}/jobs/{factory_job_id}",
+                    f"{FACTORY_URL}/status/{factory_job_id}",
                     headers={"X-Api-Key": FACTORY_API_KEY},
                     timeout=5
                 )

@@ -34,6 +34,7 @@ factory_knowledge/*.json
 !factory_knowledge/fact_sheet_template.json
 
 # Temporary / Scratch Files
+scratch/
 !tests/
 temp_*.py
 *masterclass.py
