@@ -15,7 +15,7 @@
 
 services:
 
-  # ── Video Factory API (byte-identical to the AWS image) ─────────────────────
+  # ── Video Factory API ───────────────────────────────────────────────────────
   factory-api:
     build: .
     image: easetolearn-factory-api:latest
@@ -25,26 +25,25 @@ services:
     environment:
       # --- Environment ---
       - ENV=dev                               # AWS: production
+      - DISABLE_MQ_CONSUMER=true              # Standalone API: do not start consumer thread
       # --- Storage (local SSD; no S3 cost while internal) ---
-      # S3_BUCKET intentionally UNSET -> _upload_to_s3 returns /stream/ URLs.
-      # On AWS: set S3_BUCKET and the SAME code path uploads to S3.
       - LOCAL_CDN_URL=${LOCAL_CDN_URL}        # MUST be the Mini's WireGuard URL
       - MANIM_MEDIA_DIR=/app/output
-      # --- Data plane (containers now -> managed services on AWS) ---
-      - DATABASE_URL=postgresql+psycopg2://etl:${POSTGRES_PASSWORD}@postgres:5432/etl_video_generation   # AWS: RDS endpoint
-      - REDIS_URL=redis://redis:6379/0        # AWS: ElastiCache endpoint
-      - SEARXNG_URL=http://searxng:8080       # AWS: searxng sidecar on ECS
-      - RABBITMQ_HOST=rabbitmq                # AWS: Amazon MQ host
+      # --- Data plane ---
+      - DATABASE_URL=postgresql+psycopg2://etl:${POSTGRES_PASSWORD}@postgres:5432/etl_video_generation
+      - REDIS_URL=redis://redis:6379/0
+      - SEARXNG_URL=http://searxng:8080
+      - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_USER=${RABBITMQ_USER}
       - RABBITMQ_PASS=${RABBITMQ_PASS}
       - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
-      - QDRANT_HOST=qdrant                    # AWS: Qdrant on ECS
+      - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      # --- Integration security (names identical to AWS Secrets Manager) ---
+      # --- Integration security ---
       - FACTORY_API_KEY=${FACTORY_API_KEY}
       - FACTORY_WEBHOOK_SECRET=${FACTORY_WEBHOOK_SECRET}
-      # --- Provider keys (.env now -> Secrets Manager on AWS) ---
+      # --- Provider keys ---
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -53,8 +52,8 @@ services:
       - HIGGSFIELD_API_KEY=${HIGGSFIELD_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - ./output:/app/output                  # rendered videos persist on the Mini's SSD
-      - ./jobs.json:/app/jobs.json            # job registry persists across restarts
+      - ./output:/app/output
+      - ./jobs.json:/app/jobs.json
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,12 +68,69 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 6G      # Manim + FFmpeg are memory-hungry; headroom for sidecars + macOS
-        reservations:
           cpus: '2.0'
           memory: 3G
+        reservations:
+          cpus: '1.0'
+          memory: 1.5G
     restart: always
+
+  # ── Video Factory Queue Worker ──────────────────────────────────────────────
+  factory-worker:
+    image: easetolearn-factory-api:latest
+    container_name: etl-factory-worker-macmini
+    command: python3 mq/worker_entrypoint.py
+    environment:
+      # --- Environment ---
+      - ENV=dev
+      - MANIM_MEDIA_DIR=/app/output
+      # --- Data plane ---
+      - DATABASE_URL=postgresql+psycopg2://etl:${POSTGRES_PASSWORD}@postgres:5432/etl_video_generation
+      - REDIS_URL=redis://redis:6379/0
+      - SEARXNG_URL=http://searxng:8080
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=${RABBITMQ_USER}
+      - RABBITMQ_PASS=${RABBITMQ_PASS}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # --- Integration security ---
+      - FACTORY_API_KEY=${FACTORY_API_KEY}
+      - FACTORY_WEBHOOK_SECRET=${FACTORY_WEBHOOK_SECRET}
+      # --- Provider keys ---
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
+      - HIGGSFIELD_API_KEY=${HIGGSFIELD_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./output:/app/output
+      - ./jobs.json:/app/jobs.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      searxng:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: '3.0'
+          memory: 5G
+        reservations:
+          cpus: '1.5'
+          memory: 2.5G
+    restart: always
+    healthcheck:
+      disable: true
 
   # ── Relational DB (container now -> RDS on AWS via DATABASE_URL) ────────────
   postgres:
@@ -113,9 +169,11 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: etl-rabbitmq-macmini
+    hostname: rabbitmq
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+      - RABBITMQ_ERLANG_COOKIE=etl_staging_cookie
     ports:
       - "5672:5672"
       - "15672:15672"   # management UI — useful for watching the job bus during staging

@@ -105,18 +105,42 @@ def _on_message(channel, method, properties, body, pipeline_fn):
         job_id = payload.get("jobId") or payload.get("job_id", "unknown")
         logger.info("📨 MQ: Received render job %s from queue %s", job_id, RENDER_QUEUE)
 
-        # Build the kwargs expected by _run_pipeline (api_bridge.py)
+        # Determine raw_content and source_type
+        raw_content = None
+        source_type = "html"
+        
+        if payload.get("jsonData") or payload.get("json_data"):
+            raw_content = payload.get("jsonData") or payload.get("json_data")
+            source_type = "json"
+        elif payload.get("html"):
+            raw_content = payload.get("html")
+            source_type = "html"
+        elif payload.get("markdown"):
+            raw_content = payload.get("markdown")
+            source_type = "markdown"
+        elif payload.get("solutionV2") or payload.get("solution_v2"):
+            raw_content = payload.get("solutionV2") or payload.get("solution_v2")
+            source_type = "solution_v2"
+        else:
+            raw_content = ""
+            source_type = "html"
+
+        # Build overrides dictionary
+        overrides = payload.get("extraParams") or payload.get("extra_params") or {}
+        if payload.get("renderMode") or payload.get("render_mode"):
+            overrides["render_mode"] = payload.get("renderMode") or payload.get("render_mode")
+        if payload.get("webhookUrl") or payload.get("webhook_url"):
+            overrides["webhook_url"] = payload.get("webhookUrl") or payload.get("webhook_url")
+        if payload.get("useElevenLabs") is not None:
+            overrides["use_elevenlabs"] = payload.get("useElevenLabs")
+
+        # Invoke the pipeline with proper args
         pipeline_fn(
-            job_id=job_id,
-            topic=payload.get("topic", ""),
-            html=payload.get("html"),
-            solution_v2=payload.get("solutionV2") or payload.get("solution_v2"),
-            json_data=payload.get("jsonData") or payload.get("json_data"),
-            markdown=payload.get("markdown"),
-            render_mode=payload.get("renderMode") or payload.get("render_mode"),
-            webhook_url=payload.get("webhookUrl") or payload.get("webhook_url"),
-            use_elevenlabs=payload.get("useElevenLabs", False),
-            extra_params=payload.get("extraParams") or payload.get("extra_params") or {},
+            job_id,
+            payload.get("topic", ""),
+            raw_content,
+            source_type,
+            overrides
         )
 
         # ACK — message is permanently removed from queue

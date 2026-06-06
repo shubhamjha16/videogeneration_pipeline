@@ -2,7 +2,7 @@ import os
 import requests
 import json
 
-API_URL = "http://localhost:8000/render"
+API_URL = "http://10.0.1.1:8000/render"
 FACTORY_API_KEY = "etl_factory_prod_8291_secret"
 headers = {
     "X-API-Key": FACTORY_API_KEY,
@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     # 1. Spring Boot SolutionV2 Ingestion test (Presentation Mode)
     payload_presentation = {
-        "topic": "Cavernous Sinus Anatomy",
+        "topic": "Cavernous Sinus Anatomy v2",
         "render_mode": "presentation",
         "solution_v2": [
             {
@@ -43,14 +43,14 @@ if __name__ == "__main__":
 
     # 2. Manim Mathematical Ingestion test
     payload_manim = {
-        "topic": "Euler Identity Derivation",
+        "topic": "Euler Identity Derivation v2",
         "render_mode": "manim",
         "markdown": "Verify that $e^{i\\pi} + 1 = 0$ using Taylor Series expansion."
     }
 
     # 3. Explainer Slides Ingestion test
     payload_explainer = {
-        "topic": "Active Transport vs Passive Diffusion",
+        "topic": "Active Transport vs Passive Diffusion v2",
         "render_mode": "explainer",
         "html": "<h3>Active Transport</h3><p>Requires ATP to move molecules against concentration gradient.</p>"
     }
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     print("\n=== Active Pipeline Verification Status ===")
     for name, jid in [("Spring Boot Ingest", job_1), ("Manim Ingest", job_2), ("Explainer Ingest", job_3)]:
         if jid:
-            status_url = f"http://localhost:8000/status/{jid}"
+            status_url = f"http://10.0.1.1:8000/status/{jid}"
             try:
                 r = requests.get(status_url, headers=headers)
                 state = r.json()

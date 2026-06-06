@@ -1163,12 +1163,15 @@ def on_startup():
         bot_thread.start()
         print("🤖 Interactive Telegram Bot thread dispatched successfully.")
 
-    # Start RabbitMQ consumer (if RABBITMQ_URL / RABBITMQ_HOST is configured)
-    try:
-        from mq.consumer import start_consumer
-        start_consumer(pipeline_fn=_run_pipeline)
-    except Exception as e:
-        print(f"⚠️  MQ Consumer startup skipped: {e}")
+    # Start RabbitMQ consumer (if RABBITMQ_URL / RABBITMQ_HOST is configured and not disabled)
+    if os.environ.get("DISABLE_MQ_CONSUMER", "false").lower() != "true":
+        try:
+            from mq.consumer import start_consumer
+            start_consumer(pipeline_fn=_run_pipeline)
+        except Exception as e:
+            print(f"⚠️  MQ Consumer startup skipped: {e}")
+    else:
+        print("ℹ️ MQ Consumer disabled via DISABLE_MQ_CONSUMER=true")
 
 
 
@@ -2026,12 +2029,41 @@ def start_render(
             pass
 
 
-    thread = threading.Thread(
-        target=_run_pipeline,
-        args=(job_id, request.topic, raw_content, source_type, request.overrides.model_dump() if request.overrides else None),
-        daemon=True,
-    )
-    thread.start()
+    # Build MQ payload
+    mq_payload = {
+        "job_id": job_id,
+        "topic": request.topic,
+        "render_mode": request.render_mode or "auto",
+        "webhook_url": request.webhook_url,
+        "use_elevenlabs": request.use_elevenlabs,
+        "extra_params": request.overrides.model_dump() if request.overrides else {},
+    }
+    if source_type == "json":
+        mq_payload["json_data"] = raw_content
+    elif source_type == "html":
+        mq_payload["html"] = raw_content
+    elif source_type == "markdown":
+        mq_payload["markdown"] = raw_content
+    elif source_type == "solution_v2":
+        mq_payload["solution_v2"] = raw_content
+    else:
+        mq_payload["json_data"] = request.json_data
+        mq_payload["html"] = request.html
+        mq_payload["markdown"] = request.markdown
+        mq_payload["solution_v2"] = request.solution_v2
+
+    from mq.publisher import publish_render_job
+    published = publish_render_job(mq_payload)
+    if not published:
+        print("⚠️ Failed to publish to RabbitMQ. Falling back to in-process worker thread.")
+        thread = threading.Thread(
+            target=_run_pipeline,
+            args=(job_id, request.topic, raw_content, source_type, request.overrides.model_dump() if request.overrides else None),
+            daemon=True,
+        )
+        thread.start()
+    else:
+        print(f"🚀 Job {job_id} successfully dispatched via RabbitMQ.")
 
     # Snapshot BEFORE save (save may reload+merge and temporarily displace new job)
     with _jobs_lock:
