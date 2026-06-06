@@ -80,6 +80,8 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: etl-postgres-macmini
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=etl
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -115,6 +117,7 @@ services:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
     ports:
+      - "5672:5672"
       - "15672:15672"   # management UI — useful for watching the job bus during staging
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
