@@ -148,9 +148,7 @@ class VideoCache(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     job_id = Column(String(100), nullable=False, unique=True, index=True)
     purpose = Column(
-        Enum("question_explanation", "marketing", "course_intro", "announcement",
-             "affiliate", "tutorial", "other",
-             name="video_purpose_enum"),
+        String(50),
         nullable=False,
         default="question_explanation",
     )
@@ -159,8 +157,7 @@ class VideoCache(Base):
     render_mode = Column(String(50), nullable=False)
     title = Column(String(255), nullable=True)
     status = Column(
-        Enum("pending", "rendering", "ready", "failed",
-             name="video_cache_status_enum"),
+        String(20),
         nullable=False,
         default="pending",
     )
