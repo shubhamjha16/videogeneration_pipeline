@@ -2,12 +2,19 @@
 RabbitMQ Consumer — EaseToLearn Video Factory
 
 Subscribes to the etl.video.render.queue and processes render jobs
-dispatched by the Spring Boot integration service.
+dispatched by the Spring Boot integration service (or the Python replacement).
 
 Architecture:
-    Spring Boot publishes RenderRequest JSON → RabbitMQ → This consumer
-    → Deserializes JSON → Calls _run_pipeline() → ACKs message
-    → On exception → NACKs message (routes to etl.video.render.dlq)
+    Publisher sends RenderRequest JSON → RabbitMQ → This consumer
+    → Deserializes JSON → Registers job in api_bridge.jobs + DB
+    → Launches pipeline in worker thread → ACKs message immediately
+    → On deserialization/registration failure → NACKs (routes to DLQ)
+
+Heartbeat safety:
+    Pipeline runs in a separate thread so the Pika callback returns
+    quickly.  This prevents heartbeat starvation on multi-minute renders
+    that would otherwise cause the broker to drop the connection, fail the
+    ACK, and redeliver the message (duplicate render).
 
 Graceful degradation:
     If RABBITMQ_URL is not set, the consumer silently skips startup
@@ -19,6 +26,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger("video_factory.mq")
@@ -93,11 +101,83 @@ def _ensure_topology(channel):
     logger.info("✅ MQ topology verified: exchange=%s queue=%s", EXCHANGE, RENDER_QUEUE)
 
 
+def _register_mq_job(job_id: str, topic: str, raw_content, source_type: str, overrides: dict):
+    """
+    Register an MQ-delivered job in the api_bridge in-memory jobs dict
+    AND the database, mirroring what the /render HTTP endpoint does.
+
+    Without this, _run_pipeline's `if job_id not in jobs: abort` guard
+    would silently discard every MQ-delivered job.
+    """
+    # Late import to avoid circular dependency at module load time
+    from api_bridge import jobs, _jobs_lock, _safe_save_jobs
+
+    now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+    render_mode = (overrides or {}).get("render_mode", "auto")
+    webhook_url = (overrides or {}).get("webhook_url")
+    use_elevenlabs = (overrides or {}).get("use_elevenlabs", False)
+
+    init_msg = (
+        f"🚀 MQ Job initialized for topic: {topic} | "
+        f"Source: {source_type.upper()} | Mode: {render_mode}"
+    )
+
+    with _jobs_lock:
+        jobs[job_id] = {
+            "job_id":        job_id,
+            "status":        "queued",
+            "video_url":     "",
+            "thumbnail_url": "",
+            "error":         "",
+            "progress":      0,
+            "current_step":  "Initializing (MQ)",
+            "render_mode":   render_mode,
+            "with_avatar":   False,
+            "avatar_type":   None,
+            "avatar_id":     None,
+            "video_type":    None,
+            "use_elevenlabs": use_elevenlabs,
+            "image_path":    None,
+            "webhook_url":   webhook_url,
+            "created_at":    now_iso,
+            "updated_at":    now_iso,
+            "topic":         topic,
+            "raw_html":      raw_content,
+            "storyboard":    None,
+            "overrides":     overrides,
+            "idempotency_key": None,
+            "logs":          [{"node": "SYSTEM", "msg": init_msg, "type": "info"}],
+        }
+
+    # Persist to disk so other workers can see the job
+    _safe_save_jobs(f"MQ job registered ({job_id})")
+
+    # DB Persistence: mirror the /render endpoint's create_job call
+    try:
+        from db.repository import create_job
+        create_job(
+            job_id=job_id,
+            topic=topic,
+            source_type=source_type,
+            render_mode_requested=render_mode,
+            with_avatar=False,
+            avatar_type=None,
+            callback_url=webhook_url,
+        )
+    except Exception as e:
+        logger.warning("⚠️ MQ: DB create_job failed for %s (non-fatal): %s", job_id, e)
+
+    logger.info("📋 MQ: Registered job %s in memory + DB", job_id)
+
+
 def _on_message(channel, method, properties, body, pipeline_fn):
     """
     Called by Pika for each delivered message.
-    Deserializes the JSON RenderRequest from Spring Boot,
-    runs the LangGraph pipeline, then ACKs or NACKs.
+    Deserializes the JSON RenderRequest, registers the job in api_bridge,
+    launches the pipeline in a worker thread, then ACKs.
+
+    Pipeline runs in a separate thread to avoid starving Pika heartbeats
+    during multi-minute renders (heartbeat=600, but renders can take 5-10min).
     """
     job_id = "unknown"
     try:
@@ -134,21 +214,34 @@ def _on_message(channel, method, properties, body, pipeline_fn):
         if payload.get("useElevenLabs") is not None:
             overrides["use_elevenlabs"] = payload.get("useElevenLabs")
 
-        # Invoke the pipeline with proper args
-        pipeline_fn(
-            job_id,
-            payload.get("topic", ""),
-            raw_content,
-            source_type,
-            overrides
-        )
+        # ── FIX #2: Register job BEFORE calling pipeline_fn ──
+        # Without this, _run_pipeline checks `if job_id not in jobs: abort`
+        # and silently discards MQ-delivered jobs.
+        _register_mq_job(job_id, payload.get("topic", ""), raw_content, source_type, overrides)
 
-        # ACK — message is permanently removed from queue
+        # ── FIX #4: Run pipeline in a worker thread ──
+        # The Pika callback must return quickly to avoid heartbeat starvation.
+        # A multi-minute render inside the callback would starve heartbeats,
+        # causing the broker to drop the connection, the ACK to fail, and the
+        # message to redeliver (duplicate render).
+        worker = threading.Thread(
+            target=pipeline_fn,
+            args=(job_id, payload.get("topic", ""), raw_content, source_type, overrides),
+            daemon=True,
+            name=f"mq_pipeline_{job_id}",
+        )
+        worker.start()
+        logger.info("🚀 MQ: Dispatched job %s to worker thread", job_id)
+
+        # ACK — message is permanently removed from queue.
+        # The job is now registered and the pipeline thread is running.
+        # If the pipeline fails, it updates job status to "failed" and fires
+        # the webhook internally — we don't need to NACK for pipeline errors.
         channel.basic_ack(delivery_tag=method.delivery_tag)
         logger.info("✅ MQ: ACK job %s", job_id)
 
     except Exception as e:
-        logger.exception("❌ MQ: Pipeline failed for job %s — NACKing to DLQ: %s", job_id, e)
+        logger.exception("❌ MQ: Failed to deserialize/register job %s — NACKing to DLQ: %s", job_id, e)
         # NACK without requeue → routes to dead letter queue
         channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
@@ -167,7 +260,10 @@ def _consumer_loop(url: str, pipeline_fn):
             logger.info("🔌 MQ Consumer: Connecting to RabbitMQ at %s...",
                         url.split("@")[-1] if "@" in url else url)
             params = pika.URLParameters(url)
-            params.heartbeat = 60
+            # Heartbeat raised from 60→600s.  The pipeline itself now runs in a
+            # separate thread (FIX #4) so the callback returns immediately, but
+            # a generous heartbeat provides extra safety margin.
+            params.heartbeat = 600
             params.blocked_connection_timeout = 300
 
             connection = pika.BlockingConnection(params)
@@ -203,7 +299,7 @@ def start_consumer(pipeline_fn) -> bool:
 
     Args:
         pipeline_fn: Callable matching the _run_pipeline signature in api_bridge.py.
-                     Receives deserialized render job kwargs and executes the pipeline.
+                     Signature: (job_id, topic, html, source_type, overrides)
     """
     url = _get_rabbitmq_url()
     if not url:

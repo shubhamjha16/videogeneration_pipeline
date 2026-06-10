@@ -1283,7 +1283,7 @@ class RenderRequest(BaseModel):
     solution_v2: Optional[Any] = None  # Spring Boot solutionV2 format
     json_data:   Optional[Any] = None  # Structured JSON facts or derivation steps
     markdown:    Optional[str] = None  # Markdown content with LaTeX support
-    render_mode: Optional[Literal["manim", "presentation", "explainer", "heygen", "notes", "user_generated_video", "user_generated"]] = None
+    render_mode: Optional[Literal["auto", "manim", "presentation", "explainer", "heygen", "notes", "user_generated_video", "user_generated"]] = None
     with_avatar: bool = False
     avatar_type: Optional[Literal["logo", "human", "pro", "user", "heygen", "tony_cartoon"]] = None
     avatar_id:   Optional[str] = None
